@@ -1,0 +1,27 @@
+[Unit]
+Description=Goblin native Project Zomboid client
+Requires=goblin-native-steam.service
+After=goblin-native-steam.service
+
+[Service]
+Type=simple
+User=goblin
+Group=goblin
+WorkingDirectory=/home/goblin/pz-client/game/projectzomboid
+Environment=GOBLIN_PZ_CLIENT_ROOT=/home/goblin/pz-client/game
+Environment=GOBLIN_PZ_CACHEDIR=/home/goblin/Zomboid
+Environment=GOBLIN_PZ_DISPLAY=:105
+ExecStart=/home/goblin/zomboid-goblin/ops/native-client/launch_native_client.sh
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/goblin/Zomboid
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable only after Steam is authenticated and the client/server parity gate
+# is complete. The PZ server password is entered in the game UI, not here.

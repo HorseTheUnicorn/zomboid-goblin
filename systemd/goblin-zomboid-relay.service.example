@@ -1,0 +1,32 @@
+[Unit]
+Description=Goblin Project Zomboid SSH bridge relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goblin
+Group=goblin
+WorkingDirectory=/home/goblin/zomboid-goblin
+Environment=GOBLIN_BRIDGE_ROOT=/mnt/goblin-zomboid
+Environment=GOBLIN_PZ_HOST=192.168.0.3
+Environment=GOBLIN_PZ_SSH_USER=goblin
+# Override this if the live server was started with a custom -cachedir.
+Environment=GOBLIN_PZ_BRIDGE_ROOT=/home/zomboid/Zomboid/Lua/goblin-bridge
+Environment=GOBLIN_PZ_SSH_KEY=/home/goblin/.ssh/id_ed25519
+Environment=GOBLIN_RELAY_INTERVAL=1
+Environment=GOBLIN_RELAY_SSH_TIMEOUT=8
+ExecStart=/usr/bin/python3 -m goblin_zomboid.relay
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/mnt/goblin-zomboid
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
+
+# Install only after the remote bridge root and key-only SSH path are tested.

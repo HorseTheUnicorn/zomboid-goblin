@@ -1,0 +1,5 @@
+name=GoblinSurvivor
+id=GoblinSurvivor
+description=Safety-first Goblin sensor bridge; autonomous body disabled until the feasibility gate passes.
+version=0.1.0
+

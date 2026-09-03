@@ -1,0 +1,5 @@
+# The verified CT100 deployment uses the SSH relay because the PZ guest is an
+# unprivileged LXC and the existing .76 package database is not repaired here.
+# Keep this NFS example disabled unless a future host-level NFS export is
+# explicitly tested and approved.
+# <PZ_CACHEDIR>/Lua/goblin-bridge /mnt/goblin-zomboid nfs4 _netdev,hard,timeo=50,retrans=2,noatime 0 0

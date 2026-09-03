@@ -1,0 +1,14 @@
+[build-system]
+requires = []
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zomboid-goblin"
+version = "0.1.0"
+description = "Safety-first Project Zomboid Goblin integration"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

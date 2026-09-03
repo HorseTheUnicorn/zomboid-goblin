@@ -1,0 +1,3 @@
+# Replace PZSERVER_UID/PZSERVER_GID with the actual account IDs after verification.
+# Export only the bridge, never the save directory.
+# <PZ_CACHEDIR>/Lua/goblin-bridge 192.168.0.76(rw,sync,no_subtree_check,root_squash)

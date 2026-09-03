@@ -1,0 +1,7 @@
+version=1
+id=3794624741
+title=GoblinSurvivor
+description=Build 42 multiplayer bridge for the Goblin Project Zomboid integration.
+description=The server loadout provides this item to joining clients through Steam Workshop.
+tags=Build 42;Multiplayer;Misc;WIP
+visibility=unlisted

@@ -1,0 +1,12 @@
+# GoblinSurvivor integration options for the disposable test instance.
+#
+# This is intentionally not a Project Zomboid Server/<name>.ini fragment:
+# Build 42 ignores unknown server-option keys. Place this file at:
+#   <cachedir>/Lua/goblin-bridge/config.ini
+# The bridge provisioner creates this file automatically with the safe values.
+# Keep the master switch false until every body and parity gate passes.
+GoblinEnabled=false
+GoblinBridgeRoot=goblin-bridge
+GoblinClientUsername=Goblin
+GoblinGameBuild=
+GoblinSurvivorSHA256=
