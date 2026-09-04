@@ -94,6 +94,14 @@ h2 { font-size: .86rem; }
 dt { color: var(--muted); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; }
 dd { color: var(--text); font-size: .88rem; margin: .25rem 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .callout { color: var(--muted); font-size: .72rem; line-height: 1.5; padding: .85rem 1rem 1rem; }
+.roster-list { list-style: none; margin: 0; max-height: 260px; overflow: auto; padding: 0 1rem .75rem; }
+.roster-row { border-top: 1px solid var(--line); padding: .58rem 0; }
+.roster-row:first-child { border-top: 0; }
+.roster-heading { align-items: baseline; display: flex; gap: .5rem; justify-content: space-between; }
+.roster-name { color: var(--text); font-size: .76rem; }
+.roster-state { color: var(--muted); font-size: .58rem; letter-spacing: .1em; }
+.roster-online { color: var(--green); }
+.roster-meta { color: var(--muted); font-size: .66rem; line-height: 1.35; margin-top: .18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .state-badge { border: 1px solid var(--line-bright); font-size: .6rem; letter-spacing: .12em; padding: .35rem .48rem; }
 .state-alive { border-color: var(--green-dim); color: var(--green); }
 .state-dead { border-color: #81443f; color: var(--red); }

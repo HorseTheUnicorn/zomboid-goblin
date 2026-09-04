@@ -166,6 +166,39 @@ class GoblinService:
             value = player.get("id", player.get("player"))
             self._register_player(value)
 
+    def _register_npc(self, npc: object) -> None:
+        if not isinstance(npc, Mapping):
+            return
+        npc_id = npc.get("npc_id", npc.get("id"))
+        if not isinstance(npc_id, str) or not npc_id:
+            return
+        try:
+            if not self.entity_registry.known_npc(npc_id):
+                self.entity_registry.register_npc(npc_id)
+            entity = self.entity_registry.npcs[npc_id]
+            name = npc.get("name")
+            role = npc.get("role", npc.get("job"))
+            if isinstance(name, str) and name:
+                entity.name = name[:32]
+            if isinstance(role, str) and role:
+                entity.role = role.casefold()[:32]
+            if isinstance(npc.get("alive"), bool):
+                entity.alive = npc["alive"]
+            if isinstance(npc.get("active"), bool):
+                entity.active = npc["active"]
+            if isinstance(npc.get("incapacitated"), bool):
+                entity.incapacitated = npc["incapacitated"]
+            if isinstance(npc.get("critical_worker"), bool):
+                entity.critical_worker = npc["critical_worker"]
+        except (KeyError, ValueError):
+            return
+
+    def _sync_npcs(self, fields: Mapping[str, object]) -> None:
+        npcs = fields.get("npcs", fields.get("managed_npcs", []))
+        if isinstance(npcs, list):
+            for npc in npcs:
+                self._register_npc(npc)
+
     @staticmethod
     def _chat_is_addressed(fields: Mapping[str, object]) -> bool:
         text = fields.get("text")
@@ -509,6 +542,7 @@ class GoblinService:
     def _run_npc_once(self, state_message: Message) -> ServiceResult:
         self.last_state = brain_view(state_message.fields)
         self._sync_players(state_message.fields)
+        self._sync_npcs(state_message.fields)
         tracker_state = dict(state_message.fields)
         exact_message = self._read_exact_state()
         if exact_message is not None and exact_message.type == "runtime.exact_state":

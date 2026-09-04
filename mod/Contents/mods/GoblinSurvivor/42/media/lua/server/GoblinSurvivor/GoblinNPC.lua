@@ -2,6 +2,7 @@ local Config = require("GoblinSurvivor/Config")
 local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 local Protection = require("GoblinSurvivor/Protection")
 local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
+local SquadManager = require("GoblinSurvivor/SquadManager")
 
 local GoblinNPC = {}
 
@@ -34,6 +35,7 @@ function GoblinNPC.getGoblinState()
         mode = status.mode,
         task = status.task,
         target_player = status.target_player,
+        target_npc_id = status.target_npc_id,
         friendly = status.friendly,
         protected = status.protected,
         needs_disabled = status.needs_disabled,
@@ -47,21 +49,25 @@ function GoblinNPC.ensure()
     local zombie = NPCRegistry.findGoblin()
     if zombie ~= nil then
         Protection.apply(zombie)
-        NpcAdapter.tick(zombie)
+        NpcAdapter.tick(zombie, Config.npcId)
+        NPCRegistry.ensureManaged()
+        SquadManager.tick()
         return zombie, "present"
     end
     local spawned, detail = NPCRegistry.spawnGoblin()
     if spawned ~= nil then
         Protection.apply(spawned)
-        NpcAdapter.tick(spawned)
+        NpcAdapter.tick(spawned, Config.npcId)
+        NPCRegistry.ensureManaged()
+        SquadManager.tick()
     end
     return spawned, detail
 end
 
 function GoblinNPC.onZombieDeath(zombie)
-    local current = NPCRegistry.findGoblin()
-    if current == zombie then
-        NPCRegistry.markDead()
+    local entry, npcId = NPCRegistry.entryForBody(zombie)
+    if entry ~= nil and entry.zombie == zombie then
+        NPCRegistry.markDead(npcId)
     end
 end
 
@@ -69,9 +75,10 @@ function GoblinNPC.onZombieUpdate(zombie)
     -- OnZombieUpdate runs close to the zombie AI update. Reasserting the
     -- Bandits2 friendly policy here closes the window in which a normal
     -- zombie could reacquire a player between slower command ticks.
-    if zombie ~= nil and NpcAdapter.isOwned(zombie) then
-        Protection.apply(zombie)
-        NpcAdapter.tick(zombie)
+    local entry, npcId = NPCRegistry.entryForBody(zombie)
+    if zombie ~= nil and entry ~= nil and NpcAdapter.isOwned(zombie, npcId) then
+        if npcId == Config.npcId then Protection.apply(zombie) end
+        NpcAdapter.tick(zombie, npcId)
     end
 end
 

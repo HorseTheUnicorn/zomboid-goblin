@@ -9,6 +9,11 @@ local Config = {
     -- to this known-safe program.
     npcProgram = "Companion",
     npcRole = "companion",
+    -- These are additional managed friendly bodies created by our own mod
+    -- through the Bandits2 adapter. Set GoblinManagedNpcCount=0 to run only
+    -- Goblin, or raise it up to the bounded roster limit for followers and
+    -- base workers.
+    managedNpcCount = 3,
     protected = true,
     gameBuildOverride = "",
     fileOptions = {},
@@ -212,6 +217,10 @@ function Config.refresh()
     Config.minimumBaseGuards = parseBoundedInteger(
         readOption("MinimumBaseGuards", Config.minimumBaseGuards),
         Config.minimumBaseGuards, 0, 16
+    )
+    Config.managedNpcCount = parseBoundedInteger(
+        readOption("GoblinManagedNpcCount", Config.managedNpcCount),
+        Config.managedNpcCount, 0, 8
     )
     Config.commanders = parseCommanders(readOption("GoblinCommanders", ""))
     return Config

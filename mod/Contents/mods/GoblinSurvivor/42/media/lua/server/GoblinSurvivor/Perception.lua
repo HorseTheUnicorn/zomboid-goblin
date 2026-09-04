@@ -1,5 +1,6 @@
 local Perception = {}
 local BaseManager = require("GoblinSurvivor/BaseManager")
+local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 
 local function text(value)
     return type(value) == "string" and string.lower(value) or ""
@@ -101,6 +102,10 @@ function Perception.resolveTarget(target, zombie)
     if kind == "player" then
         local resolved = position(playerFor(label))
         return resolved, resolved and "player target" or "player is not online"
+    end
+    if kind == "goblin" then
+        local resolved = position(NPCRegistry.findGoblin())
+        return resolved, resolved and "Goblin target" or "Goblin is not present"
     end
     if kind == "home_base" or kind == "base" then
         local base = BaseManager.point()

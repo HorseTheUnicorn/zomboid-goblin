@@ -122,6 +122,7 @@ elif [[ ! -e "$config_file" ]]; then
         'GoblinNpcName=Goblin' \
         'GoblinNpcProgram=Companion' \
         'GoblinNpcProtected=true' \
+        'GoblinManagedNpcCount=3' \
         'GoblinCommanders=' \
         'MinimumBaseGuards=1' \
         'GoblinTrackerExact=true' > "$config_file"

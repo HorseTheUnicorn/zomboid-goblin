@@ -134,6 +134,44 @@ class NpcServiceTests(unittest.TestCase):
         finally:
             service.close()
 
+    def test_server_reported_managed_npcs_update_the_agent_allowlist(self) -> None:
+        qwen = FakeQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="npc",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                    npcs=[
+                        {
+                            "npc_id": "npc.sarah", "name": "Sarah",
+                            "role": "medic", "alive": True, "active": True,
+                        },
+                        {
+                            "npc_id": "npc.bob", "name": "Bob",
+                            "role": "guard", "alive": False, "active": True,
+                        },
+                    ],
+                ),
+            )
+            service.run_once()
+            self.assertTrue(service.entity_registry.known_npc("npc.sarah"))
+            self.assertTrue(service.entity_registry.known_npc("npc.bob"))
+            self.assertEqual(service.entity_registry.npcs["npc.sarah"].name, "Sarah")
+            self.assertEqual(service.entity_registry.npcs["npc.sarah"].role, "medic")
+            self.assertTrue(service.entity_registry.npcs["npc.sarah"].alive)
+            self.assertFalse(service.entity_registry.npcs["npc.bob"].alive)
+        finally:
+            service.close()
+
     def test_meaningful_event_triggers_a_new_plan_with_safe_context(self) -> None:
         qwen = FakeQwen()
         service = GoblinService(

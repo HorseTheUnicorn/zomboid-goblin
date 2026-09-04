@@ -143,6 +143,9 @@ class TrackerStore:
         allowed = {
             "npc_id", "npc_alive", "npc_active", "body_mode", "server_status",
             "player_count", "updated_at", "entities", "npcs", "squads", "base",
+            "role", "mode", "task", "target_player", "target_npc_id",
+            "friendly", "protected", "spawn_status", "spawn_pending",
+            "spawn_attempts",
         }
         result = {key: copy.deepcopy(source[key]) for key in allowed if key in source}
         for entity_key in ("entities", "npcs"):
@@ -152,7 +155,13 @@ class TrackerStore:
             result[entity_key] = [
                 {
                     key: copy.deepcopy(entity[key])
-                    for key in ("npc_id", "entity_id", "id", "kind", "name", "x", "y", "z", "online", "alive", "active")
+                    for key in (
+                        "npc_id", "entity_id", "id", "kind", "name", "role",
+                        "base_job", "expedition_role", "squad_id", "home_base",
+                        "mode", "task", "target_player", "target_npc_id",
+                        "friendly", "protected", "body_present", "x", "y", "z",
+                        "online", "alive", "active",
+                    )
                     if key in entity
                 }
                 for entity in entities

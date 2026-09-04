@@ -22,10 +22,11 @@ Role: Goblin AI host.
   was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the `07f8f85` checkout at
-  `/home/goblin/zomboid-goblin-07f8f85`; this build includes deterministic
-  survival fallback, event-driven Qwen planning, persistent settlement
-  assignments, the bounded SSE tracker stream, and the read-only B42 map UI.
+- The agent and relay are running from the current deployed checkout recorded
+  below at `/home/goblin/zomboid-goblin-<revision>`; this build includes
+  deterministic survival fallback, event-driven Qwen planning, persistent
+  settlement assignments, the bounded SSE tracker stream, the read-only B42
+  map UI, and the Bandits2-backed managed-friendly roster.
 - The B42 tracker map cache is installed read-only at
   `/home/goblin/share/pz-map/b42/muldraugh`; it contains 4,914 current
   `biomemap` tiles from `.03` (20 MB on disk). The tracker UI is served from
@@ -45,10 +46,10 @@ Role: Project Zomboid dedicated server.
 - The active multiplayer save is under
   `/home/zomboid/Zomboid/Saves/Multiplayer/servertest`.
 - The bridge endpoint is `/home/zomboid/Zomboid/Lua/goblin-bridge`.
-- The live server now has the Bandits2-backed GoblinSurvivor package from
-  revision `ecb40f4` deployed; the package reports `adapter=bandits2`,
-  `friendly=true`, and `control_ready=true` during bootstrap. The active
-  package contains 32 files.
+- The live server now has the Bandits2-backed GoblinSurvivor package from the
+  current deployed revision recorded below; the package reports
+  `adapter=bandits2`, `friendly=true`, and `control_ready=true` during
+  bootstrap. The active package includes the managed-friendly roster.
 - The required Bandits2 cache is present at
   `/home/zomboid/pzserver/steamapps/workshop/content/108600/3268487204`.
   `servertest.ini` now includes Workshop item `3268487204` and loads
@@ -71,9 +72,9 @@ agent host. Its direct GoblinSurvivor package is synchronized from revision
 - `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor\Contents\mods\GoblinSurvivor`
 - `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
 
-Each active path has 32 files with zero hash mismatches and zero extra files.
-The pre-sync copies were retained under the corresponding explicit
-`GoblinSurvivor-pre-ecb40f4` sibling paths.
+The active paths must be synchronized from the same deployed revision as the
+server package. Any pre-sync copies are retained only under an explicit
+revision-named sibling path.
 
 ## Operational boundary
 

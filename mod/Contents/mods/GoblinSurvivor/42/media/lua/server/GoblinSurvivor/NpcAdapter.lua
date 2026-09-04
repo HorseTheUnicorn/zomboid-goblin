@@ -24,70 +24,73 @@ function NpcAdapter.available()
     return capabilities.available == true and capabilities.friendly == true
 end
 
-function NpcAdapter.spawnPoint(anchor)
-    return BanditsNpcAdapter.spawnPoint(anchor)
+function NpcAdapter.spawnPoint(anchor, extraOffset)
+    return BanditsNpcAdapter.spawnPoint(anchor, extraOffset)
 end
 
-function NpcAdapter.isCandidate(body)
-    return BanditsNpcAdapter.isCandidate(body)
+function NpcAdapter.isCandidate(body, npcId)
+    return BanditsNpcAdapter.isCandidate(body, npcId)
 end
 
-function NpcAdapter.isEventCandidate(body)
-    return BanditsNpcAdapter.isEventCandidate(body)
+function NpcAdapter.isEventCandidate(body, npcId)
+    return BanditsNpcAdapter.isEventCandidate(body, npcId)
 end
 
-function NpcAdapter.isFriendly(body)
-    return BanditsNpcAdapter.isFriendly(body)
+function NpcAdapter.isFriendly(body, npcId)
+    return BanditsNpcAdapter.isFriendly(body, npcId)
 end
 
-function NpcAdapter.isOwned(body)
-    return BanditsNpcAdapter.isOwned(body) and NpcAdapter.isFriendly(body)
+function NpcAdapter.isOwned(body, npcId)
+    return BanditsNpcAdapter.isOwned(body, npcId)
+        and NpcAdapter.isFriendly(body, npcId)
 end
 
-function NpcAdapter.prepare(body, npcId, anchor)
+function NpcAdapter.prepare(body, npcId, anchor, displayName, role)
     if not NpcAdapter.available() then
         return false, "friendly NPC adapter is unavailable"
     end
-    return BanditsNpcAdapter.prepare(body, npcId, anchor)
+    return BanditsNpcAdapter.prepare(body, npcId, anchor, displayName, role)
 end
 
-function NpcAdapter.spawnIndividual(anchor, npcId, program)
+function NpcAdapter.spawnIndividual(anchor, npcId, program, displayName, role, extraOffset)
     if not NpcAdapter.available() then
         return false, "friendly NPC adapter is unavailable", nil
     end
-    return BanditsNpcAdapter.spawnIndividual(anchor, npcId, program)
+    return BanditsNpcAdapter.spawnIndividual(
+        anchor, npcId, program, displayName, role, extraOffset
+    )
 end
 
 function NpcAdapter.getBrain(body)
     return BanditsNpcAdapter.getBrain(body)
 end
 
-function NpcAdapter.say(body, text)
-    return BanditsNpcAdapter.say(body, text)
+function NpcAdapter.say(body, text, npcId)
+    return BanditsNpcAdapter.say(body, text, npcId)
 end
 
-function NpcAdapter.status(body)
-    return BanditsNpcAdapter.status(body)
+function NpcAdapter.status(body, npcId)
+    return BanditsNpcAdapter.status(body, npcId)
 end
 
-function NpcAdapter.setTasks(body, tasks)
-    return BanditsNpcAdapter.setTasks(body, tasks)
+function NpcAdapter.setTasks(body, tasks, npcId)
+    return BanditsNpcAdapter.setTasks(body, tasks, npcId)
 end
 
-function NpcAdapter.clearTasks(body)
-    return BanditsNpcAdapter.clearTasks(body)
+function NpcAdapter.clearTasks(body, npcId)
+    return BanditsNpcAdapter.clearTasks(body, npcId)
 end
 
-function NpcAdapter.setCombatTarget(body, target)
-    return BanditsNpcAdapter.setCombatTarget(body, target)
+function NpcAdapter.setCombatTarget(body, target, npcId)
+    return BanditsNpcAdapter.setCombatTarget(body, target, npcId)
 end
 
-function NpcAdapter.tick(body)
-    return BanditsNpcAdapter.tick(body)
+function NpcAdapter.tick(body, npcId)
+    return BanditsNpcAdapter.tick(body, npcId)
 end
 
-function NpcAdapter.discard(body)
-    return BanditsNpcAdapter.discard(body)
+function NpcAdapter.discard(body, npcId)
+    return BanditsNpcAdapter.discard(body, npcId)
 end
 
 return NpcAdapter

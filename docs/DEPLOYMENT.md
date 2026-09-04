@@ -22,8 +22,10 @@ config: /home/zomboid/Zomboid/Server/servertest.ini
 bridge: /home/zomboid/Zomboid/Lua/goblin-bridge
 ```
 
-The bridge `config.ini` also accepts `GoblinCommanders=Name1,Name2` and
-`MinimumBaseGuards=1`. PZ admins and moderators are always accepted as
+The bridge `config.ini` also accepts `GoblinCommanders=Name1,Name2`,
+`MinimumBaseGuards=1`, and the bounded `GoblinManagedNpcCount=3` roster
+setting. Set the count to `0` when only the protected Goblin body is wanted.
+PZ admins and moderators are always accepted as
 commanders; ordinary players must be listed explicitly. To set the persistent
 base from inside the game, an authorized player sends `!goblin base set`.
 That command is resolved and persisted on `.03`; it is not a Qwen command.
@@ -44,6 +46,9 @@ default tracker port is unavailable. Set
 the current server map tile cache to that directory. The tracker serves the
 website from the checkout's `web/` directory and serves only bounded map tile
 paths from the configured map root. Keep Qwen loopback-only.
+For a tunnel origin on the Proxmox host, set the tracker bind explicitly to
+`GOBLIN_TRACKER_BIND=192.168.0.76`; otherwise the default loopback bind keeps
+the tracker private.
 
 To refresh the live `.76` checkout without copying secrets, clone the pushed
 revision into a new directory, verify the package, and update both the agent
@@ -56,6 +61,9 @@ separate, explicitly approved cleanup.
 - `.76` has no native PZ client, Steam GUI session, or gameplay SteamCMD tree.
 - PZ writes `runtime.state` with `body_mode=npc`, `npc_id=goblin.primary`,
   `control_ready=true`, and `npc_engine_ready=true` after a player is online.
+- PZ reports the managed friendly roster in `runtime.state.npcs`; the exact
+  body positions for Goblin, companions, players, and base remain in the
+  separate tracker-only telemetry stream.
 - `runtime.exact_state` is separate from `runtime.state`.
 - An accepted agent action appears as `command.npc_action`, then receives a
   bounded response/ack and is archived.

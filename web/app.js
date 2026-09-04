@@ -8,7 +8,8 @@
     mapBuild: $("map-build"), connectionDot: $("connection-dot"), connectionLabel: $("connection-label"),
     lastSeen: $("last-seen"), goblinState: $("goblin-state"), bodyMode: $("body-mode"),
     serverStatus: $("server-status"), playerCount: $("player-count"), npcCount: $("npc-count"),
-    goblinNote: $("goblin-note"), eventCount: $("event-count"), eventList: $("event-list"),
+    goblinNote: $("goblin-note"), rosterCount: $("roster-count"), rosterList: $("roster-list"),
+    eventCount: $("event-count"), eventList: $("event-list"),
     historyCount: $("history-count"),
   };
   const ctx = ui.canvas.getContext("2d");
@@ -240,6 +241,48 @@
     ui.goblinNote.textContent = alive ? "Bandits2 body is present; GoblinSurvivor policy controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
   }
 
+  function renderRoster() {
+    const state = model.state || {};
+    const roster = Array.isArray(state.npcs) ? state.npcs.filter((entry) => entry && typeof entry === "object") : [];
+    if (state.npc_id && !roster.some((entry) => (entry.npc_id || entry.id) === state.npc_id)) {
+      roster.unshift({
+        npc_id: state.npc_id,
+        name: "Goblin",
+        role: state.role || "companion",
+        alive: state.npc_alive === true,
+        active: state.npc_active !== false,
+        body_present: state.npc_alive === true,
+        mode: state.mode,
+        task: state.task,
+        target_player: state.target_player,
+        target_npc_id: state.target_npc_id,
+        friendly: state.friendly,
+        protected: state.protected,
+      });
+    }
+    ui.rosterCount.textContent = String(roster.length);
+    ui.rosterList.replaceChildren();
+    if (!roster.length) {
+      const row = document.createElement("li"); row.className = "empty-row";
+      row.textContent = "No managed bodies reported."; ui.rosterList.append(row); return;
+    }
+    for (const entry of roster) {
+      const row = document.createElement("li"); row.className = "roster-row";
+      const heading = document.createElement("div"); heading.className = "roster-heading";
+      const name = document.createElement("strong"); name.className = "roster-name";
+      name.textContent = String(entry.name || entry.npc_id || entry.id || "managed NPC");
+      const stateLabel = document.createElement("span"); stateLabel.className = "roster-state";
+      const present = entry.body_present !== false && entry.alive !== false && entry.active !== false;
+      stateLabel.textContent = present ? "ONLINE" : entry.active === false ? "DISABLED" : "OFFLINE";
+      stateLabel.classList.toggle("roster-online", present);
+      heading.append(name, stateLabel);
+      const meta = document.createElement("div"); meta.className = "roster-meta";
+      const details = [entry.role, entry.mode || entry.task, entry.squad_id ? `squad ${entry.squad_id}` : null].filter(Boolean);
+      meta.textContent = details.join(" · ") || "managed Bandits2 body";
+      row.append(heading, meta); ui.rosterList.append(row);
+    }
+  }
+
   function renderEvents() {
     const events = model.events.slice(-32).reverse();
     ui.eventCount.textContent = String(events.length);
@@ -267,7 +310,7 @@
     if (Array.isArray(payload.events)) model.events = payload.events;
     if (Number.isFinite(payload.sequence)) model.sequence = payload.sequence;
     model.connected = true; model.lastUpdate = Date.now();
-    setConnection("live", "Tracker live"); renderSummary(); renderEvents(); drawMap();
+    setConnection("live", "Tracker live"); renderSummary(); renderRoster(); renderEvents(); drawMap();
   }
 
   function applyUpdate(payload) { applySnapshot(payload); }

@@ -24,6 +24,10 @@ command rules.
   from the server's installed map cache.
 - `goblin.primary`: stable NPC identity. Death or unload is handled by the
   server-side registry and recovery loop.
+- `GoblinManagedNpcCount`: bounded optional roster size for our own friendly
+  companions. The default live setting is `3`; set it to `0` for Goblin-only
+  operation. Companions use Bandits2 bodies but are owned, named, persisted,
+  and squad-controlled by GoblinSurvivor.
 
 The model sees `brain_view` only: named targets, coarse threat/distance
 signals, and bounded events. Exact coordinates are stored separately in the

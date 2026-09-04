@@ -1,6 +1,7 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
+local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Perception = require("GoblinSurvivor/Perception")
 local BaseManager = require("GoblinSurvivor/BaseManager")
@@ -89,6 +90,7 @@ function Telemetry.writeState()
         mode = body.mode or "SAFE",
         task = body.task,
         target_player = body.target_player,
+        target_npc_id = body.target_npc_id,
         threat_level = perception.threat_level or "none",
         hunger = 0,
         thirst = 0,
@@ -113,7 +115,8 @@ function Telemetry.writeState()
         jobs = JobManager.snapshot(),
         squads = SquadManager.snapshot(),
         player_count = #perception.nearby_players,
-        nearby_players = perception.nearby_players
+        nearby_players = perception.nearby_players,
+        npcs = NPCRegistry.snapshot()
     })
 end
 
@@ -124,13 +127,11 @@ function Telemetry.writeExactState()
     local entities = {}
     local base = BaseManager.snapshotExact()
     if base ~= nil then table.insert(entities, base) end
-    local zombie = GoblinNPC.findGoblin()
-    local point = position(zombie)
-    if point ~= nil then
-        point.npc_id = Config.npcId
-        point.kind = "goblin"
-        point.name = Config.npcName
-        table.insert(entities, point)
+    for _, entity in ipairs(NPCRegistry.snapshotExact()) do
+        if entity.npc_id == Config.npcId then
+            entity.kind = "goblin"
+        end
+        table.insert(entities, entity)
     end
     if type(getOnlinePlayers) == "function" then
         local ok, players = pcall(getOnlinePlayers)

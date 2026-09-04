@@ -11,6 +11,7 @@ local BanditsAdapter = {}
 local clanId = "goblin_survivor"
 local defaultProgram = "Companion"
 local combatTargets = {}
+local ownedBodies = {}
 
 local function nowMs()
     if type(getTimestampMs) == "function" then
@@ -189,29 +190,34 @@ local function characterId(player)
     return nil
 end
 
-local function setSafeBodyHooks(body)
+local function setSafeBodyHooks(body, displayName, protectedBody)
     if body == nil then return end
-    if functionExists(body, "setNoDamage") then
-        pcall(body.setNoDamage, body, true)
-    end
-    if functionExists(body, "setImmortal") then
-        pcall(body.setImmortal, body, true)
-    end
-    if functionExists(body, "setImmortalTutorialZombie") then
-        pcall(body.setImmortalTutorialZombie, body, true)
+    -- Only the primary Goblin receives the protected/immortal policy. Other
+    -- bodies are still friendly Bandits2 companions, but remain ordinary
+    -- survivable NPCs so a follower can be incapacitated or die normally.
+    if protectedBody then
+        if functionExists(body, "setNoDamage") then
+            pcall(body.setNoDamage, body, true)
+        end
+        if functionExists(body, "setImmortal") then
+            pcall(body.setImmortal, body, true)
+        end
+        if functionExists(body, "setImmortalTutorialZombie") then
+            pcall(body.setImmortalTutorialZombie, body, true)
+        end
     end
     if functionExists(body, "setTarget") then
         pcall(body.setTarget, body, nil)
     end
     if functionExists(body, "setDisplayName") then
-        pcall(body.setDisplayName, body, Config.npcName)
+        pcall(body.setDisplayName, body, displayName or Config.npcName)
     end
     if functionExists(body, "transmitModData") then
         pcall(body.transmitModData, body)
     end
 end
 
-local function ensureProfile(npcId)
+local function ensureProfile(npcId, displayName)
     if not BanditsAdapter.available() then
         return false, "Bandits2 server API is unavailable"
     end
@@ -233,7 +239,7 @@ local function ensureProfile(npcId)
     end
     if type(clan.spawn) ~= "table" then clan.spawn = {} end
     if type(clan.general) ~= "table" then clan.general = {} end
-    clan.general.name = Config.npcName
+    clan.general.name = "GoblinSurvivor Friends"
     -- Persist a non-hostile, companion-only clan. Explicit spawn arguments
     -- below repeat these values so a framework reload cannot change policy.
     clan.spawn.friendly = true
@@ -262,7 +268,7 @@ local function ensureProfile(npcId)
     if type(profile.weapons) ~= "table" then profile.weapons = {} end
     if type(profile.ammo) ~= "table" then profile.ammo = {} end
     if type(profile.bag) ~= "table" then profile.bag = {} end
-    profile.general.name = Config.npcName
+    profile.general.name = displayName or Config.npcName
     profile.general.cid = clanId
     profile.general.bid = npcId
     profile.general.female = false
@@ -281,22 +287,24 @@ local function profileBrainMatches(body, npcId)
         and brain.cid == clanId
 end
 
-function BanditsAdapter.isCandidate(body)
+function BanditsAdapter.isCandidate(body, npcId)
+    local requestedId = npcId or Config.npcId
     return BanditsAdapter.available()
-        and profileBrainMatches(body, Config.npcId)
+        and profileBrainMatches(body, requestedId)
 end
 
 -- A normal population zombie must never be claimed by OnZombieCreate. The
 -- Bandits2 wrapper may emit that event before it finishes banditizing its new
 -- body, so the registry will use its bounded profile scan afterward.
-function BanditsAdapter.isEventCandidate(body)
-    return BanditsAdapter.isCandidate(body)
+function BanditsAdapter.isEventCandidate(body, npcId)
+    return BanditsAdapter.isCandidate(body, npcId)
 end
 
-function BanditsAdapter.isFriendly(body)
+function BanditsAdapter.isFriendly(body, npcId)
+    local requestedId = npcId or Config.npcId
     local brain = bodyBrain(body)
     return brain ~= nil
-        and brain.bid == Config.npcId
+        and brain.bid == requestedId
         and brain.cid == clanId
         and brain.hostile == false
         and brain.hostileP == false
@@ -304,16 +312,18 @@ function BanditsAdapter.isFriendly(body)
         and brain.permanent == true
 end
 
-function BanditsAdapter.isOwned(body)
+function BanditsAdapter.isOwned(body, npcId)
+    local requestedId = npcId or Config.npcId
     local data = dataFor(body)
-    return BanditsAdapter.isFriendly(body)
+    return BanditsAdapter.isFriendly(body, requestedId)
         and data ~= nil
-        and data.goblin_npc_id == Config.npcId
+        and data.goblin_npc_id == requestedId
         and data.goblin_owned == true
         and data.goblin_friendly == true
 end
 
-local function enforceFriendlyBrain(body, targetPlayer, resetStage)
+local function enforceFriendlyBrain(body, targetPlayer, resetStage, npcId)
+    local requestedId = npcId or Config.npcId
     local brain = bodyBrain(body)
     if brain == nil then return false end
     local changed = false
@@ -348,10 +358,10 @@ local function enforceFriendlyBrain(body, targetPlayer, resetStage)
         local okUpdate = invoke(BanditBrain, "Update", body, brain)
         if not okUpdate then return false end
     end
-    return BanditsAdapter.isFriendly(body)
+    return BanditsAdapter.isFriendly(body, requestedId)
 end
 
-function BanditsAdapter.prepare(body, npcId, anchor)
+function BanditsAdapter.prepare(body, npcId, anchor, displayName, role)
     if not BanditsAdapter.available() then
         return false, "Bandits2 server API is unavailable"
     end
@@ -382,35 +392,38 @@ function BanditsAdapter.prepare(body, npcId, anchor)
     data.goblin_owned = true
     data.goblin_friendly = true
     data.goblin_engine = BanditsAdapter.engineName()
-    data.goblin_protected = true
+    data.goblin_display_name = displayName or Config.npcName
+    data.goblin_role = role or (requestedId == Config.npcId and Config.npcRole or "companion")
+    data.goblin_protected = requestedId == Config.npcId
     data.goblin_task = nil
     data.goblin_combat = false
     data.goblin_next_path_at = nil
     combatTargets[body] = nil
-    setSafeBodyHooks(body)
-    if not BanditsAdapter.isFriendly(body) then
+    ownedBodies[requestedId] = body
+    setSafeBodyHooks(body, data.goblin_display_name, data.goblin_protected)
+    if not BanditsAdapter.isFriendly(body, requestedId) then
         return false, "Bandits2 did not retain friendly brain state"
     end
     return true, "friendly Bandits2 NPC prepared"
 end
 
-local function nearbyCandidate(point)
+local function nearbyCandidate(point, npcId)
     local result = nil
     eachZombie(function(zombie)
         if result ~= nil then return end
         local candidatePoint = position(zombie)
         if candidatePoint ~= nil and distanceSquared(candidatePoint, point) <= 4096
-            and BanditsAdapter.isCandidate(zombie) then
+            and BanditsAdapter.isCandidate(zombie, npcId) then
             result = zombie
         end
     end)
     return result
 end
 
-function BanditsAdapter.spawnPoint(anchor)
+function BanditsAdapter.spawnPoint(anchor, extraOffset)
     local point = position(anchor)
     if point == nil then return nil end
-    local offset = tonumber(Config.npcSpawnOffsetTiles) or 16
+    local offset = tonumber(extraOffset) or tonumber(Config.npcSpawnOffsetTiles) or 16
     if offset < 8 then offset = 8 end
     return {
         x = math.floor(point.x + offset),
@@ -419,17 +432,17 @@ function BanditsAdapter.spawnPoint(anchor)
     }
 end
 
-function BanditsAdapter.spawnIndividual(anchor, npcId, _program)
+function BanditsAdapter.spawnIndividual(anchor, npcId, _program, displayName, role, extraOffset)
     if not BanditsAdapter.available() then
         return false, "friendly Bandits2 server API is unavailable", nil
     end
     local requestedId = npcId or Config.npcId
-    local profileOk, profileDetail = ensureProfile(requestedId)
+    local profileOk, profileDetail = ensureProfile(requestedId, displayName)
     if not profileOk then
         log(profileDetail)
         return false, profileDetail, nil
     end
-    local spawnPoint = BanditsAdapter.spawnPoint(anchor)
+    local spawnPoint = BanditsAdapter.spawnPoint(anchor, extraOffset)
     if spawnPoint == nil then
         return false, "online player anchor has no spawn point", nil
     end
@@ -456,9 +469,11 @@ function BanditsAdapter.spawnIndividual(anchor, npcId, _program)
     -- The public wrapper returns no body. It creates and banditizes during the
     -- call, so scan only for this exact profile and never claim a normal
     -- zombie as Goblin.
-    local body = nearbyCandidate(spawnPoint)
+    local body = nearbyCandidate(spawnPoint, requestedId)
     if body ~= nil then
-        local prepared, detail = BanditsAdapter.prepare(body, requestedId, anchor)
+        local prepared, detail = BanditsAdapter.prepare(
+            body, requestedId, anchor, displayName, role
+        )
         if prepared then
             return true, detail, body, spawnPoint
         end
@@ -519,7 +534,7 @@ local function isLiveTarget(target)
     return data == nil or (data.goblin_owned ~= true and data.goblin_friendly ~= true)
 end
 
-local function installMoveTask(body, task, targetPlayer)
+local function installMoveTask(body, task, targetPlayer, targetBody)
     local brain = bodyBrain(body)
     local utils = rawget(_G, "BanditUtils")
     local bandit = rawget(_G, "Bandit")
@@ -527,7 +542,9 @@ local function installMoveTask(body, task, targetPlayer)
         return false, "Bandits2 movement helpers are unavailable"
     end
     local endurance = tonumber(brain.endurance) or 0
-    local distance = 0
+    -- Bandits2's verified target helper accepts a stopping distance. Keep
+    -- companions a few squares away so squads do not collapse onto a leader.
+    local distance = tonumber(task.follow_distance) or 2
     local walkType = (task.mode == "RETREAT" or task.mode == "FLEE")
         and "Run" or "Walk"
     local moveTask = nil
@@ -536,6 +553,15 @@ local function installMoveTask(body, task, targetPlayer)
         if targetId ~= nil then
             local ok, result = invoke(utils, "GetMoveTaskTarget", endurance,
                 task.x, task.y, task.z, targetId, true, walkType, distance)
+            if ok and type(result) == "table" then moveTask = result end
+        end
+    end
+    if moveTask == nil and targetBody ~= nil
+        and functionExists(utils, "GetMoveTaskTarget") then
+        local targetId = characterId(targetBody)
+        if targetId ~= nil then
+            local ok, result = invoke(utils, "GetMoveTaskTarget", endurance,
+                task.x, task.y, task.z, targetId, false, walkType, distance)
             if ok and type(result) == "table" then moveTask = result end
         end
     end
@@ -566,8 +592,8 @@ end
 -- body's verified chat-line primitive instead of pretending a Qwen sentence
 -- is a Bandits sound key. This is the only framework-specific speech detail
 -- exposed to the rest of GoblinSurvivor.
-function BanditsAdapter.say(body, text)
-    if not BanditsAdapter.isOwned(body) then
+function BanditsAdapter.say(body, text, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) then
         return false, "friendly Bandits2 NPC speech contract is unavailable"
     end
     if type(text) ~= "string" or #text < 1 or #text > 240 then
@@ -588,7 +614,8 @@ local function modeFor(data, brain)
     if type(task) == "table" then
         local mode = string.upper(tostring(task.mode or ""))
         if mode == "FOLLOW" or mode == "FOLLOW_GOBLIN"
-            or type(task.target_player) == "string" then
+            or type(task.target_player) == "string"
+            or type(task.target_npc_id) == "string" then
             return "PARTY"
         end
     end
@@ -600,12 +627,13 @@ local function modeFor(data, brain)
     return "ROAM"
 end
 
-function BanditsAdapter.status(body)
-    if not BanditsAdapter.isOwned(body) then
+function BanditsAdapter.status(body, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) then
         return {
             mode = "SAFE",
             task = nil,
             target_player = nil,
+            target_npc_id = nil,
             friendly = false,
             protected = false,
             needs_disabled = false,
@@ -622,7 +650,8 @@ function BanditsAdapter.status(body)
         mode = modeFor(data, brain),
         task = type(task) == "table" and task.mode or nil,
         target_player = type(task) == "table" and task.target_player or nil,
-        friendly = BanditsAdapter.isFriendly(body),
+        target_npc_id = type(task) == "table" and task.target_npc_id or nil,
+        friendly = BanditsAdapter.isFriendly(body, npcId),
         protected = data ~= nil and data.goblin_protected == true,
         needs_disabled = data ~= nil and data.goblin_needs_disabled == true,
         -- Bandits2's verified individual spawn does not expose an inventory
@@ -635,8 +664,8 @@ function BanditsAdapter.status(body)
     }
 end
 
-function BanditsAdapter.setTasks(body, tasks)
-    if not BanditsAdapter.isOwned(body) or type(tasks) ~= "table" then
+function BanditsAdapter.setTasks(body, tasks, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) or type(tasks) ~= "table" then
         return false, "friendly Bandits2 NPC task contract is unavailable"
     end
     local task = tasks[1]
@@ -654,19 +683,23 @@ function BanditsAdapter.setTasks(body, tasks)
         x = task.x,
         y = task.y,
         z = task.z,
-        target_player = task.target_player
+        target_player = task.target_player,
+        target_npc_id = task.target_npc_id,
+        follow_distance = task.follow_distance
     }
     data.goblin_next_path_at = 0
-    if not enforceFriendlyBrain(body, nil, false) then
+    if not enforceFriendlyBrain(body, nil, false, npcId) then
         return false, "Bandits2 friendly brain state could not be enforced"
     end
     local targetPlayer = type(task.target_player) == "string"
         and playerFor(task.target_player) or nil
-    return installMoveTask(body, data.goblin_task, targetPlayer)
+    local targetBody = type(task.target_npc_id) == "string"
+        and ownedBodies[task.target_npc_id] or nil
+    return installMoveTask(body, data.goblin_task, targetPlayer, targetBody)
 end
 
-function BanditsAdapter.clearTasks(body)
-    if not BanditsAdapter.isOwned(body) then
+function BanditsAdapter.clearTasks(body, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) then
         return false, "friendly Bandits2 NPC task contract is unavailable"
     end
     local data = dataFor(body)
@@ -680,7 +713,7 @@ function BanditsAdapter.clearTasks(body)
     if functionExists(body, "setTarget") then
         pcall(body.setTarget, body, nil)
     end
-    enforceFriendlyBrain(body, nil, false)
+    enforceFriendlyBrain(body, nil, false, npcId)
     return true, "tasks cleared"
 end
 
@@ -689,8 +722,8 @@ end
 -- non-player zombie returned by bounded semantic perception. We retain the
 -- friendly brain flags and restore only this validated target after the
 -- protection hook clears ordinary zombie aggro.
-function BanditsAdapter.setCombatTarget(body, target)
-    if not BanditsAdapter.isOwned(body) then
+function BanditsAdapter.setCombatTarget(body, target, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) then
         return false, "friendly Bandits2 NPC combat contract is unavailable"
     end
     if not isLiveTarget(target) then
@@ -702,7 +735,7 @@ function BanditsAdapter.setCombatTarget(body, target)
     data.goblin_combat = true
     data.goblin_next_path_at = 0
     combatTargets[body] = target
-    if not enforceFriendlyBrain(body, nil, false) then
+    if not enforceFriendlyBrain(body, nil, false, npcId) then
         combatTargets[body] = nil
         data.goblin_combat = false
         return false, "Bandits2 friendly brain state could not be enforced"
@@ -719,9 +752,9 @@ function BanditsAdapter.setCombatTarget(body, target)
     return false, "combat target has no usable position"
 end
 
-function BanditsAdapter.tick(body)
-    if not BanditsAdapter.isOwned(body) then return false end
-    if not enforceFriendlyBrain(body, nil, false) then return false end
+function BanditsAdapter.tick(body, npcId)
+    if not BanditsAdapter.isOwned(body, npcId) then return false end
+    if not enforceFriendlyBrain(body, nil, false, npcId) then return false end
 
     local data = dataFor(body)
     local combatTarget = combatTargets[body]
@@ -771,23 +804,40 @@ function BanditsAdapter.tick(body)
             return false
         end
         task.x, task.y, task.z = targetPoint.x, targetPoint.y, targetPoint.z
-        enforceFriendlyBrain(body, targetPlayer, false)
+        enforceFriendlyBrain(body, targetPlayer, false, npcId)
+    end
+    local targetBody = nil
+    if type(task.target_npc_id) == "string" and task.target_npc_id ~= "" then
+        targetBody = ownedBodies[task.target_npc_id]
+        if not BanditsAdapter.isOwned(targetBody, task.target_npc_id) then
+            targetBody = nil
+        end
+        local targetPoint = position(targetBody)
+        if targetPoint == nil then
+            data.goblin_task = nil
+            data.goblin_next_path_at = nil
+            invoke(Bandit, "ClearTasks", body)
+            return false
+        end
+        task.x, task.y, task.z = targetPoint.x, targetPoint.y, targetPoint.z
     end
 
     local nextAt = tonumber(data.goblin_next_path_at) or 0
     if nowMs() >= nextAt then
-        local ok = installMoveTask(body, task, targetPlayer)
+        local ok = installMoveTask(body, task, targetPlayer, targetBody)
         data.goblin_next_path_at = nowMs() + 1000
         return ok
     end
     return true
 end
 
-function BanditsAdapter.discard(body)
-    if body == nil or not profileBrainMatches(body, Config.npcId) then
+function BanditsAdapter.discard(body, npcId)
+    local requestedId = npcId or Config.npcId
+    if body == nil or not profileBrainMatches(body, requestedId) then
         return false
     end
     combatTargets[body] = nil
+    if ownedBodies[requestedId] == body then ownedBodies[requestedId] = nil end
     local brain = rawget(_G, "BanditBrain")
     if type(brain) == "table" and functionExists(brain, "Remove") then
         invoke(brain, "Remove", body)

@@ -33,6 +33,9 @@ local function positionTask(point, action, target)
     if action == "FOLLOW" and type(target) == "table" then
         task.target_player = target.player or target.name or target.label
     end
+    if action == "FOLLOW_GOBLIN" then
+        task.target_npc_id = Config.npcId
+    end
     return { task }
 end
 
@@ -52,7 +55,7 @@ function ActionExecutor.execute(message, zombie)
     Protection.apply(zombie)
     local action = message.action
     if action == "FORM_SQUAD" then
-        return SquadManager.form(message)
+        return SquadManager.form(message, zombie)
     end
     if action == "DISMISS_SQUAD" then
         return SquadManager.dismiss(message)

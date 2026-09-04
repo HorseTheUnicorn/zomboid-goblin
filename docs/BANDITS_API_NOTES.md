@@ -43,17 +43,32 @@ invented from the Workshop description:
   bounded Goblin/Qwen chat text; `ActionExecutor` never calls framework names
   directly.
 
-## Friendly Goblin contract
+## Friendly Goblin and managed-roster contract
 
-BanditsAdapter.lua creates or restores one private clan/profile and reapplies
-the following state before a body is considered owned:
+BanditsAdapter.lua creates or restores one private clan plus one profile per
+stable GoblinSurvivor identity. The registry always requires the
+`goblin.primary` profile. `GoblinManagedNpcCount` optionally enables the first
+bounded entries in the mod's own friendly roster (`npc.sarah`, `npc.bob`,
+`npc.dave`, and so on); the default is three managed companions in addition to
+Goblin. The registry binds each profile independently and never claims a
+normal population zombie.
+
+The adapter reapplies the following state before any body is considered owned:
 
 - clan spawn policy: friendly=true, companion=true, all hostile/group spawn
   modes disabled, and automatic spawn chance set to zero;
 - brain policy: hostile=false, hostileP=false, loyal=true, permanent=true,
   and program.name=Companion;
 - GoblinSurvivor markers in body mod-data: stable NPC ID, ownership,
-  friendly-engine name, and protection state.
+  friendly-engine name, role, and protection state. Only `goblin.primary` gets
+  the no-damage/immortal safety hooks; managed companions remain ordinary
+  survivable friendly bodies.
+
+Squad follow is implemented by GoblinSurvivor high-level code using the
+verified `GetMoveTaskTarget` Bandits2 helper: a human-led squad sends Goblin to
+the player and the other managed bodies to Goblin; an NPC-led squad sends its
+members to the managed leader. Bandits2 still owns the actual networked
+movement and Companion behavior.
 
 The adapter is the only runtime module that mentions Bandits2-specific names.
 NpcAdapter.lua is a stable facade for the registry, action executor,

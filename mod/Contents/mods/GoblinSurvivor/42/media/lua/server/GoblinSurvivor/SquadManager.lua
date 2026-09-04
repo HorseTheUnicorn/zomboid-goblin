@@ -1,6 +1,8 @@
 local Config = require("GoblinSurvivor/Config")
 local Net = require("GoblinSurvivor/Net")
 local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
+local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
+local BaseManager = require("GoblinSurvivor/BaseManager")
 
 local SquadManager = {
     squads = {},
@@ -45,6 +47,103 @@ local function uniqueMembers(members)
         table.insert(result, member)
     end
     return result
+end
+
+local function position(object)
+    if object == nil or type(object.getX) ~= "function"
+        or type(object.getY) ~= "function" or type(object.getZ) ~= "function" then
+        return nil
+    end
+    local ok, x, y, z = pcall(function()
+        return object:getX(), object:getY(), object:getZ()
+    end)
+    if not ok or type(x) ~= "number" or type(y) ~= "number"
+        or type(z) ~= "number" then
+        return nil
+    end
+    return { x = x, y = y, z = z }
+end
+
+local function applySquadTasks(squad)
+    local leaderObject = nil
+    local leaderIsPlayer = squad.leader_player ~= nil
+    if leaderIsPlayer then
+        leaderObject = onlinePlayer(squad.leader_player)
+    else
+        leaderObject = NPCRegistry.body(squad.leader)
+    end
+    local leaderPoint = position(leaderObject)
+    if leaderPoint == nil then
+        return false, "squad leader is not currently available"
+    end
+
+    local applied = 0
+    for index, member in ipairs(squad.members) do
+        local body = NPCRegistry.body(member)
+        if body ~= nil then
+            local targetPlayer = nil
+            local targetNpc = nil
+            local mode = "FOLLOW"
+            local target = leaderPoint
+            if leaderIsPlayer then
+                if member == Config.npcId then
+                    targetPlayer = squad.leader_player
+                else
+                    targetNpc = Config.npcId
+                    mode = "FOLLOW_GOBLIN"
+                end
+            elseif member ~= squad.leader then
+                targetNpc = squad.leader
+                mode = "FOLLOW_GOBLIN"
+            else
+                -- An NPC leader keeps its existing Bandits2 Companion task.
+                applied = applied + 1
+            end
+            if targetNpc ~= nil then
+                local targetBody = NPCRegistry.body(targetNpc)
+                target = position(targetBody) or target
+            end
+            if member ~= squad.leader or leaderIsPlayer then
+                local task = {
+                    action = "GoTo",
+                    mode = mode,
+                    x = target.x,
+                    y = target.y,
+                    z = target.z,
+                    target_player = targetPlayer,
+                    target_npc_id = targetNpc,
+                    follow_distance = 2 + ((index - 1) % 3)
+                }
+                local ok = NpcAdapter.setTasks(body, { task }, member)
+                if ok then applied = applied + 1 end
+            end
+        end
+    end
+    if applied < 1 then return false, "no squad member accepted a follow task" end
+    return true, "squad follow tasks accepted by Bandits2 bodies"
+end
+
+local function returnSquadToBase(squad)
+    local point = BaseManager.point()
+    for _, member in ipairs(squad.members) do
+        local body = NPCRegistry.body(member)
+        if body ~= nil then
+            if point ~= nil then
+                NpcAdapter.setTasks(body, {
+                    {
+                        action = "GoTo",
+                        mode = "RETURN_TO_BASE",
+                        x = point.x,
+                        y = point.y,
+                        z = point.z,
+                        follow_distance = 2
+                    }
+                }, member)
+            else
+                NpcAdapter.clearTasks(body, member)
+            end
+        end
+    end
 end
 
 local function save()
@@ -107,7 +206,7 @@ function SquadManager.load()
     SquadManager.loaded = true
 end
 
-function SquadManager.form(args)
+function SquadManager.form(args, goblinBody)
     SquadManager.load()
     if type(args) ~= "table" or not Net.safeId(args.squad_id or "squad.primary", 96)
         or not Net.safeId(args.leader, 96) then return false, "invalid squad identity" end
@@ -122,7 +221,8 @@ function SquadManager.form(args)
     if members == nil then return false, "invalid squad members" end
     if leaderPlayer ~= nil then
         local goblin = NPCRegistry.get(Config.npcId)
-        if goblin == nil or goblin.active ~= true or goblin.alive ~= true then
+        if goblin == nil or goblin.active ~= true or goblin.alive ~= true
+            or goblinBody == nil or not NpcAdapter.isOwned(goblinBody, Config.npcId) then
             return false, "Goblin is unavailable for the expedition"
         end
         local foundGoblin = false
@@ -147,18 +247,55 @@ function SquadManager.form(args)
         home_base = "base.primary",
         created_at = os.time()
     }
-    save()
-    return true, "squad formed"
+    local squad = SquadManager.squads[squadId]
+    for _, member in ipairs(squad.members) do
+        local entry = NPCRegistry.get(member)
+        if entry ~= nil then entry.squad_id = squadId end
+    end
+    if not save() then
+        SquadManager.squads[squadId] = nil
+        return false, "squad could not be persisted"
+    end
+    local applied, detail = applySquadTasks(squad)
+    if not applied then
+        return true, "squad formed; follow task will be retried when members are available"
+    end
+    return true, detail
 end
 
 function SquadManager.dismiss(args)
     SquadManager.load()
     local squadId = type(args) == "table" and args.squad_id or nil
     if not Net.safeId(squadId or "", 96) then return false, "invalid squad id" end
-    if SquadManager.squads[squadId] == nil then return false, "squad is unknown" end
+    local squad = SquadManager.squads[squadId]
+    if squad == nil then return false, "squad is unknown" end
     SquadManager.squads[squadId] = nil
+    for _, member in ipairs(squad.members) do
+        local entry = NPCRegistry.get(member)
+        if entry ~= nil and entry.squad_id == squadId then entry.squad_id = nil end
+        local body = NPCRegistry.body(member)
+        if body ~= nil then NpcAdapter.clearTasks(body, member) end
+    end
     save()
     return true, "squad dismissed"
+end
+
+-- Re-apply persisted squad relationships without waiting for another Qwen
+-- decision. Bandits2 owns the body movement; this manager only refreshes the
+-- high-level target and returns a squad to base if its human leader leaves.
+function SquadManager.tick()
+    SquadManager.load()
+    local now = os.time() * 1000
+    for _, squad in pairs(SquadManager.squads) do
+        if squad.lastAppliedAt == nil or now - squad.lastAppliedAt >= 5000 then
+            if squad.leader_player ~= nil and onlinePlayer(squad.leader_player) == nil then
+                returnSquadToBase(squad)
+            else
+                applySquadTasks(squad)
+            end
+            squad.lastAppliedAt = now
+        end
+    end
 end
 
 function SquadManager.snapshot()
