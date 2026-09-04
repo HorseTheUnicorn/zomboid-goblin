@@ -8,7 +8,22 @@ local Config = require("GoblinSurvivor/Config")
 
 local BanditsAdapter = {}
 
-local clanId = "goblin_survivor"
+-- Bandits2's text loader accepts UUID-shaped section keys only. Keep these
+-- framework IDs separate from GoblinSurvivor's stable, human-readable IDs so
+-- telemetry, commands, and saved roster state remain readable while the
+-- Bandits2 profile/clan data survives a server restart.
+local clanId = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a00"
+local banditIds = {
+    ["goblin.primary"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a01",
+    ["npc.sarah"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a02",
+    ["npc.bob"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a03",
+    ["npc.dave"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a04",
+    ["npc.ellen"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a05",
+    ["npc.mike"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a06",
+    ["npc.june"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a07",
+    ["npc.lee"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a08",
+    ["npc.rosa"] = "7d616e5f-2c7d-4c4f-a87e-cd64a67e4a09"
+}
 local defaultProgram = "Companion"
 local combatTargets = {}
 local ownedBodies = {}
@@ -23,6 +38,25 @@ end
 
 local function functionExists(owner, name)
     return owner ~= nil and type(owner[name]) == "function"
+end
+
+local function banditIdFor(npcId)
+    local mapped = banditIds[npcId]
+    if mapped ~= nil then return mapped end
+    -- A custom GoblinNpcId is accepted only when it is already a valid
+    -- Bandits2 UUID. Do not invent a new random ID at runtime: that would
+    -- make the profile impossible to recover deterministically after a
+    -- restart.
+    if type(npcId) == "string" and #npcId == 36
+        and string.sub(npcId, 9, 9) == "-"
+        and string.sub(npcId, 14, 14) == "-"
+        and string.sub(npcId, 19, 19) == "-"
+        and string.sub(npcId, 24, 24) == "-"
+        and string.find(npcId,
+            "^[0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+%-[0-9a-fA-F]+$") then
+        return npcId
+    end
+    return nil
 end
 
 -- Bandits2 exposes plain module functions, not colon methods.  Keep the
@@ -231,6 +265,10 @@ local function ensureProfile(npcId, displayName)
     if not BanditsAdapter.available() then
         return false, "Bandits2 server API is unavailable"
     end
+    local frameworkId = banditIdFor(npcId)
+    if frameworkId == nil then
+        return false, "GoblinSurvivor NPC ID has no stable Bandits2 UUID mapping"
+    end
     local okLoad = invoke(BanditCustom, "Load")
     if not okLoad then
         return false, "Bandits2 custom profile load failed"
@@ -261,12 +299,12 @@ local function ensureProfile(npcId, displayName)
     clan.spawn.roadblock = false
     clan.spawn.spawnChance = 0
 
-    local okProfile, profile = invoke(BanditCustom, "GetById", npcId)
+    local okProfile, profile = invoke(BanditCustom, "GetById", frameworkId)
     if not okProfile then
         return false, "Bandits2 NPC profile lookup failed"
     end
     if profile == nil then
-        local created, result = invoke(BanditCustom, "Create", npcId)
+        local created, result = invoke(BanditCustom, "Create", frameworkId)
         if not created or type(result) ~= "table" then
             return false, "Bandits2 NPC profile creation failed"
         end
@@ -278,9 +316,13 @@ local function ensureProfile(npcId, displayName)
     if type(profile.weapons) ~= "table" then profile.weapons = {} end
     if type(profile.ammo) ~= "table" then profile.ammo = {} end
     if type(profile.bag) ~= "table" then profile.bag = {} end
+    -- Bandits2's Save() groups profiles by general.modid. These managed
+    -- profiles belong in the server's LOCAL data file, not in a Workshop
+    -- dependency's read-only payload.
+    profile.general.modid = "LOCAL"
     profile.general.name = displayName or Config.npcName
     profile.general.cid = clanId
-    profile.general.bid = npcId
+    profile.general.bid = frameworkId
     profile.general.female = false
     profile.general.health = 5
 
@@ -293,7 +335,8 @@ end
 
 local function profileBrainMatches(body, npcId)
     local brain = bodyBrain(body)
-    return brain ~= nil and brain.bid == (npcId or Config.npcId)
+    local frameworkId = banditIdFor(npcId or Config.npcId)
+    return frameworkId ~= nil and brain ~= nil and brain.bid == frameworkId
         and brain.cid == clanId
 end
 
@@ -312,9 +355,11 @@ end
 
 function BanditsAdapter.isFriendly(body, npcId)
     local requestedId = npcId or Config.npcId
+    local frameworkId = banditIdFor(requestedId)
     local brain = bodyBrain(body)
-    return brain ~= nil
-        and brain.bid == requestedId
+    return frameworkId ~= nil
+        and brain ~= nil
+        and brain.bid == frameworkId
         and brain.cid == clanId
         and brain.hostile == false
         and brain.hostileP == false
@@ -447,6 +492,10 @@ function BanditsAdapter.spawnIndividual(anchor, npcId, _program, displayName, ro
         return false, "friendly Bandits2 server API is unavailable", nil
     end
     local requestedId = npcId or Config.npcId
+    local frameworkId = banditIdFor(requestedId)
+    if frameworkId == nil then
+        return false, "GoblinSurvivor NPC ID has no stable Bandits2 UUID mapping", nil
+    end
     local profileOk, profileDetail = ensureProfile(requestedId, displayName)
     if not profileOk then
         log(profileDetail)
@@ -460,7 +509,7 @@ function BanditsAdapter.spawnIndividual(anchor, npcId, _program, displayName, ro
     -- Companion is the verified Bandits2 program for a friendly body. Do not
     -- pass arbitrary config text into the Workshop framework.
     local args = {
-        bid = requestedId,
+        bid = frameworkId,
         x = spawnPoint.x,
         y = spawnPoint.y,
         z = spawnPoint.z,

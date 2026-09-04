@@ -53,6 +53,17 @@ bounded entries in the mod's own friendly roster (`npc.sarah`, `npc.bob`,
 Goblin. The registry binds each profile independently and never claims a
 normal population zombie.
 
+The readable GoblinSurvivor IDs are deliberately not used as Bandits2 section
+keys. Bandits2's Build 42 loader accepts UUID-shaped profile and clan headers,
+and its save routine groups profiles by `general.modid`. The adapter therefore
+uses fixed UUIDs for the private clan and each built-in roster identity, writes
+`general.modid=LOCAL` for the server-owned profiles, and maps the framework IDs
+back to the readable IDs at the adapter boundary. This keeps the public
+telemetry/command vocabulary stable while making the Bandits2 profiles
+recoverable after a server restart. An arbitrary configured NPC ID is accepted
+only when it is already a valid UUID; the adapter fails closed instead of
+generating a non-recoverable runtime ID.
+
 The adapter reapplies the following state before any body is considered owned:
 
 - clan spawn policy: friendly=true, companion=true, all hostile/group spawn
