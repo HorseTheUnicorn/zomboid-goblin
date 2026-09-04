@@ -60,7 +60,7 @@ function ActionExecutor.execute(message, zombie)
         return JobManager.assign(message)
     end
     if action == "SECURE_BASE" then
-        return true, "base security task accepted"
+        return false, "base security task is not implemented by the vanilla adapter"
     end
     if action == "EAT" or action == "DRINK" or action == "BANDAGE" or action == "RELOAD" then
         return InventoryManager.execute(message)
