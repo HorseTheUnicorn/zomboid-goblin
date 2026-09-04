@@ -1,4 +1,4 @@
 name=GoblinSurvivor
 id=GoblinSurvivor
 description=Server-side persistent friendly Goblin NPC using a self-contained Build 42 adapter; no Bandits2 or native Steam/PZ client required.
-version=0.3.0
+version=0.3.1

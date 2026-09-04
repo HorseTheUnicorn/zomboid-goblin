@@ -71,6 +71,10 @@ function NpcAdapter.clearTasks(body)
     return StandaloneNpcAdapter.clearTasks(body)
 end
 
+function NpcAdapter.setCombatTarget(body, target)
+    return StandaloneNpcAdapter.setCombatTarget(body, target)
+end
+
 function NpcAdapter.tick(body)
     return StandaloneNpcAdapter.tick(body)
 end

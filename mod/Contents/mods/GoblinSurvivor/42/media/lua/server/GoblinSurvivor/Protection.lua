@@ -26,6 +26,7 @@ function Protection.apply(zombie)
     -- Use engine methods only when this Build 42 runtime exposes them.  The
     -- recovery loop remains the authoritative fallback for missing hooks.
     callIfPresent(zombie, "setImmortal", true)
+    callIfPresent(zombie, "setImmortalTutorialZombie", true)
     callIfPresent(zombie, "setNoDamage", true)
     callIfPresent(zombie, "setTarget", nil)
     callIfPresent(zombie, "setHealth", 1.0)

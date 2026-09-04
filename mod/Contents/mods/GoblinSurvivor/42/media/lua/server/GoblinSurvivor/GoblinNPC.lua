@@ -17,6 +17,7 @@ function GoblinNPC.getGoblinState()
     local entry = NPCRegistry.get(Config.npcId)
     local zombie = NPCRegistry.findGoblin()
     local capabilities = NpcAdapter.capabilities()
+    local spawn = NPCRegistry.spawnState()
     return {
         npc_id = Config.npcId,
         name = Config.npcName,
@@ -25,7 +26,10 @@ function GoblinNPC.getGoblinState()
         control_ready = zombie ~= nil and Protection.isProtected(zombie),
         npc_engine_ready = capabilities.control_ready == true,
         body_mode = zombie ~= nil and "npc" or "sensor_only",
-        role = entry and entry.role or Config.npcRole
+        role = entry and entry.role or Config.npcRole,
+        spawn_status = spawn.status,
+        spawn_pending = spawn.pending,
+        spawn_attempts = spawn.attempts
     }
 end
 

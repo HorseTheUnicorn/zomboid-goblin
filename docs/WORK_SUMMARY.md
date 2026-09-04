@@ -12,7 +12,10 @@ The native PZ/Steam client artifacts were removed from `.76` without backups as
 requested. The dedicated `.03` server remains active with the existing save and
 GoblinSurvivor. Bandits2 remains only a development reference; it is not added
 to the server or client loadout. The next deployment validates the
-self-contained friendly body in-world.
+self-contained friendly body in-world. The current milestone also includes a
+bounded nearest-zombie combat primitive, multiplayer chat input forwarding,
+survivor-style/immortal hook guards, and a three-attempt delayed spawn retry
+window so an async spawn failure cannot produce a horde.
 
 Local checks currently cover strict bridge behavior, semantic coordinate
 separation, NPC command publication, deterministic squad/job policy, and

@@ -11,6 +11,7 @@ local Config = require("GoblinSurvivor/Config")
 local VanillaNpcAdapter = {}
 
 local engineName = "goblin-survivor"
+local combatTargets = {}
 
 local function nowMs()
     if type(getTimestampMs) == "function" then
@@ -92,6 +93,34 @@ local function playerFor(label)
         end
     end)
     return result
+end
+
+local function bodyIsUsable(body)
+    if body == nil then return false end
+    if functionExists(body, "isExistInTheWorld") then
+        local ok, exists = pcall(function() return body:isExistInTheWorld() end)
+        if ok and not exists then return false end
+    end
+    if functionExists(body, "isDead") then
+        local ok, dead = pcall(function() return body:isDead() end)
+        if ok and dead then return false end
+    end
+    return true
+end
+
+local function isCombatTarget(target)
+    if not bodyIsUsable(target) then return false end
+    if functionExists(target, "isPlayer") then
+        local ok, player = pcall(function() return target:isPlayer() end)
+        if ok and player then return false end
+    end
+    local data = dataFor(target)
+    -- Never let a friendly body created by this mod (or another copy of the
+    -- mod) become a combat target.
+    if data ~= nil and (data.goblin_owned == true or data.goblin_friendly == true) then
+        return false
+    end
+    return true
 end
 
 local function pathTo(body, x, y, z)
@@ -208,7 +237,9 @@ function VanillaNpcAdapter.prepare(body, npcId, anchor)
     data.goblin_engine = engineName
     data.goblin_protected = true
     data.goblin_task = nil
+    data.goblin_combat = false
     data.goblin_next_path_at = nil
+    combatTargets[body] = nil
     local brain = brainFor(data)
     brain.program = "Companion"
     brain.hostile = false
@@ -221,8 +252,13 @@ function VanillaNpcAdapter.prepare(body, npcId, anchor)
     -- These are all guarded because minor Build 42 updates can change which
     -- engine hooks are exposed to server Lua.  The data marker remains the
     -- authoritative ownership check used by the registry.
+    -- setAsSurvivor() is a vanilla survivor-style initialization hook; it is
+    -- optional because the body must still load on a minor Build 42 update
+    -- that omits it from the Lua surface.
+    callIfPresent(body, "setAsSurvivor")
     callIfPresent(body, "setNoDamage", true)
     callIfPresent(body, "setImmortal", true)
+    callIfPresent(body, "setImmortalTutorialZombie", true)
     callIfPresent(body, "setTarget", nil)
     callIfPresent(body, "setDisplayName", Config.npcName)
     callIfPresent(body, "transmitModData")
@@ -275,6 +311,7 @@ end
 
 function VanillaNpcAdapter.discard(body)
     if body == nil then return false end
+    combatTargets[body] = nil
     -- A body that fails the friendly proof must not remain as an ordinary
     -- zombie at the requested location.
     callIfPresent(body, "removeFromSquare")
@@ -301,6 +338,8 @@ function VanillaNpcAdapter.setTasks(body, tasks)
     end
     local data = dataFor(body)
     if data == nil then return false, "NPC mod-data API is unavailable" end
+    combatTargets[body] = nil
+    data.goblin_combat = false
     local brain = brainFor(data)
     brain.program = "Companion"
     brain.hostile = false
@@ -325,8 +364,10 @@ function VanillaNpcAdapter.clearTasks(body)
     local data = dataFor(body)
     if data ~= nil then
         data.goblin_task = nil
+        data.goblin_combat = false
         data.goblin_next_path_at = nil
     end
+    combatTargets[body] = nil
     callIfPresent(body, "setTarget", nil)
     local brain = data and brainFor(data) or nil
     if brain ~= nil then
@@ -336,20 +377,76 @@ function VanillaNpcAdapter.clearTasks(body)
     return true, "tasks cleared"
 end
 
-function VanillaNpcAdapter.tick(body)
-    if not VanillaNpcAdapter.isOwned(body) then return false end
-
-    -- This is the standalone equivalent of the reference brain's friendly
-    -- guard.
-    -- A friendly body must never retain the vanilla zombie aggro target.  The
-    -- explicit combat action remains a separate, future capability.
-    callIfPresent(body, "setTarget", nil)
+function VanillaNpcAdapter.setCombatTarget(body, target)
+    if not VanillaNpcAdapter.isOwned(body) then
+        return false, "vanilla NPC combat contract is unavailable"
+    end
+    if not isCombatTarget(target) then
+        return false, "combat target is not a live hostile zombie"
+    end
     local data = dataFor(body)
+    if data == nil then return false, "NPC mod-data API is unavailable" end
+    data.goblin_task = nil
+    data.goblin_combat = true
+    data.goblin_next_path_at = 0
     local brain = brainFor(data)
-    brain.hostile = false
+    brain.program = "Companion"
+    brain.hostile = true
     brain.hostile_players = false
     brain.loyal = true
     brain.permanent = true
+    combatTargets[body] = target
+    callIfPresent(body, "setTarget", target)
+    if functionExists(body, "pathToCharacter") then
+        local ok = pcall(body.pathToCharacter, body, target)
+        if ok then return true, "bounded zombie combat target accepted" end
+    end
+    local point = position(target)
+    if point ~= nil then
+        return pathTo(body, point.x, point.y, point.z)
+    end
+    return false, "combat target has no usable position"
+end
+
+function VanillaNpcAdapter.tick(body)
+    if not VanillaNpcAdapter.isOwned(body) then return false end
+
+    local data = dataFor(body)
+    local brain = brainFor(data)
+    brain.hostile_players = false
+    brain.loyal = true
+    brain.permanent = true
+
+    local combatTarget = combatTargets[body]
+    if data ~= nil and data.goblin_combat == true and isCombatTarget(combatTarget) then
+        -- Protection.apply() clears the engine target before this function.
+        -- Restore only the validated hostile-zombie target, never a player or
+        -- an unmarked friendly NPC.
+        brain.hostile = true
+        callIfPresent(body, "setTarget", combatTarget)
+        local nextAt = tonumber(data.goblin_next_path_at) or 0
+        if nowMs() >= nextAt then
+            local ok = false
+            if functionExists(body, "pathToCharacter") then
+                ok = pcall(body.pathToCharacter, body, combatTarget)
+            end
+            if not ok then
+                local point = position(combatTarget)
+                if point ~= nil then ok = pathTo(body, point.x, point.y, point.z) end
+            end
+            data.goblin_next_path_at = nowMs() + 500
+            return ok
+        end
+        return true
+    end
+
+    combatTargets[body] = nil
+    if data ~= nil then data.goblin_combat = false end
+    brain.hostile = false
+    -- This is the standalone equivalent of the reference brain's friendly
+    -- guard: absent an explicit bounded attack task, the body never retains
+    -- vanilla zombie aggro.
+    callIfPresent(body, "setTarget", nil)
     local task = data and data.goblin_task or nil
     if type(task) ~= "table" then return true end
 

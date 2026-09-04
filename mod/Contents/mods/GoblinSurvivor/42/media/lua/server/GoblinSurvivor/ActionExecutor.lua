@@ -79,6 +79,16 @@ function ActionExecutor.execute(message, zombie)
         local ok = pcall(zombie.Say, zombie, message.text)
         return ok, ok and "speech accepted" or "NPC speech failed"
     end
+    if action == "ATTACK" then
+        local target = message.target
+        local kind = type(target) == "table" and string.lower(tostring(target.kind)) or ""
+        if kind ~= "nearby_threat" then
+            return false, "ATTACK requires the nearby_threat semantic target"
+        end
+        local threat = Perception.nearestThreat(zombie)
+        if threat == nil then return false, "no live hostile zombie is within the bounded combat radius" end
+        return NpcAdapter.setCombatTarget(zombie, threat)
+    end
     if movementActions[action] then
         local point, detail = Perception.resolveTarget(message.target, zombie)
         if point == nil then return false, detail end

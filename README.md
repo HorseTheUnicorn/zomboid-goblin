@@ -20,6 +20,12 @@ The model sees `brain_view` only: named targets, coarse threat/distance
 signals, and bounded events. Exact coordinates are stored separately in the
 tracker telemetry path for the map and never enter Qwen context.
 
+The downloaded GoblinSurvivor mod includes the small client relay needed for
+multiplayer conversation. It forwards only a local player's chat when the
+message mentions Goblin; the server verifies the sender, redacts coordinate-
+like text, and sends the event to the Python/Qwen service. Goblin is still a
+server-side NPC, not a Steam account or player client.
+
 ## Development
 
 ```text

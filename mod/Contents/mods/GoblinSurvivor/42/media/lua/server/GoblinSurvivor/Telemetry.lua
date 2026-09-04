@@ -1,6 +1,7 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
+local Perception = require("GoblinSurvivor/Perception")
 
 local Telemetry = {}
 
@@ -50,13 +51,17 @@ function Telemetry.writeHeartbeat()
         body_mode = npc.body_mode,
         npc_id = npc.npc_id,
         control_ready = npc.control_ready,
-        npc_engine_ready = npc.npc_engine_ready
+        npc_engine_ready = npc.npc_engine_ready,
+        spawn_status = npc.spawn_status,
+        spawn_pending = npc.spawn_pending,
+        spawn_attempts = npc.spawn_attempts
     })
 end
 
 function Telemetry.writeState()
     if not IPC.isReady() then return false end
     local npc = GoblinNPC.getGoblinState()
+    local perception = Perception.coarseState(GoblinNPC.findGoblin())
     return IPC.publishRuntime("zomboid-state", {
         protocol = Config.protocol,
         request_id = "zomboid-state",
@@ -72,7 +77,7 @@ function Telemetry.writeState()
         npc_engine_ready = npc.npc_engine_ready,
         role = npc.role,
         mode = "ROAM",
-        threat_level = "none",
+        threat_level = perception.threat_level or "none",
         hunger = 0,
         thirst = 0,
         fatigue = 0,
@@ -82,8 +87,11 @@ function Telemetry.writeState()
         has_food = true,
         has_water = true,
         has_medical = true,
-        player_count = #onlinePlayers(),
-        nearby_players = onlinePlayers()
+        spawn_status = npc.spawn_status,
+        spawn_pending = npc.spawn_pending,
+        spawn_attempts = npc.spawn_attempts,
+        player_count = #perception.nearby_players,
+        nearby_players = perception.nearby_players
     })
 end
 

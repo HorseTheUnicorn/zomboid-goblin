@@ -6,6 +6,7 @@ local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local CommandLoop = require("GoblinSurvivor/CommandLoop")
+local ChatBridge = require("GoblinSurvivor/ChatBridge")
 
 local Bootstrap = {
     started = false,
@@ -61,6 +62,7 @@ function Bootstrap.start()
         return
     end
     Persistence.load()
+    ChatBridge.start()
     Bootstrap.started = true
     local capabilities = NpcAdapter.capabilities()
     print("[GoblinSurvivor] adapter=" .. tostring(capabilities.selected_adapter)

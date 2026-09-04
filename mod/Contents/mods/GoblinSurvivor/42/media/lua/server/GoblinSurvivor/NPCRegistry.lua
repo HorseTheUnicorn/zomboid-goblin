@@ -8,8 +8,18 @@ local NPCRegistry = {
     pendingSpawn = nil,
     spawnBlocked = false,
     spawnNextAt = 0,
-    lastBindWarningAt = 0
+    lastBindWarningAt = 0,
+    spawnStatus = "idle",
+    spawnAttempts = 0,
+    spawnWindowStartedAt = 0,
+    lastSpawnDetail = ""
 }
+
+local SPAWN_REQUEST_TTL_MS = 10000
+local SPAWN_RETRY_MS = 60000
+local SPAWN_DEATH_COOLDOWN_MS = 30000
+local SPAWN_WINDOW_MS = 10 * 60 * 1000
+local MAX_SPAWN_ATTEMPTS = 3
 
 local function log(message)
     if type(print) == "function" then
@@ -23,6 +33,38 @@ local function nowMs()
         if ok and type(value) == "number" then return value end
     end
     return os.time() * 1000
+end
+
+local function setSpawnStatus(status, detail)
+    NPCRegistry.spawnStatus = status
+    NPCRegistry.lastSpawnDetail = detail or ""
+end
+
+local function prepareSpawnWindow(now)
+    if NPCRegistry.spawnWindowStartedAt == 0
+        or now - NPCRegistry.spawnWindowStartedAt >= SPAWN_WINDOW_MS then
+        NPCRegistry.spawnWindowStartedAt = now
+        NPCRegistry.spawnAttempts = 0
+    end
+end
+
+local function scheduleRetry(status, detail, delay)
+    local now = nowMs()
+    prepareSpawnWindow(now)
+    NPCRegistry.spawnPending = false
+    NPCRegistry.pendingSpawn = nil
+    if NPCRegistry.spawnAttempts >= MAX_SPAWN_ATTEMPTS then
+        NPCRegistry.spawnBlocked = true
+        NPCRegistry.spawnNextAt = 0
+        setSpawnStatus("blocked", "spawn attempts exhausted for the bounded retry window")
+        log("spawn blocked after " .. tostring(NPCRegistry.spawnAttempts)
+            .. " bounded attempts: " .. tostring(detail))
+        return
+    end
+    NPCRegistry.spawnBlocked = false
+    NPCRegistry.spawnNextAt = now + (delay or SPAWN_RETRY_MS)
+    setSpawnStatus(status, detail)
+    log(tostring(detail) .. "; next bounded attempt is delayed")
 end
 
 local function persistentData()
@@ -103,6 +145,10 @@ local function bindExisting()
                 entry.alive = true
                 NPCRegistry.spawnPending = false
                 NPCRegistry.pendingSpawn = nil
+                NPCRegistry.spawnBlocked = true
+                NPCRegistry.spawnAttempts = 0
+                NPCRegistry.spawnWindowStartedAt = 0
+                setSpawnStatus("present", "friendly Goblin body bound")
                 return zombie
             end
         end
@@ -153,13 +199,10 @@ function NPCRegistry.findGoblin()
     local entry = NPCRegistry.entries[Config.npcId]
     if NPCRegistry.spawnPending and NPCRegistry.pendingSpawn ~= nil
         and nowMs() >= (NPCRegistry.pendingSpawn.deadline or 0) then
-        -- The engine accepted a request but never delivered a bindable body.
-        -- Close the request permanently for this server run; retrying here is
-        -- what previously produced one new hostile zombie per game tick.
-        NPCRegistry.spawnPending = false
-        NPCRegistry.pendingSpawn = nil
-        NPCRegistry.spawnBlocked = true
-        log("bounded spawn request expired without a friendly Goblin body")
+        -- Close this one request before allowing a delayed retry. Never retry
+        -- from the tick that noticed the expiry; that was the source of the
+        -- old one-new-hostile-zombie-per-tick failure mode.
+        scheduleRetry("retry_wait", "bounded spawn request expired without a friendly Goblin body", SPAWN_RETRY_MS)
     end
     if entry == nil or entry.zombie == nil then
         bindExisting()
@@ -168,14 +211,16 @@ function NPCRegistry.findGoblin()
         entry.zombie = nil
         entry.alive = false
         NPCRegistry.spawnBlocked = false
-        NPCRegistry.spawnNextAt = nowMs() + 30000
+        NPCRegistry.spawnNextAt = nowMs() + SPAWN_DEATH_COOLDOWN_MS
+        setSpawnStatus("retry_wait", "Goblin body unloaded; waiting before replacement")
     elseif entry.zombie ~= nil and type(entry.zombie.isDead) == "function" then
         local okDead, dead = pcall(function() return entry.zombie:isDead() end)
         if okDead and dead then
             entry.zombie = nil
             entry.alive = false
             NPCRegistry.spawnBlocked = false
-            NPCRegistry.spawnNextAt = nowMs() + 30000
+            NPCRegistry.spawnNextAt = nowMs() + SPAWN_DEATH_COOLDOWN_MS
+            setSpawnStatus("retry_wait", "Goblin body died; waiting before replacement")
         end
     end
     return entry.zombie
@@ -240,36 +285,49 @@ function NPCRegistry.spawnGoblin()
         return nil, "spawn request pending"
     end
     if NPCRegistry.spawnBlocked then
-        return nil, "spawn disabled after one unbound-safe attempt"
+        return nil, NPCRegistry.lastSpawnDetail ~= "" and NPCRegistry.lastSpawnDetail
+            or "spawn blocked after bounded attempts"
     end
     if nowMs() < NPCRegistry.spawnNextAt then
+        setSpawnStatus("retry_wait", "spawn recovery cooldown")
         return nil, "spawn recovery cooldown"
     end
     local anchor = onlineAnchor()
     if anchor == nil then
+        setSpawnStatus("waiting_anchor", "waiting for an online player anchor")
         return nil, "waiting for an online player anchor"
     end
     if not NpcAdapter.available() then
         log("spawn held: no friendly NPC adapter is available")
+        setSpawnStatus("waiting_engine", "friendly NPC adapter is unavailable")
         return nil, "friendly NPC adapter is unavailable"
     end
     local plannedPoint = NpcAdapter.spawnPoint(anchor)
     if plannedPoint == nil then
+        setSpawnStatus("waiting_anchor", "online player anchor has no safe spawn point")
         return nil, "online player anchor has no safe spawn point"
     end
+    local now = nowMs()
+    prepareSpawnWindow(now)
+    if NPCRegistry.spawnAttempts >= MAX_SPAWN_ATTEMPTS then
+        NPCRegistry.spawnBlocked = true
+        setSpawnStatus("blocked", "spawn attempts exhausted for the bounded retry window")
+        return nil, NPCRegistry.lastSpawnDetail
+    end
+    NPCRegistry.spawnAttempts = NPCRegistry.spawnAttempts + 1
     NPCRegistry.spawnPending = true
     NPCRegistry.spawnBlocked = true
+    setSpawnStatus("request_pending", "spawn request " .. tostring(NPCRegistry.spawnAttempts)
+        .. " of " .. tostring(MAX_SPAWN_ATTEMPTS))
     NPCRegistry.pendingSpawn = {
         point = plannedPoint,
-        deadline = nowMs() + 10000
+        deadline = now + SPAWN_REQUEST_TTL_MS
     }
     local ok, detail, zombie, spawnPoint = NpcAdapter.spawnIndividual(
         anchor, entry.npc_id, Config.npcProgram
     )
     if not ok then
-        NPCRegistry.spawnPending = false
-        NPCRegistry.pendingSpawn = nil
-        log(detail)
+        scheduleRetry("retry_wait", detail, SPAWN_RETRY_MS)
         return nil, detail
     end
     -- OnZombieCreate may run synchronously inside the Java call.  Preserve
@@ -280,6 +338,10 @@ function NPCRegistry.spawnGoblin()
     if zombie ~= nil and NpcAdapter.isOwned(zombie) then
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
+        NPCRegistry.spawnBlocked = true
+        NPCRegistry.spawnAttempts = 0
+        NPCRegistry.spawnWindowStartedAt = 0
+        setSpawnStatus("present", "friendly Goblin body returned by spawn API")
         entry.zombie = zombie
         entry.alive = true
         NPCRegistry.save()
@@ -289,15 +351,26 @@ function NPCRegistry.spawnGoblin()
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
         NpcAdapter.discard(zombie)
-        log("adapter returned a body that failed the friendly ownership proof")
-        return nil, "spawned body failed the friendly ownership proof"
+        local failure = "spawned body failed the friendly ownership proof"
+        scheduleRetry("retry_wait", failure, SPAWN_RETRY_MS)
+        return nil, failure
     end
     NPCRegistry.pendingSpawn = {
         point = spawnPoint or plannedPoint,
         deadline = nowMs() + 10000
     }
-    NPCRegistry.spawnNextAt = nowMs() + 60000
+    NPCRegistry.spawnNextAt = nowMs() + SPAWN_RETRY_MS
+    setSpawnStatus("request_pending", detail)
     return nil, detail
+end
+
+function NPCRegistry.spawnState()
+    return {
+        status = NPCRegistry.spawnStatus,
+        pending = NPCRegistry.spawnPending == true,
+        attempts = NPCRegistry.spawnAttempts,
+        detail = NPCRegistry.lastSpawnDetail
+    }
 end
 
 function NPCRegistry.markRecovered(zombie)
@@ -309,6 +382,9 @@ function NPCRegistry.markRecovered(zombie)
     NPCRegistry.spawnPending = false
     NPCRegistry.pendingSpawn = nil
     NPCRegistry.spawnBlocked = true
+    NPCRegistry.spawnAttempts = 0
+    NPCRegistry.spawnWindowStartedAt = 0
+    setSpawnStatus("present", "Goblin body recovered")
     NPCRegistry.save()
 end
 
@@ -320,7 +396,8 @@ function NPCRegistry.markDead()
     NPCRegistry.spawnPending = false
     NPCRegistry.pendingSpawn = nil
     NPCRegistry.spawnBlocked = false
-    NPCRegistry.spawnNextAt = nowMs() + 30000
+    NPCRegistry.spawnNextAt = nowMs() + SPAWN_DEATH_COOLDOWN_MS
+    setSpawnStatus("retry_wait", "Goblin death recorded; replacement is bounded and delayed")
     NPCRegistry.save()
 end
 
