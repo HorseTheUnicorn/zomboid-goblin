@@ -5,6 +5,7 @@ local Protection = require("GoblinSurvivor/Protection")
 local SquadManager = require("GoblinSurvivor/SquadManager")
 local JobManager = require("GoblinSurvivor/JobManager")
 local BaseManager = require("GoblinSurvivor/BaseManager")
+local GuardManager = require("GoblinSurvivor/GuardManager")
 local BuildManager = require("GoblinSurvivor/BuildManager")
 local InventoryManager = require("GoblinSurvivor/InventoryManager")
 
@@ -60,7 +61,7 @@ function ActionExecutor.execute(message, zombie)
         return JobManager.assign(message)
     end
     if action == "SECURE_BASE" then
-        return false, "base security task is not implemented by the verified NPC adapter"
+        return GuardManager.secure(message, zombie)
     end
     if action == "EAT" or action == "DRINK" or action == "BANDAGE" or action == "RELOAD" then
         return InventoryManager.execute(message)

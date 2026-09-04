@@ -3,6 +3,9 @@ local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local Perception = require("GoblinSurvivor/Perception")
 local BaseManager = require("GoblinSurvivor/BaseManager")
+local GuardManager = require("GoblinSurvivor/GuardManager")
+local JobManager = require("GoblinSurvivor/JobManager")
+local SquadManager = require("GoblinSurvivor/SquadManager")
 
 local Telemetry = {}
 
@@ -91,7 +94,9 @@ function Telemetry.writeState()
         spawn_status = npc.spawn_status,
         spawn_pending = npc.spawn_pending,
         spawn_attempts = npc.spawn_attempts,
-        base = BaseManager.snapshot(),
+        base = GuardManager.snapshot(),
+        jobs = JobManager.snapshot(),
+        squads = SquadManager.snapshot(),
         player_count = #perception.nearby_players,
         nearby_players = perception.nearby_players
     })
