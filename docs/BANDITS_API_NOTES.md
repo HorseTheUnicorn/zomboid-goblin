@@ -1,12 +1,14 @@
 # Historical Bandits API notes
 
-Status: inspection-only historical record; not a runtime dependency.
+Status: inspection-only historical record; not a runtime dependency and not
+part of the current server loadout.
 
 The live server is Build 42.20.4. Its Workshop cache and active
 `WorkshopItems=` configuration were inspected through the Proxmox console.
 The initial inventory found no Bandits framework files. The public Workshop
 item was then downloaded anonymously with SteamCMD as the `zomboid` user and
-enabled in the live `servertest` profile. The installed package is at
+enabled temporarily in the live `servertest` profile for compatibility
+inspection. The installed package is at
 `steamapps/workshop/content/108600/3268487204/mods/Bandits/42.20` and reports
 `id=Bandits2` in `mod.info`.
 
@@ -18,10 +20,10 @@ item [B42 Bandits NPC](https://steamcommunity.com/sharedfiles/filedetails/?id=32
 - Intended role: NPC framework and Bandits behavior, not a Goblin-specific mod
 
 The server process remained active after the change and its UDP game/query
-ports remained bound. Startup logging also reports Bandits asset warnings for
-missing animation XML paths (and unrelated pre-existing asset warnings); this
-needs a focused Linux asset-compatibility check before relying on Bandits
-animation behavior.
+ports remained bound. Startup logging reported Bandits asset warnings for
+missing animation XML paths, so the dependency was disabled after the
+vanilla-adapter load was verified. The cache remains only as a recoverable
+historical reference and is not required by GoblinSurvivor.
 
 ## Observed B42.20 API surface
 

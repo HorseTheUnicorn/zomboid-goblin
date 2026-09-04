@@ -1,9 +1,9 @@
 """The server-side NPC execution boundary.
 
-The Python process never drives a Steam/PZ client.  It emits one typed,
+The Python process never drives a Steam/PZ client. It emits one typed,
 high-level command for the dedicated server, where the Lua mod resolves the
-stable NPC id through Bandits.  This module intentionally contains no game
-coordinates and no Lua/script escape hatch.
+stable NPC id through the original vanilla NPC adapter. This module
+intentionally contains no game coordinates and no Lua/script escape hatch.
 """
 
 from __future__ import annotations

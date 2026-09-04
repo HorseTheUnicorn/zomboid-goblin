@@ -145,7 +145,6 @@ function VanillaNpcAdapter.prepare(body, npcId)
     -- authoritative ownership check used by the registry.
     callIfPresent(body, "setNoDamage", true)
     callIfPresent(body, "setTarget", nil)
-    callIfPresent(body, "setUseless", true)
     callIfPresent(body, "setDisplayName", Config.npcName)
     return true, "vanilla NPC prepared"
 end
@@ -232,8 +231,6 @@ function VanillaNpcAdapter.tick(body)
     -- A friendly body must never retain the vanilla zombie aggro target.  The
     -- explicit combat action remains a separate, future capability.
     callIfPresent(body, "setTarget", nil)
-    callIfPresent(body, "setUseless", true)
-
     local data = dataFor(body)
     local task = data and data.goblin_task or nil
     if type(task) ~= "table" then return true end

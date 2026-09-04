@@ -9,9 +9,9 @@ vanilla adapter that does not require Bandits or another Workshop framework.
 
 The native PZ/Steam client artifacts were removed from `.76` without backups as
 requested. The dedicated `.03` server remains active with the existing save and
-GoblinSurvivor. The vanilla body still needs an in-world multiplayer
-validation pass before the Bandits Workshop package can be removed from the
-live loadout.
+GoblinSurvivor. The server is now configured without the Bandits Workshop
+dependency; its cached package was left untouched. The vanilla body still
+needs an in-world multiplayer validation pass with a real player connection.
 
 Local checks currently cover strict bridge behavior, semantic coordinate
 separation, NPC command publication, deterministic squad/job policy, and

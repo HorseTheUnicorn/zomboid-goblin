@@ -28,7 +28,6 @@ function Protection.apply(zombie)
     callIfPresent(zombie, "setImmortal", true)
     callIfPresent(zombie, "setNoDamage", true)
     callIfPresent(zombie, "setTarget", nil)
-    callIfPresent(zombie, "setUseless", true)
     callIfPresent(zombie, "setHealth", 1.0)
     return true
 end

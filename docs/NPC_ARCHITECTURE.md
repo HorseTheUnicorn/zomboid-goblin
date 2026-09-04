@@ -16,7 +16,9 @@ ValidatedIntent -> SafetyController -> SafeAction -> NpcBodyDriver
 ```
 
 Protection is reapplied on every server tick. It records the protected NPC
-profile, disables body damage and vanilla aggro when the exposed hooks exist,
-and relies on the persistent recovery loop when a hook is absent.
+profile, disables body damage and clears vanilla aggro when the exposed hooks
+exist, and relies on the persistent recovery loop when a hook is absent. The
+adapter deliberately does not mark the body `useless`, because that population
+flag could make a persistent NPC eligible for engine cleanup.
 Unsupported combat, inventory, vehicle, or building primitives remain
 rejected until their exact Build 42 contracts are verified.
