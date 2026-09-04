@@ -15,6 +15,8 @@ Environment=GOBLIN_ENABLED=false
 Environment=GOBLIN_START_PAUSED=true
 Environment=GOBLIN_PZ_HOST=192.168.0.3
 Environment=GOBLIN_MEMORY_PATH=/var/lib/goblin-zomboid-agent/memory.sqlite3
+# Read-only B42 map tiles copied from the current .03 server map cache.
+Environment=GOBLIN_TRACKER_MAP_ROOT=/home/goblin/share/pz-map/b42/muldraugh
 ExecStart=/usr/bin/python3 -m goblin_zomboid.daemon
 Restart=on-failure
 RestartSec=5

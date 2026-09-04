@@ -19,7 +19,8 @@ from collections.abc import Mapping
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+import re
 
 from .state import brain_view
 
@@ -206,12 +207,23 @@ class TrackerStore:
 class TrackerApp:
     """Read-only tracker API. There are deliberately no control endpoints."""
 
+    _MAP_TILE = re.compile(r"^/map/biomemap_(\d+)_(\d+)\.png$")
+    _STATIC_CONTENT_TYPES = {
+        ".css": "text/css; charset=utf-8",
+        ".html": "text/html; charset=utf-8",
+        ".js": "text/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".svg": "image/svg+xml",
+    }
+
     def __init__(
         self,
         store: TrackerStore,
         *,
         max_streams: int = 8,
         stream_seconds: float = 300.0,
+        static_dir: str | Path | None = None,
+        map_root: str | Path | None = None,
     ) -> None:
         if max_streams < 1:
             raise ValueError("max_streams must be positive")
@@ -220,9 +232,74 @@ class TrackerApp:
         self.store = store
         self.stream_seconds = stream_seconds
         self.stream_slots = threading.BoundedSemaphore(max_streams)
+        self.static_dir = Path(static_dir) if static_dir is not None else Path(__file__).resolve().parent.parent / "web"
+        self.static_dir = self.static_dir.resolve()
+        self.map_root = Path(map_root).resolve() if map_root is not None else None
+        self.map_manifest = self._load_map_manifest()
+
+    def _load_map_manifest(self) -> dict[str, Any] | None:
+        manifest_path = self.static_dir / "map-manifest.json"
+        try:
+            with manifest_path.open("r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(manifest, dict):
+            return None
+        return manifest
+
+    def _static_response(self, route: str) -> tuple[int, dict[str, str], bytes] | None:
+        """Return a bounded static/map response without following user paths."""
+        tile_match = self._MAP_TILE.fullmatch(route)
+        if tile_match is not None:
+            if self.map_root is None:
+                return 404, {}, b'{"ok":false,"error":"map layer unavailable"}'
+            tile_x, tile_y = (int(value) for value in tile_match.groups())
+            manifest = self.map_manifest or {}
+            try:
+                x_min = int(manifest["tiles"]["x_min"])
+                x_max = int(manifest["tiles"]["x_max"])
+                y_min = int(manifest["tiles"]["y_min"])
+                y_max = int(manifest["tiles"]["y_max"])
+            except (KeyError, TypeError, ValueError):
+                return 404, {}, b'{"ok":false,"error":"map layer unavailable"}'
+            if not x_min <= tile_x <= x_max or not y_min <= tile_y <= y_max:
+                return 404, {}, b'{"ok":false,"error":"map tile not found"}'
+            tile_path = (self.map_root / f"biomemap_{tile_x}_{tile_y}.png").resolve()
+            if not tile_path.is_relative_to(self.map_root) or not tile_path.is_file():
+                return 404, {}, b'{"ok":false,"error":"map tile not found"}'
+            try:
+                body = tile_path.read_bytes()
+            except OSError:
+                return 404, {}, b'{"ok":false,"error":"map tile not found"}'
+            return 200, {
+                "Content-Type": "image/png",
+                "Cache-Control": "public, max-age=3600",
+            }, body
+
+        if route == "/":
+            relative = Path("index.html")
+        elif route.startswith("/assets/"):
+            relative = Path("assets") / route.removeprefix("/assets/")
+        else:
+            return None
+        if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+            return 404, {}, b'{"ok":false,"error":"not found"}'
+        candidate = (self.static_dir / relative).resolve()
+        if not candidate.is_relative_to(self.static_dir) or not candidate.is_file():
+            return 404, {}, b'{"ok":false,"error":"not found"}'
+        try:
+            body = candidate.read_bytes()
+        except OSError:
+            return 404, {}, b'{"ok":false,"error":"not found"}'
+        content_type = self._STATIC_CONTENT_TYPES.get(candidate.suffix.lower(), "application/octet-stream")
+        return 200, {
+            "Content-Type": content_type,
+            "Cache-Control": "no-cache" if candidate.name == "index.html" else "public, max-age=300",
+        }, body
 
     def handle(self, method: str, path: str) -> tuple[int, dict[str, str], Any]:
-        route = urlsplit(path).path
+        route = unquote(urlsplit(path).path)
         if method != "GET":
             return 405, {"Allow": "GET"}, {"ok": False, "error": "read-only tracker"}
         if route in {"/api/health", "/healthz"}:
@@ -233,8 +310,15 @@ class TrackerApp:
             return 200, {"Cache-Control": "no-store"}, {"events": self.store.events()}
         if route == "/api/history/goblin":
             return 200, {"Cache-Control": "no-store"}, {"subject": "goblin.primary", "history": self.store.history()}
+        if route == "/api/map/manifest":
+            if self.map_root is None or self.map_manifest is None:
+                return 404, {}, {"ok": False, "error": "map layer unavailable"}
+            return 200, {"Cache-Control": "no-store"}, copy.deepcopy(self.map_manifest)
         if route == "/api/stream":
             return 200, {"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}, {"events": self.store.events(limit=16)}
+        static = self._static_response(route)
+        if static is not None:
+            return static
         return 404, {}, {"ok": False, "error": "not found"}
 
     def server(self, host: str = "127.0.0.1", port: int = 8782) -> ThreadingHTTPServer:
@@ -325,7 +409,10 @@ class TrackerApp:
                     self._stream()
                     return
                 status, headers, payload = app.handle("GET", self.path)
-                body = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+                if isinstance(payload, bytes):
+                    body = payload
+                else:
+                    body = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
                 content_type = headers.get("Content-Type", "application/json")
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)

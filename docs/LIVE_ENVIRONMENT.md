@@ -26,6 +26,11 @@ Role: Goblin AI host.
   `/home/goblin/zomboid-goblin-623f3c1`; this build includes deterministic
   survival fallback, event-driven Qwen planning, persistent settlement
   assignments, and the bounded SSE tracker stream.
+- The B42 tracker map cache is installed read-only at
+  `/home/goblin/share/pz-map/b42/muldraugh`; it contains 4,914 current
+  `biomemap` tiles from `.03` (20 MB on disk). The tracker UI is served from
+  the checkout's `web/` directory once the service is updated to the map/UI
+  revision.
 
 ## `.03` — `192.168.0.3` / Proxmox CT100
 

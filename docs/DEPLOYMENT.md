@@ -39,7 +39,17 @@ reports `adapter=bandits2 friendly=true control_ready=true`.
 Provision the bridge root and environment on `.76`, then start
 `goblin-zomboid-agent.service.example`. The service is disabled/paused by
 default until an operator resumes it. Set `GOBLIN_TRACKER_PORT=8782` if the
-default tracker port is unavailable. Keep Qwen loopback-only.
+default tracker port is unavailable. Set
+`GOBLIN_TRACKER_MAP_ROOT=/home/goblin/share/pz-map/b42/muldraugh` after copying
+the current server map tile cache to that directory. The tracker serves the
+website from the checkout's `web/` directory and serves only bounded map tile
+paths from the configured map root. Keep Qwen loopback-only.
+
+To refresh the live `.76` checkout without copying secrets, clone the pushed
+revision into a new directory, verify the package, and update both the agent
+and relay units' `WorkingDirectory` values together. Keep the old checkout
+until the new service has passed its health checks, then remove it only as a
+separate, explicitly approved cleanup.
 
 ## Acceptance checks
 
@@ -50,7 +60,8 @@ default tracker port is unavailable. Keep Qwen loopback-only.
 - An accepted agent action appears as `command.npc_action`, then receives a
   bounded response/ack and is archived.
 - `/api/state` and `/api/history/goblin` work; POST control/move/spawn routes
-  do not exist.
+  do not exist; `/` and `/api/map/manifest` serve the read-only tracker UI
+  and map metadata.
 - A Bandits2 spawn or friendly-body capability failure leaves Goblin in
   `sensor_only`; it never substitutes a normal hostile zombie or falls back to
   a native client.

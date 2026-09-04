@@ -180,6 +180,48 @@ class EntityAndTrackerTests(unittest.TestCase):
             thread.join(timeout=3)
             tracker.close()
 
+    def test_tracker_serves_read_only_ui_and_bounded_map_tiles(self) -> None:
+        static_dir = self.directory / "web"
+        assets_dir = static_dir / "assets"
+        map_dir = self.directory / "map"
+        assets_dir.mkdir(parents=True)
+        map_dir.mkdir()
+        (static_dir / "index.html").write_text("<h1>tracker</h1>", encoding="utf-8")
+        (assets_dir / "app.js").write_text("console.log('ok')", encoding="utf-8")
+        (static_dir / "map-manifest.json").write_text(
+            '{"tile_size":256,"tiles":{"x_min":0,"x_max":0,"y_min":0,"y_max":0}}',
+            encoding="utf-8",
+        )
+        tile_bytes = b"not-a-real-png-but-a-bounded-fixture"
+        (map_dir / "biomemap_0_0.png").write_bytes(tile_bytes)
+        tracker = TrackerStore(self.directory / "ui.sqlite3")
+        app = TrackerApp(tracker, static_dir=static_dir, map_root=map_dir)
+        try:
+            status, headers, body = app.handle("GET", "/")
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+            self.assertEqual(body, b"<h1>tracker</h1>")
+
+            status, headers, body = app.handle("GET", "/assets/app.js?cache=1")
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "text/javascript; charset=utf-8")
+            self.assertIn(b"console.log", body)
+
+            status, headers, body = app.handle("GET", "/api/map/manifest")
+            self.assertEqual(status, 200)
+            self.assertEqual(body["tiles"]["x_max"], 0)
+
+            status, headers, body = app.handle("GET", "/map/biomemap_0_0.png")
+            self.assertEqual(status, 200)
+            self.assertEqual(headers["Content-Type"], "image/png")
+            self.assertEqual(body, tile_bytes)
+
+            self.assertEqual(app.handle("GET", "/map/biomemap_1_0.png")[0], 404)
+            self.assertEqual(app.handle("GET", "/assets/%2e%2e/%2e%2e/secret")[0], 404)
+            self.assertEqual(app.handle("POST", "/")[0], 405)
+        finally:
+            tracker.close()
+
 
 if __name__ == "__main__":
     unittest.main()

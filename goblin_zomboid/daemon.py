@@ -39,7 +39,11 @@ def main() -> int:
     server = app.server(admin_host, admin_port)
     tracker_host = os.environ.get("GOBLIN_TRACKER_BIND", "127.0.0.1")
     tracker_port = int(os.environ.get("GOBLIN_TRACKER_PORT", "8782"))
-    tracker_server = TrackerApp(service.tracker).server(tracker_host, tracker_port)
+    tracker_server = TrackerApp(
+        service.tracker,
+        static_dir=os.environ.get("GOBLIN_TRACKER_WEB_ROOT"),
+        map_root=os.environ.get("GOBLIN_TRACKER_MAP_ROOT"),
+    ).server(tracker_host, tracker_port)
     stop_event = threading.Event()
 
     def stop(_signum: int, _frame: object) -> None:

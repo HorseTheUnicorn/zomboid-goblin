@@ -1,0 +1,23 @@
+{
+  "map_id": "muldraugh-ky-b42",
+  "title": "Muldraugh P.O.T.",
+  "build": "42.20.4",
+  "source": "Project Zomboid B42 map cache on .03",
+  "projection": "pz-world-cells",
+  "fixed2x": true,
+  "tile_size": 256,
+  "tiles": {
+    "prefix": "biomemap",
+    "x_min": 0,
+    "x_max": 77,
+    "y_min": 0,
+    "y_max": 62
+  },
+  "world": {
+    "x_min": 0,
+    "x_max": 19968,
+    "y_min": 0,
+    "y_max": 16128,
+    "units": "game cells"
+  }
+}

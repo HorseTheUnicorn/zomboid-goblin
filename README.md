@@ -12,7 +12,9 @@ installed or required on `.76`.
 - `.03` (`192.168.0.3`): dedicated PZ server, existing save, Bandits2
   Workshop item `3268487204`, and the server-side GoblinSurvivor package.
 - `.76` (`192.168.0.76`): local Qwen, Python agent/relay, memory, and tracker
-  website/API. It has no Goblin gameplay client.
+  website/API. It has no Goblin gameplay client. The website is served by the
+  same read-only tracker process and renders the current B42 map tiles copied
+  from the server's installed map cache.
 - `goblin.primary`: stable NPC identity. Death or unload is handled by the
   server-side registry and recovery loop.
 
@@ -45,9 +47,11 @@ loopback admin status on port `8781` and the read-only tracker API on `8782`.
 
 ## Tracker API
 
-The tracker provides `GET /api/state`, `/api/events`, `/api/stream`,
-`/api/history/goblin`, and `/api/health`. It intentionally has no gameplay
-command, spawn, move, attack, or admin mutation endpoint.
+The tracker serves the read-only map website at `/` and provides
+`GET /api/state`, `/api/events`, `/api/stream`, `/api/history/goblin`,
+`/api/map/manifest`, and `/api/health`. B42 `biomemap` tiles are exposed only
+through bounded `/map/biomemap_<x>_<y>.png` paths. It intentionally has no
+gameplay command, spawn, move, attack, chat, or admin mutation endpoint.
 
 ## Safety boundary
 
