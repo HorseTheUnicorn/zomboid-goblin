@@ -45,6 +45,26 @@ class ServiceResult:
 class GoblinService:
     """Coordinates Qwen proposals while preserving deterministic server gates."""
 
+    _PLAN_EVENTS = frozenset(
+        {
+            "player_joined",
+            "player_left",
+            "goblin_spotted",
+            "threat_changed",
+            "injury",
+            "loot_found",
+            "hunt_started",
+            "hunt_clue",
+            "death",
+            "respawn",
+            "npc_ready",
+            "npc_spawned",
+            "npc_recovered",
+            "squad_changed",
+            "base_job_changed",
+        }
+    )
+
     def __init__(
         self,
         config: AgentConfig,
@@ -91,6 +111,12 @@ class GoblinService:
         self.last_detail = ""
         self.last_action: dict[str, object] | None = None
         self.last_state: dict[str, object] = {}
+        self._plan_pending = True
+        self._plan_reason: str | None = "startup"
+        self._plan_event: dict[str, object] | None = None
+        self._last_plan_at: float | None = None
+        self._plan_cooldown_until = 0.0
+        self._last_planning_signature: tuple[Any, ...] | None = None
 
     def close(self) -> None:
         self.tracker.close()
@@ -132,6 +158,102 @@ class GoblinService:
         elif isinstance(player, Mapping):
             value = player.get("id", player.get("player"))
             self._register_player(value)
+
+    @staticmethod
+    def _chat_is_addressed(fields: Mapping[str, object]) -> bool:
+        text = fields.get("text")
+        return isinstance(text, str) and (
+            "goblin" in text.casefold() or text.startswith("!goblin")
+        )
+
+    def _request_plan(
+        self, reason: str, fields: Mapping[str, object] | None = None
+    ) -> None:
+        self._plan_pending = True
+        self._plan_reason = reason[:96]
+        if fields is None:
+            self._plan_event = None
+            return
+        event = {"type": reason}
+        event.update(dict(fields))
+        # EventGate has already removed exact coordinates, and this second
+        # redaction keeps the invariant local to the model-boundary code.
+        self._plan_event = brain_view(event)
+
+    @staticmethod
+    def _planning_signature(
+        body: BodyState, fields: Mapping[str, object]
+    ) -> tuple[Any, ...]:
+        def band(value: float) -> str:
+            if value >= 0.8:
+                return "high"
+            if value >= 0.4:
+                return "medium"
+            return "low"
+
+        labels: list[str] = []
+        players = fields.get("nearby_players", fields.get("players", []))
+        if isinstance(players, (list, tuple)):
+            for player in players:
+                if isinstance(player, str):
+                    label = player
+                elif isinstance(player, Mapping):
+                    value = player.get(
+                        "name", player.get("id", player.get("player"))
+                    )
+                    label = value if isinstance(value, str) else ""
+                else:
+                    label = ""
+                if label:
+                    labels.append(label[:96].casefold())
+        return (
+            body.alive,
+            body.body_present,
+            body.body_mode,
+            body.control_ready,
+            body.npc_engine_ready,
+            body.mode,
+            body.threat_level,
+            band(body.injury),
+            band(body.panic),
+            band(body.hunger),
+            band(body.thirst),
+            body.weapon_ready,
+            body.has_food,
+            body.has_water,
+            body.has_medical,
+            tuple(sorted(set(labels))),
+        )
+
+    def _planning_due(self, now: float) -> bool:
+        if now < self._plan_cooldown_until:
+            return False
+        return (
+            self._plan_pending
+            or self._last_plan_at is None
+            or now - self._last_plan_at >= self.config.planning_interval_seconds
+        )
+
+    def _finish_planning(self, now: float, *, retry: bool) -> None:
+        self._last_plan_at = now
+        if retry:
+            self._plan_pending = True
+            self._plan_cooldown_until = now + max(
+                self.config.planning_interval_seconds, 30.0
+            )
+            return
+        self._plan_pending = False
+        self._plan_reason = None
+        self._plan_event = None
+        self._plan_cooldown_until = now
+
+    def _planning_context(self) -> dict[str, object]:
+        context = dict(self.last_state)
+        if self._plan_reason is not None:
+            context["planning_reason"] = self._plan_reason
+        if self._plan_event is not None:
+            context["event"] = dict(self._plan_event)
+        return brain_view(context)
 
     def _apply_event(self, kind: str, fields: Mapping[str, object], timestamp_ms: int) -> None:
         created_at = timestamp_ms // 1000
@@ -192,6 +314,10 @@ class GoblinService:
 
         self.last_events.append({"kind": kind, "timestamp_ms": timestamp_ms, "fields": dict(fields)})
         self.last_events = self.last_events[-32:]
+        if kind in self._PLAN_EVENTS or (
+            kind == "chat" and self._chat_is_addressed(fields)
+        ):
+            self._request_plan(kind, fields)
         try:
             self.tracker.record_event(kind, fields, observed_at=created_at)
         except (OSError, TypeError, ValueError):
@@ -371,6 +497,13 @@ class GoblinService:
             "control_ready": body.control_ready,
             "npc_engine_ready": body.npc_engine_ready,
         })
+        planning_signature = self._planning_signature(body, state_message.fields)
+        if (
+            self._last_planning_signature is not None
+            and planning_signature != self._last_planning_signature
+        ):
+            self._request_plan("state_changed")
+        self._last_planning_signature = planning_signature
         self.npc_driver.npc_id = body.npc_id
         self.npc_driver.update_contract(
             control_ready=body.control_ready,
@@ -380,29 +513,48 @@ class GoblinService:
             self.last_status = "sensor_only"
             self.last_detail = "waiting for the persistent server-side NPC contract"
             return ServiceResult(self.last_status, self.last_detail)
+
+        # Run deterministic reflexes before any model call.  An ongoing
+        # Bandits2 task continues locally; only an immediate reflex may
+        # publish on an ordinary heartbeat.
+        reflex_result = self._run_deterministic_fallback(
+            body, "deterministic reflex check"
+        )
+        if reflex_result.status != "fallback_safe":
+            return reflex_result
         if self.qwen is None:
             return self._run_deterministic_fallback(body, "no Qwen adapter configured")
+        now = float(self.clock())
+        if not self._planning_due(now):
+            self.last_status = "npc_steady"
+            self.last_detail = "Bandits2 task continues; no model planning trigger is pending"
+            return ServiceResult(self.last_status, self.last_detail)
         try:
-            intent = self.qwen.propose_intent(self.last_state)
+            intent = self.qwen.propose_intent(self._planning_context())
         except QwenError as exc:
+            self._finish_planning(now, retry=True)
             return self._run_deterministic_fallback(body, f"Qwen unavailable: {exc}")
         reference_error = self._validate_references(intent)
         if reference_error is not None:
+            self._finish_planning(now, retry=True)
             self.last_status = "controller_rejected"
             self.last_detail = reference_error
             return ServiceResult(self.last_status, self.last_detail)
         decision = self.safety.decide(intent, body)
         if not decision.accepted or decision.action is None:
+            self._finish_planning(now, retry=False)
             self.last_status = "controller_rejected"
             self.last_detail = decision.reason
             self.last_action = None
             return ServiceResult(self.last_status, self.last_detail)
         result = self.npc_driver.execute(decision.action)
         if not result.accepted:
+            self._finish_planning(now, retry=True)
             self.last_status = result.status
             self.last_detail = result.detail
             return ServiceResult(self.last_status, self.last_detail)
         self.last_action = decision.action.as_dict()
+        self._finish_planning(now, retry=False)
         self.last_status = "npc_command_published"
         self.last_detail = "validated action sent to the dedicated server NPC executor"
         return ServiceResult(self.last_status, self.last_detail, result.detail)
@@ -511,4 +663,10 @@ class GoblinService:
                 "changed_at": self.mode_controller.state.changed_at,
             },
             "hunt": self.hunt.admin_status(),
+            "planning": {
+                "pending": self._plan_pending,
+                "reason": self._plan_reason,
+                "last_at": self._last_plan_at,
+                "cooldown_until": self._plan_cooldown_until,
+            },
         }

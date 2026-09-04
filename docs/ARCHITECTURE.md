@@ -18,6 +18,12 @@ ready marker, request IDs are bounded by a ledger, stale/duplicate messages
 are archived or dead-lettered, and the PZ tick never waits for Qwen or the web
 server.
 
+The model loop is event-driven. A startup transition, meaningful server event,
+coarse state transition, or bounded planning interval can request a new Qwen
+intent. Ordinary heartbeats only refresh telemetry and run the deterministic
+reflex layer; an ongoing Bandits2 task is allowed to continue on the server
+without repeated model calls.
+
 The data flow is:
 
 ```text

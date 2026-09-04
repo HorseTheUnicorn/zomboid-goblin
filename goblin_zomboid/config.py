@@ -25,6 +25,7 @@ class AgentConfig:
     bridge_root: Path = Path("/mnt/goblin-zomboid")
     enabled: bool = False
     heartbeat_seconds: float = 5.0
+    planning_interval_seconds: float = 60.0
     pz_timeout_seconds: float = 15.0
     max_message_bytes: int = 256 * 1024
     pz_host: str = "192.168.0.3"
@@ -48,6 +49,9 @@ class AgentConfig:
             else parse_bool(os.environ.get("GOBLIN_ENABLED"), default=False)
         )
         heartbeat = float(os.environ.get("GOBLIN_HEARTBEAT_SECONDS", "5"))
+        planning_interval = float(
+            os.environ.get("GOBLIN_PLANNING_INTERVAL_SECONDS", "60")
+        )
         timeout = float(os.environ.get("GOBLIN_PZ_TIMEOUT_SECONDS", "15"))
         max_bytes = int(
             os.environ.get("GOBLIN_MAX_MESSAGE_BYTES", str(cls.max_message_bytes))
@@ -58,6 +62,10 @@ class AgentConfig:
         )
         if not (0.5 <= heartbeat <= 60):
             raise ValueError("heartbeat interval must be between 0.5 and 60 seconds")
+        if not (10 <= planning_interval <= 3600):
+            raise ValueError(
+                "planning interval must be between 10 and 3600 seconds"
+            )
         if not (1 <= timeout <= 300):
             raise ValueError("PZ timeout must be between 1 and 300 seconds")
         if not (1024 <= max_bytes <= 4 * 1024 * 1024):
@@ -68,6 +76,7 @@ class AgentConfig:
             bridge_root=root,
             enabled=bool(enabled),
             heartbeat_seconds=heartbeat,
+            planning_interval_seconds=planning_interval,
             pz_timeout_seconds=timeout,
             max_message_bytes=max_bytes,
             pz_host=pz_host,

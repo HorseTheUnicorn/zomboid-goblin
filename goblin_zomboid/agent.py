@@ -1,4 +1,4 @@
-"""Heartbeat-only Goblin runtime for the first deployment stage."""
+"""Liveness heartbeat for the server-side Goblin runtime."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class AgentStatus:
     def fields(self) -> dict[str, Any]:
         return {
             "status": self.status,
-            "brain": "disabled",
+            "brain": "agent",
             "mode": "SAFE",
             "feature_enabled": self.feature_enabled,
             "body_mode": self.body_mode,
@@ -34,7 +34,7 @@ class AgentStatus:
 
 
 class AgentRuntime:
-    """Publishes liveness only; it has no gameplay or model executor."""
+    """Publishes liveness; gameplay decisions remain in ``GoblinService``."""
 
     def __init__(
         self,
