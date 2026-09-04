@@ -4,6 +4,7 @@ local Net = require("GoblinSurvivor/Net")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local ActionExecutor = require("GoblinSurvivor/ActionExecutor")
 local Telemetry = require("GoblinSurvivor/Telemetry")
+local Authority = require("GoblinSurvivor/Authority")
 
 local CommandLoop = { seen = {}, seenOrder = {}, maxSeen = 2048 }
 
@@ -35,7 +36,8 @@ local allowedKeys = {
     protocol = true, request_id = true, timestamp_ms = true, type = true,
     npc_id = true, action = true, priority = true, reason = true,
     controller_action = true, target = true, item = true, text = true,
-    leader = true, members = true, job = true, formation = true, squad_id = true
+    leader = true, members = true, job = true, formation = true, squad_id = true,
+    authority_token = true
 }
 
 local function safeText(value, maximum)
@@ -82,6 +84,12 @@ local function validAction(message)
             or type(message.item.count) ~= "number"
             or math.floor(message.item.count) ~= message.item.count
             or message.item.count < 1 or message.item.count > 10 then return false end
+    end
+    if message.authority_token ~= nil and not safeId(message.authority_token) then
+        return false
+    end
+    if Authority.requires(message.action) and not Authority.consume(message) then
+        return false
     end
     return true
 end

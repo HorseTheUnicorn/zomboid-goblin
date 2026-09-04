@@ -50,6 +50,27 @@ class NpcBoundaryTests(unittest.TestCase):
             "sensor_only",
         )
 
+    def test_privileged_driver_action_requires_and_carries_authority_grant(self) -> None:
+        driver = NpcBodyDriver(
+            self.store, control_ready=True, npc_engine_ready=True
+        )
+        action = SafeAction(
+            Action.FORM_SQUAD,
+            2,
+            "authorized expedition request",
+            leader="Alice",
+            members=("goblin.primary",),
+            formation="loose",
+            squad_id="squad.primary",
+        )
+        self.assertFalse(driver.execute(action).accepted)
+        result = driver.execute(action, authority_token="grant-test-1")
+        self.assertTrue(result.accepted)
+        item = next(self.store.iter_ready("commands"))
+        message = self.store.read_ready(item)
+        self.assertEqual(message.fields["authority_token"], "grant-test-1")
+        self.assertNotIn("authority_token", message.fields["controller_action"])
+
     def test_new_intents_have_bounded_ids_and_no_coordinates(self) -> None:
         intent = IntentValidator().validate(
             {
@@ -65,6 +86,24 @@ class NpcBoundaryTests(unittest.TestCase):
             IntentValidator().validate(
                 {"intent": "MOVE_TO", "mode": "ROAM", "target": {"kind": "area", "name": "x=2"}}
             )
+
+    def test_human_leader_gets_goblin_and_count_resolves_deterministically(self) -> None:
+        registry = EntityRegistry(
+            npc_ids=("goblin.primary", "guard.1", "worker.1"),
+            player_ids=("Alice",),
+        )
+        registry.npcs["guard.1"].role = "guard"
+        registry.npcs["worker.1"].role = "scout"
+        squad = SquadManager(registry, minimum_base_guards=1).form(
+            "squad.primary", leader="Alice", requested=1, formation="column"
+        )
+        self.assertEqual(squad.leader_player, "Alice")
+        self.assertEqual(squad.goblin_member, "goblin.primary")
+        self.assertEqual(squad.members, ("goblin.primary", "worker.1"))
+        blocked = SquadManager(registry, minimum_base_guards=1).form(
+            "squad.guard", leader="Alice", requested=["guard.1"], formation="loose"
+        )
+        self.assertEqual(blocked.members, ("goblin.primary",))
 
 
 class EntityAndTrackerTests(unittest.TestCase):

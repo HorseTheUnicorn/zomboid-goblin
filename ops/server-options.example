@@ -11,4 +11,6 @@ GoblinNpcId=goblin.primary
 GoblinNpcName=Goblin
 GoblinNpcProgram=Companion
 GoblinNpcProtected=true
+GoblinCommanders=
+MinimumBaseGuards=1
 GoblinTrackerExact=true

@@ -2,6 +2,7 @@ local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local Perception = require("GoblinSurvivor/Perception")
+local BaseManager = require("GoblinSurvivor/BaseManager")
 
 local Telemetry = {}
 
@@ -90,6 +91,7 @@ function Telemetry.writeState()
         spawn_status = npc.spawn_status,
         spawn_pending = npc.spawn_pending,
         spawn_attempts = npc.spawn_attempts,
+        base = BaseManager.snapshot(),
         player_count = #perception.nearby_players,
         nearby_players = perception.nearby_players
     })
@@ -100,6 +102,8 @@ end
 function Telemetry.writeExactState()
     if not IPC.isReady() or not Config.trackerExactTelemetry then return false end
     local entities = {}
+    local base = BaseManager.snapshotExact()
+    if base ~= nil then table.insert(entities, base) end
     local zombie = GoblinNPC.findGoblin()
     local point = position(zombie)
     if point ~= nil then

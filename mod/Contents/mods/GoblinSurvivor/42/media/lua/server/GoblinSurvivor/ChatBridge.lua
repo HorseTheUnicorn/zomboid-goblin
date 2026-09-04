@@ -1,5 +1,7 @@
 local Config = require("GoblinSurvivor/Config")
 local EventLog = require("GoblinSurvivor/EventLog")
+local Authority = require("GoblinSurvivor/Authority")
+local BaseManager = require("GoblinSurvivor/BaseManager")
 
 local ChatBridge = { started = false, lastAt = {} }
 
@@ -27,6 +29,16 @@ local function mentionsGoblin(value)
         or string.sub(lower, 1, 7) == "!goblin"
 end
 
+local function trim(value)
+    value = string.gsub(value, "^%s+", "")
+    return string.gsub(value, "%s+$", "")
+end
+
+local function isBaseSetCommand(value)
+    local normalized = string.lower(trim(value))
+    return normalized == "!goblin base set" or normalized == "/goblin base set"
+end
+
 function ChatBridge.start()
     if ChatBridge.started then return end
     if Events == nil or Events.OnClientCommand == nil
@@ -43,7 +55,30 @@ function ChatBridge.start()
         local now = os.time()
         if ChatBridge.lastAt[speaker] ~= nil and now - ChatBridge.lastAt[speaker] < 2 then return end
         ChatBridge.lastAt[speaker] = now
-        EventLog.emit("chat", { speaker = speaker, text = text })
+        -- Base placement is a server-local mutation.  Resolve the issuing
+        -- player's current position here, before any Python/Qwen handling,
+        -- and never serialize that exact position into the event.
+        if isBaseSetCommand(text) then
+            local accepted, detail = BaseManager.setFromPlayer(player)
+            if accepted then
+                print("[GoblinSurvivor] base set by authorized commander " .. speaker)
+                EventLog.emit("base_changed", {
+                    base_id = BaseManager.baseId,
+                    name = BaseManager.name,
+                    changed_by = speaker
+                })
+            else
+                print("[GoblinSurvivor] base set rejected for " .. speaker .. ": " .. tostring(detail))
+            end
+            return
+        end
+        local token = Authority.issue(player)
+        EventLog.emit("chat", {
+            speaker = speaker,
+            text = text,
+            authorized = token ~= nil,
+            authority_token = token
+        })
     end)
     ChatBridge.started = true
 end

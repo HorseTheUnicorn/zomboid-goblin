@@ -25,6 +25,12 @@ class StateViewTests(unittest.TestCase):
         self.assertEqual(result["location_bucket"], "north")
         self.assertEqual(result["threat"]["distance_bucket"], "near")
 
+    def test_brain_view_redacts_bridge_authority_capabilities(self) -> None:
+        result = brain_view(
+            {"authorized": True, "authority_token": "grant-secret", "token": "other"}
+        )
+        self.assertEqual(result, {"authorized": True})
+
     def test_public_view_is_an_explicit_allowlist(self) -> None:
         result = public_view(
             {
@@ -50,4 +56,3 @@ class StateViewTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

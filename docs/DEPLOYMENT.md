@@ -22,6 +22,12 @@ config: /home/zomboid/Zomboid/Server/servertest.ini
 bridge: /home/zomboid/Zomboid/Lua/goblin-bridge
 ```
 
+The bridge `config.ini` also accepts `GoblinCommanders=Name1,Name2` and
+`MinimumBaseGuards=1`. PZ admins and moderators are always accepted as
+commanders; ordinary players must be listed explicitly. To set the persistent
+base from inside the game, an authorized player sends `!goblin base set`.
+That command is resolved and persisted on `.03`; it is not a Qwen command.
+
 Before restarting, take a bounded backup of the server INI, GoblinSurvivor
 package, and save. Do not copy Bandits2 source into this repository. Restart
 only the dedicated-server unit and verify its process and UDP query/game

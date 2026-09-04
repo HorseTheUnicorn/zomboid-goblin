@@ -6,5 +6,8 @@ inactive, incapacitated, and critical workers and never drops the configured
 base-guard floor. Formation offsets are semantic; Lua resolves them against
 the live server state.
 
-The model may request a squad. It cannot teleport, specify offsets as world
-coordinates, or directly manipulate an NPC brain.
+The model may request a squad after an authorized commander has asked for the
+change in game. It cannot teleport, specify offsets as world coordinates, or
+directly manipulate an NPC brain. The server-minted grant is one-use and
+expires quickly, so a stale or unsolicited Qwen proposal cannot form or
+dismiss a squad.

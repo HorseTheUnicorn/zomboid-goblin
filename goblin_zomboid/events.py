@@ -22,7 +22,8 @@ EVENT_FIELDS = {
     "hunt_clue": {"temperature", "clue_number"},
     "death": {"cause"},
     "respawn": {"cooldown_seconds"},
-    "chat": {"speaker", "text"},
+    "chat": {"speaker", "text", "authorized", "authority_token"},
+    "base_changed": {"base_id", "name", "changed_by"},
     "npc_ready": {"npc_id", "active"},
     "npc_spawned": {"npc_id", "role"},
     "npc_recovered": {"npc_id", "reason"},
@@ -87,11 +88,15 @@ class EventGate:
             if key in ALLOWED_VALUES:
                 if value not in ALLOWED_VALUES[key]:
                     raise ValueError(f"invalid event value: {key}")
-            elif key in {"player", "party", "speaker", "body_part", "cause", "text", "npc_id", "role", "reason", "squad_id", "leader", "job", "entity_id"}:
-                if not isinstance(value, str) or not value.strip() or len(value) > 240:
+            elif key in {"player", "party", "speaker", "body_part", "cause", "text", "npc_id", "role", "reason", "squad_id", "leader", "job", "entity_id", "base_id", "name", "changed_by", "authority_token"}:
+                maximum = 128 if key == "authority_token" else 240
+                if not isinstance(value, str) or not value.strip() or len(value) > maximum:
                     raise ValueError(f"invalid event text: {key}")
                 if key == "text" and _TEXT_LOCATION_RE.search(value):
                     raise ValueError("event text contains location coordinates")
+            elif key == "authorized":
+                if not isinstance(value, bool):
+                    raise ValueError("invalid authorization flag")
             elif key == "count_bucket":
                 if value not in {"none", "few", "many"}:
                     raise ValueError("invalid count bucket")

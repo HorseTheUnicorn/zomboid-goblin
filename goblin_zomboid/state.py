@@ -26,6 +26,8 @@ _DROP_KEYS = {
     "exact_distance",
     "location",
     "exact_location",
+    "authority_token",
+    "token",
 }
 _DROP_RE = re.compile(
     r"(?:^|_)(?:x|y|z)$|(?:^|_)(?:coord|coords|coordinate|route|waypoint|cell|chunk)(?:_|$)"

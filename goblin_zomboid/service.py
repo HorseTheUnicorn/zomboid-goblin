@@ -26,6 +26,7 @@ from .ipc import EventConsumer, RequestLedger, ResponseConsumer
 from .memory import MemoryStore
 from .modes import Mode, ModeController
 from .npc import NPC_ID, NpcBodyDriver
+from .npc import PRIVILEGED_ACTIONS
 from .party import PartyManager
 from .protocol import Message
 from .qwen import QwenClient, QwenError
@@ -62,6 +63,7 @@ class GoblinService:
             "npc_recovered",
             "squad_changed",
             "base_job_changed",
+            "base_changed",
         }
     )
 
@@ -86,7 +88,10 @@ class GoblinService:
         memory_file = Path(memory_path)
         self.tracker = TrackerStore(memory_file.with_suffix(".tracker.sqlite3"))
         self.entity_registry = EntityRegistry(npc_ids=(NPC_ID,))
-        self.squads = SquadManager(self.entity_registry)
+        self.squads = SquadManager(
+            self.entity_registry,
+            minimum_base_guards=config.minimum_base_guards,
+        )
         self.base_manager = BaseManager()
         self.jobs = JobManager(self.entity_registry)
         self.npc_driver = NpcBodyDriver(self.store, npc_id=NPC_ID)
@@ -117,6 +122,8 @@ class GoblinService:
         self._last_plan_at: float | None = None
         self._plan_cooldown_until = 0.0
         self._last_planning_signature: tuple[Any, ...] | None = None
+        self._plan_authority_token: str | None = None
+        self._plan_authorized = False
 
     def close(self) -> None:
         self.tracker.close()
@@ -171,11 +178,19 @@ class GoblinService:
     ) -> None:
         self._plan_pending = True
         self._plan_reason = reason[:96]
+        self._plan_authority_token = None
+        self._plan_authorized = False
         if fields is None:
             self._plan_event = None
             return
         event = {"type": reason}
-        event.update(dict(fields))
+        for key, value in fields.items():
+            if key == "authority_token":
+                if isinstance(value, str) and value:
+                    self._plan_authority_token = value
+                continue
+            event[key] = value
+        self._plan_authorized = fields.get("authorized") is True
         # EventGate has already removed exact coordinates, and this second
         # redaction keeps the invariant local to the model-boundary code.
         self._plan_event = brain_view(event)
@@ -245,6 +260,8 @@ class GoblinService:
         self._plan_pending = False
         self._plan_reason = None
         self._plan_event = None
+        self._plan_authority_token = None
+        self._plan_authorized = False
         self._plan_cooldown_until = now
 
     def _planning_context(self) -> dict[str, object]:
@@ -264,13 +281,21 @@ class GoblinService:
         content = kind.replace("_", " ")
         if subject:
             content = f"{content}: {subject}"
-        text = fields.get("text")
+        # Authority tokens are one-shot private bridge capabilities.  Keep
+        # them out of memory, tracker history, admin snapshots, and the
+        # event list; _request_plan retains one only long enough to echo it
+        # to the server-side command validator.
+        safe_fields = {
+            key: value for key, value in fields.items()
+            if key != "authority_token"
+        }
+        text = safe_fields.get("text")
         if isinstance(text, str):
             content = f"{content} — {text}"
         try:
             self.memory.record_memory(
                 f"event.{kind}", content[:4000], subject=subject,
-                metadata=dict(fields), created_at=created_at,
+                metadata=dict(safe_fields), created_at=created_at,
             )
         except ValueError:
             pass
@@ -312,14 +337,14 @@ class GoblinService:
         elif kind in {"npc_ready", "npc_spawned", "npc_recovered"}:
             self.event_overlay["alive"] = True
 
-        self.last_events.append({"kind": kind, "timestamp_ms": timestamp_ms, "fields": dict(fields)})
+        self.last_events.append({"kind": kind, "timestamp_ms": timestamp_ms, "fields": dict(safe_fields)})
         self.last_events = self.last_events[-32:]
         if kind in self._PLAN_EVENTS or (
             kind == "chat" and self._chat_is_addressed(fields)
         ):
             self._request_plan(kind, fields)
         try:
-            self.tracker.record_event(kind, fields, observed_at=created_at)
+            self.tracker.record_event(kind, safe_fields, observed_at=created_at)
         except (OSError, TypeError, ValueError):
             pass
 
@@ -451,6 +476,8 @@ class GoblinService:
         npc_id = data.get("npc_id", NPC_ID)
         if npc_id != NPC_ID:
             return "unknown NPC id"
+        if intent.intent in PRIVILEGED_ACTIONS and not self._plan_authorized:
+            return "privileged action requires an authorized in-game commander request"
         target = data.get("target")
         if isinstance(target, Mapping) and target.get("kind") == "player":
             player = target.get("player", target.get("name", target.get("label")))
@@ -464,11 +491,17 @@ class GoblinService:
         if intent.intent == "FORM_SQUAD":
             try:
                 members = data.get("requested_members", data.get("members", []))
-                self.squads.form(
+                squad = self.squads.form(
                     data.get("squad_id", "squad.primary"),
                     leader=str(data["leader"]), requested=members,
                     formation=data.get("formation", "loose"),
+                    mission=str(data.get("mission", "general expedition")),
+                    created_at=int(self.clock()),
                 )
+                # Resolve high-level requests to actual server-reported NPC
+                # ids before the typed command reaches Lua.  Qwen may ask for
+                # a count; it never needs to know Bandits2 references.
+                data["members"] = list(squad.members)
             except (KeyError, TypeError, ValueError) as exc:
                 return str(exc)
         return None
@@ -547,7 +580,9 @@ class GoblinService:
             self.last_detail = decision.reason
             self.last_action = None
             return ServiceResult(self.last_status, self.last_detail)
-        result = self.npc_driver.execute(decision.action)
+        result = self.npc_driver.execute(
+            decision.action, authority_token=self._plan_authority_token
+        )
         if not result.accepted:
             self._finish_planning(now, retry=True)
             self.last_status = result.status

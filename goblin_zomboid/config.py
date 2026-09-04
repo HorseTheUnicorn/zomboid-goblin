@@ -26,6 +26,7 @@ class AgentConfig:
     enabled: bool = False
     heartbeat_seconds: float = 5.0
     planning_interval_seconds: float = 60.0
+    minimum_base_guards: int = 1
     pz_timeout_seconds: float = 15.0
     max_message_bytes: int = 256 * 1024
     pz_host: str = "192.168.0.3"
@@ -52,6 +53,9 @@ class AgentConfig:
         planning_interval = float(
             os.environ.get("GOBLIN_PLANNING_INTERVAL_SECONDS", "60")
         )
+        minimum_base_guards = int(
+            os.environ.get("GOBLIN_MINIMUM_BASE_GUARDS", "1")
+        )
         timeout = float(os.environ.get("GOBLIN_PZ_TIMEOUT_SECONDS", "15"))
         max_bytes = int(
             os.environ.get("GOBLIN_MAX_MESSAGE_BYTES", str(cls.max_message_bytes))
@@ -66,6 +70,8 @@ class AgentConfig:
             raise ValueError(
                 "planning interval must be between 10 and 3600 seconds"
             )
+        if not 0 <= minimum_base_guards <= 16:
+            raise ValueError("minimum base guards must be between 0 and 16")
         if not (1 <= timeout <= 300):
             raise ValueError("PZ timeout must be between 1 and 300 seconds")
         if not (1024 <= max_bytes <= 4 * 1024 * 1024):
@@ -77,6 +83,7 @@ class AgentConfig:
             enabled=bool(enabled),
             heartbeat_seconds=heartbeat,
             planning_interval_seconds=planning_interval,
+            minimum_base_guards=minimum_base_guards,
             pz_timeout_seconds=timeout,
             max_message_bytes=max_bytes,
             pz_host=pz_host,

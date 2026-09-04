@@ -19,6 +19,12 @@ local Config = {
     heartbeatSeconds = 5,
     maxMessageBytes = 262144,
     trackerExactTelemetry = true,
+    minimumBaseGuards = 1,
+    -- Server-side command authority.  The list is intentionally empty by
+    -- default; PZ admins/moderators are accepted by isAuthorizedPlayer(),
+    -- and operators may add exact usernames with GoblinCommanders= in the
+    -- provisioned bridge config.
+    commanders = {},
     -- Keep the first server-side body request out of the player's square.
     -- This is a safety margin around the point passed to Bandits2's individual
     -- spawner while its new networked body receives its friendly state.
@@ -129,6 +135,30 @@ local function safeBridgeRoot(value)
         and not string.find(value, "%.%.")
 end
 
+local function parseCommanders(value)
+    local result = {}
+    if type(value) ~= "string" or #value > 2048 then
+        return result
+    end
+    for raw in string.gmatch(value .. ",", "([^,]*),") do
+        local name = trim(raw)
+        if name ~= "" and #name <= 96
+            and string.find(name, "^[A-Za-z0-9_%-]+$") ~= nil then
+            result[string.lower(name)] = true
+        end
+    end
+    return result
+end
+
+local function parseBoundedInteger(value, defaultValue, minimum, maximum)
+    local number = tonumber(value)
+    if number == nil or math.floor(number) ~= number
+        or number < minimum or number > maximum then
+        return defaultValue
+    end
+    return number
+end
+
 function Config.refresh()
     -- Build 42 ignores unknown keys in Server/<name>.ini.  Read the
     -- integration's own config from the fixed, provisioned Lua bridge root
@@ -179,7 +209,47 @@ function Config.refresh()
     end
     Config.protected = parseBoolean(readOption("GoblinNpcProtected", true), true)
     Config.trackerExactTelemetry = parseBoolean(readOption("GoblinTrackerExact", true), true)
+    Config.minimumBaseGuards = parseBoundedInteger(
+        readOption("MinimumBaseGuards", Config.minimumBaseGuards),
+        Config.minimumBaseGuards, 0, 16
+    )
+    Config.commanders = parseCommanders(readOption("GoblinCommanders", ""))
     return Config
+end
+
+local function playerUsername(player)
+    if player == nil or type(player.getUsername) ~= "function" then return "" end
+    local ok, value = pcall(function() return player:getUsername() end)
+    return ok and type(value) == "string" and value or ""
+end
+
+local function playerAccessLevel(player)
+    if player == nil then return "" end
+    if type(player.getAccessLevel) == "function" then
+        local ok, value = pcall(function() return player:getAccessLevel() end)
+        if ok and type(value) == "string" then return string.lower(value) end
+    end
+    if type(player.getRole) == "function" then
+        local ok, value = pcall(function() return player:getRole() end)
+        if ok and type(value) == "string" then return string.lower(value) end
+    end
+    return ""
+end
+
+function Config.isAuthorizedPlayer(player)
+    local name = playerUsername(player)
+    if name ~= "" and Config.commanders[string.lower(name)] == true then
+        return true
+    end
+    local level = playerAccessLevel(player)
+    if level == "admin" or level == "moderator" then
+        return true
+    end
+    if player ~= nil and type(player.isAdmin) == "function" then
+        local ok, value = pcall(function() return player:isAdmin() end)
+        if ok and value == true then return true end
+    end
+    return false
 end
 
 -- Exposed for the server manifest builder. It reads the dedicated bridge

@@ -1,43 +1,168 @@
 local Config = require("GoblinSurvivor/Config")
 local Net = require("GoblinSurvivor/Net")
+local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 
-local SquadManager = { squads = {}, maxMembers = 16, minimumBaseGuards = 1 }
+local SquadManager = {
+    squads = {},
+    maxMembers = 16,
+    minimumBaseGuards = 1,
+    loaded = false
+}
+
+local function persistentData()
+    if type(ModData) ~= "table" or type(ModData.getOrCreate) ~= "function" then
+        return nil
+    end
+    local ok, data = pcall(ModData.getOrCreate, "GoblinSurvivor")
+    return ok and type(data) == "table" and data or nil
+end
+
+local function onlinePlayer(name)
+    if type(name) ~= "string" or type(getOnlinePlayers) ~= "function" then return nil end
+    local ok, players = pcall(getOnlinePlayers)
+    if not ok or players == nil then return nil end
+    local count = type(players.size) == "function" and players:size() or #players
+    for index = 0, count - 1 do
+        local player = type(players.get) == "function" and players:get(index) or players[index + 1]
+        if player ~= nil and type(player.getUsername) == "function" then
+            local okName, value = pcall(function() return player:getUsername() end)
+            if okName and value == name then return player end
+        end
+    end
+    return nil
+end
 
 local function uniqueMembers(members)
     if type(members) ~= "table" or #members < 1 or #members > SquadManager.maxMembers then return nil end
     local result, seen = {}, {}
     for _, member in ipairs(members) do
         if not Net.safeId(member, 96) or seen[member] then return nil end
+        local entry = NPCRegistry.get(member)
+        if entry == nil or entry.active ~= true or entry.alive ~= true then
+            return nil
+        end
         seen[member] = true
         table.insert(result, member)
     end
     return result
 end
 
+local function save()
+    local data = persistentData()
+    if data == nil then return false end
+    data.squads = {}
+    for squadId, squad in pairs(SquadManager.squads) do
+        data.squads[squadId] = {
+            squad_id = squad.squad_id,
+            leader = squad.leader,
+            leader_player = squad.leader_player,
+            goblin_member = squad.goblin_member,
+            members = squad.members,
+            formation = squad.formation,
+            mission = squad.mission,
+            combat_policy = squad.combat_policy,
+            loot_policy = squad.loot_policy,
+            home_base = squad.home_base,
+            created_at = squad.created_at
+        }
+    end
+    if type(ModData.transmit) == "function" then
+        pcall(ModData.transmit, "GoblinSurvivor")
+    end
+    return true
+end
+
+function SquadManager.load()
+    if SquadManager.loaded then return end
+    SquadManager.minimumBaseGuards = Config.minimumBaseGuards or 1
+    local data = persistentData()
+    local saved = data and data.squads or nil
+    if type(saved) == "table" then
+        for squadId, record in pairs(saved) do
+            if type(record) == "table"
+                and Net.safeId(squadId, 96)
+                and Net.safeId(record.leader, 96)
+                and record.formation ~= nil then
+                local members = uniqueMembers(record.members)
+                local formation = record.formation
+                if members ~= nil and (formation == "line" or formation == "wedge"
+                    or formation == "column" or formation == "ring" or formation == "loose") then
+                    SquadManager.squads[squadId] = {
+                        squad_id = squadId,
+                        leader = record.leader,
+                        leader_player = record.leader_player,
+                        goblin_member = record.goblin_member,
+                        members = members,
+                        formation = formation,
+                        mission = type(record.mission) == "string" and string.sub(record.mission, 1, 96) or "general expedition",
+                        combat_policy = type(record.combat_policy) == "string" and string.sub(record.combat_policy, 1, 32) or "defensive",
+                        loot_policy = type(record.loot_policy) == "string" and string.sub(record.loot_policy, 1, 32) or "useful",
+                        home_base = type(record.home_base) == "string" and string.sub(record.home_base, 1, 96) or "base.primary",
+                        created_at = type(record.created_at) == "number" and record.created_at or 0
+                    }
+                end
+            end
+        end
+    end
+    SquadManager.loaded = true
+end
+
 function SquadManager.form(args)
+    SquadManager.load()
     if type(args) ~= "table" or not Net.safeId(args.squad_id or "squad.primary", 96)
         or not Net.safeId(args.leader, 96) then return false, "invalid squad identity" end
+    local squadId = args.squad_id or "squad.primary"
+    local leader = args.leader
+    local leaderNpc = NPCRegistry.get(leader)
+    local leaderPlayer = onlinePlayer(leader)
+    if leaderNpc == nil and leaderPlayer == nil then
+        return false, "squad leader is not an online player or managed NPC"
+    end
     local members = uniqueMembers(args.members)
     if members == nil then return false, "invalid squad members" end
+    if leaderPlayer ~= nil then
+        local goblin = NPCRegistry.get(Config.npcId)
+        if goblin == nil or goblin.active ~= true or goblin.alive ~= true then
+            return false, "Goblin is unavailable for the expedition"
+        end
+        local foundGoblin = false
+        for _, member in ipairs(members) do
+            if member == Config.npcId then foundGoblin = true break end
+        end
+        if not foundGoblin then return false, "human-led squads must include Goblin" end
+    end
     local formation = args.formation or "loose"
     if formation ~= "line" and formation ~= "wedge" and formation ~= "column"
         and formation ~= "ring" and formation ~= "loose" then return false, "invalid formation" end
-    local squadId = args.squad_id or "squad.primary"
     SquadManager.squads[squadId] = {
-        squad_id = squadId, leader = args.leader, members = members, formation = formation
+        squad_id = squadId,
+        leader = leader,
+        leader_player = leaderPlayer ~= nil and leader or nil,
+        goblin_member = Config.npcId,
+        members = members,
+        formation = formation,
+        mission = type(args.mission) == "string" and string.sub(args.mission, 1, 96) or "general expedition",
+        combat_policy = "defensive",
+        loot_policy = "useful",
+        home_base = "base.primary",
+        created_at = os.time()
     }
+    save()
     return true, "squad formed"
 end
 
 function SquadManager.dismiss(args)
+    SquadManager.load()
     local squadId = type(args) == "table" and args.squad_id or nil
     if not Net.safeId(squadId or "", 96) then return false, "invalid squad id" end
     if SquadManager.squads[squadId] == nil then return false, "squad is unknown" end
     SquadManager.squads[squadId] = nil
+    save()
     return true, "squad dismissed"
 end
 
 function SquadManager.snapshot()
+    SquadManager.load()
     return SquadManager.squads
 end
 

@@ -151,6 +151,17 @@ def _id_list(value: Any, field: str) -> list[str]:
     return [_id(item, f"{field} item") for item in value]
 
 
+def _member_request(value: Any, field: str) -> int | list[str]:
+    # A commander can ask for a bounded number of additional NPCs without
+    # needing to know Bandits2 entity ids.  The deterministic squad manager
+    # resolves that count to actual available NPCs.
+    if field == "requested_members" and isinstance(value, int) and not isinstance(value, bool):
+        if not 1 <= value <= 15:
+            raise IntentError("requested_members count must be between 1 and 15")
+        return value
+    return _id_list(value, field)
+
+
 class IntentValidator:
     def __init__(self, *, max_bytes: int = MAX_INTENT_BYTES) -> None:
         self.max_bytes = max_bytes
@@ -237,7 +248,7 @@ class IntentValidator:
             result["squad_id"] = _id(raw["squad_id"], "squad_id")
         for key in ("requested_members", "members"):
             if key in raw:
-                result[key] = _id_list(raw[key], key)
+                result[key] = _member_request(raw[key], key)
         if intent == "FORM_SQUAD" and "requested_members" not in result and "members" not in result:
             raise IntentError("FORM_SQUAD requires requested_members")
         if intent == "FORM_SQUAD" and "leader" not in result:

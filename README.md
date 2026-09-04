@@ -26,8 +26,11 @@ behavior. Joining clients therefore need the same Workshop dependencies that
 the server advertises; Steam can download them as part of the server's
 `WorkshopItems=` loadout. The relay forwards only a local player's chat when
 the message mentions Goblin; the server verifies the sender, redacts
-coordinate-like text, and sends the event to Python/Qwen. Goblin is still a
-server-side NPC, not a Steam account or player client.
+coordinate-like text, and sends the event to Python/Qwen. Authorized chat
+requests also carry a one-use server-minted capability for squad/job/base
+mutations; the capability is never included in the Qwen prompt and is
+validated again by the server command loop. Goblin is still a server-side
+NPC, not a Steam account or player client.
 
 ## Development
 

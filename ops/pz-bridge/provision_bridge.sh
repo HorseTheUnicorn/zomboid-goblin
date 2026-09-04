@@ -122,6 +122,8 @@ elif [[ ! -e "$config_file" ]]; then
         'GoblinNpcName=Goblin' \
         'GoblinNpcProgram=Companion' \
         'GoblinNpcProtected=true' \
+        'GoblinCommanders=' \
+        'MinimumBaseGuards=1' \
         'GoblinTrackerExact=true' > "$config_file"
 fi
 chown root:goblinbridge "$config_file"

@@ -283,6 +283,11 @@ class TacticalController:
             "PATROL",
             "CLEAR_BUILDING",
             "ENTER_VEHICLE",
+            "FLEE",
+            "RETREAT",
+            "REGROUP",
+            "GO_HOME",
+            "RETURN_TO_BASE",
         } and not isinstance(target, dict):
             return ControllerResult(False, None, "intent target is missing")
         target_kind = target.get("kind") if isinstance(target, dict) else None
@@ -293,7 +298,8 @@ class TacticalController:
             target_kind = None
             target_label = None
         item = intent.data.get("item")
-        members = intent.data.get("members", intent.data.get("requested_members", []))
+        members_value = intent.data.get("members", intent.data.get("requested_members", []))
+        members = members_value if isinstance(members_value, (list, tuple)) else []
         result = SafeAction(
             action=action,
             priority=intent.data.get("priority", 1),

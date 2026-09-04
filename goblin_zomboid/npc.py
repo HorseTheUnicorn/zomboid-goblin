@@ -18,6 +18,9 @@ from .protocol import make_message, new_request_id
 
 
 NPC_ID = "goblin.primary"
+PRIVILEGED_ACTIONS = frozenset(
+    {"FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "BUILD"}
+)
 
 
 @dataclass(frozen=True)
@@ -71,12 +74,25 @@ class NpcBodyDriver:
         self.control_ready = bool(control_ready)
         self.npc_engine_ready = bool(npc_engine_ready)
 
-    def execute(self, action: SafeAction) -> DriverResult:
+    def execute(
+        self, action: SafeAction, *, authority_token: str | None = None
+    ) -> DriverResult:
         admitted = self.gate.admit(action)
         if not admitted.accepted:
             return admitted
         if action.npc_id != self.npc_id:
             return DriverResult(False, "rejected", "unknown NPC id")
+        if action.action.value in PRIVILEGED_ACTIONS:
+            if (
+                not isinstance(authority_token, str)
+                or not authority_token
+                or len(authority_token) > 128
+            ):
+                return DriverResult(
+                    False,
+                    "rejected",
+                    "privileged NPC action requires an authorized in-game request",
+                )
         if not self.available:
             return DriverResult(False, "sensor_only", "NPC engine contract is unavailable")
 
@@ -88,6 +104,8 @@ class NpcBodyDriver:
             "reason": action.reason[:240],
             "controller_action": action.as_dict(),
         }
+        if action.action.value in PRIVILEGED_ACTIONS:
+            fields["authority_token"] = authority_token
         if action.target_kind is not None:
             fields["target"] = {
                 "kind": action.target_kind,

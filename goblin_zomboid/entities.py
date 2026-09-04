@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
@@ -36,6 +36,14 @@ class Squad:
     leader: str
     members: tuple[str, ...]
     formation: str = "loose"
+    leader_player: str | None = None
+    goblin_member: str | None = None
+    npc_members: tuple[str, ...] = ()
+    mission: str = "general expedition"
+    combat_policy: str = "defensive"
+    loot_policy: str = "useful"
+    home_base: str = "base.primary"
+    created_at: int = 0
 
 
 class EntityRegistry:
@@ -79,26 +87,88 @@ class SquadManager:
         self.squads: dict[str, Squad] = {}
 
     def choose_members(
-        self, requested: Iterable[str], *, squad_id: str = "squad.primary", leader: str, max_size: int = 8
+        self,
+        requested: int | Iterable[str],
+        *,
+        squad_id: str = "squad.primary",
+        leader: str,
+        max_size: int = 8,
     ) -> tuple[str, ...]:
-        if not valid_entity_id(leader) or not self.registry.known_npc(leader):
-            raise ValueError("unknown squad leader")
+        if not valid_entity_id(leader):
+            raise ValueError("invalid squad leader")
         if not 1 <= max_size <= 16:
             raise ValueError("invalid squad size")
-        candidates = [leader]
-        for entity_id in requested:
+
+        leader_is_player = self.registry.known_player(leader)
+        leader_is_npc = self.registry.known_npc(leader)
+        if not leader_is_player and not leader_is_npc:
+            raise ValueError("unknown squad leader")
+
+        if leader_is_player:
+            goblin = self.registry.npcs.get("goblin.primary")
+            if goblin is None or not goblin.alive or not goblin.active or goblin.incapacitated:
+                raise ValueError("Goblin is unavailable for the expedition")
+            candidates = ["goblin.primary"]
+        else:
+            leader_entity = self.registry.npcs[leader]
+            if not leader_entity.alive or not leader_entity.active or leader_entity.incapacitated:
+                raise ValueError("squad leader is unavailable")
+            candidates = [leader]
+
+        if isinstance(requested, int) and not isinstance(requested, bool):
+            if not 1 <= requested <= max_size - len(candidates):
+                raise ValueError("requested member count exceeds squad capacity")
+            requested_ids: Iterable[str] = sorted(self.registry.npcs)
+        elif isinstance(requested, Iterable) and not isinstance(requested, (str, bytes)):
+            requested_ids = requested
+        else:
+            raise ValueError("requested members must be ids or a bounded count")
+
+        requested_limit = requested if isinstance(requested, int) else None
+        selected_extras = 0
+        for entity_id in requested_ids:
             if not valid_entity_id(entity_id) or entity_id in candidates:
                 continue
             entity = self.registry.npcs.get(entity_id)
             if entity is None or not entity.alive or not entity.active or entity.incapacitated or entity.critical_worker:
                 continue
+            if entity.role == "guard" and not self._guard_can_leave(candidates, entity_id):
+                continue
             candidates.append(entity_id)
-            if len(candidates) >= max_size:
+            selected_extras += 1
+            if len(candidates) >= max_size or (
+                requested_limit is not None and selected_extras >= requested_limit
+            ):
                 break
         return tuple(candidates)
 
+    def _guard_can_leave(self, selected: Iterable[str], candidate: str) -> bool:
+        available = sum(
+            1 for entity in self.registry.npcs.values()
+            if entity.role == "guard" and entity.alive and entity.active and not entity.incapacitated
+        )
+        leaving = sum(
+            1 for entity_id in selected
+            if self.registry.npcs.get(entity_id) is not None
+            and self.registry.npcs[entity_id].role == "guard"
+        )
+        candidate_entity = self.registry.npcs.get(candidate)
+        if candidate_entity is not None and candidate_entity.role == "guard":
+            leaving += 1
+        return available - leaving >= self.minimum_base_guards
+
     def form(
-        self, squad_id: str, *, leader: str, requested: Iterable[str], formation: str = "loose", max_size: int = 8
+        self,
+        squad_id: str,
+        *,
+        leader: str,
+        requested: int | Iterable[str],
+        formation: str = "loose",
+        max_size: int = 8,
+        mission: str = "general expedition",
+        combat_policy: str = "defensive",
+        loot_policy: str = "useful",
+        created_at: int = 0,
     ) -> Squad:
         if not valid_entity_id(squad_id):
             raise ValueError("invalid squad id")
@@ -106,7 +176,22 @@ class SquadManager:
         if formation not in _FORMATIONS:
             raise ValueError("unsupported formation")
         members = self.choose_members(requested, squad_id=squad_id, leader=leader, max_size=max_size)
-        squad = Squad(squad_id, leader, members, formation)
+        leader_player = leader if self.registry.known_player(leader) else None
+        goblin_member = "goblin.primary" if "goblin.primary" in members else None
+        npc_members = tuple(member for member in members if member != goblin_member)
+        squad = Squad(
+            squad_id,
+            leader,
+            members,
+            formation,
+            leader_player=leader_player,
+            goblin_member=goblin_member,
+            npc_members=npc_members,
+            mission=mission[:96] if isinstance(mission, str) else "general expedition",
+            combat_policy=combat_policy[:32] if isinstance(combat_policy, str) else "defensive",
+            loot_policy=loot_policy[:32] if isinstance(loot_policy, str) else "useful",
+            created_at=int(created_at),
+        )
         self.squads[squad_id] = squad
         return squad
 
@@ -169,4 +254,3 @@ class JobManager:
         self.assignments[npc_id] = job
         entity.role = job
         return job
-

@@ -39,6 +39,25 @@ class BrokenQwen:
         raise QwenError("test model outage")
 
 
+class PrivilegedQwen:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.contexts: list[object] = []
+
+    def propose_intent(self, context: object):
+        self.calls += 1
+        self.contexts.append(context)
+        return IntentValidator().validate(
+            {
+                "intent": "FORM_SQUAD",
+                "mode": "PARTY",
+                "leader": "Alice",
+                "requested_members": ["goblin.primary"],
+                "formation": "loose",
+            }
+        )
+
+
 class NpcServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = Path(tempfile.mkdtemp(prefix="goblin-service-npc-"))
@@ -169,6 +188,77 @@ class NpcServiceTests(unittest.TestCase):
             result = service.run_once()
             self.assertEqual(result.status, "fallback_command_published")
             self.assertEqual(service.last_action["action"], "FLEE")
+        finally:
+            service.close()
+
+    def test_authorized_chat_grant_reaches_command_but_not_qwen(self) -> None:
+        qwen = PrivilegedQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="npc",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                ),
+            )
+            service.store.publish(
+                "events",
+                make_message(
+                    "event.chat", timestamp_ms=2_000_000,
+                    speaker="Alice", text="Goblin, form our squad.",
+                    authorized=True, authority_token="grant-private-1",
+                ),
+                stem="authorized-chat",
+            )
+            result = service.run_once()
+            self.assertEqual(result.status, "npc_command_published")
+            self.assertNotIn("authority_token", str(qwen.contexts[0]))
+            item = next(service.store.iter_ready("commands"))
+            command = service.store.read_ready(item)
+            self.assertEqual(command.fields["authority_token"], "grant-private-1")
+            self.assertNotIn("authority_token", command.fields["controller_action"])
+        finally:
+            service.close()
+
+    def test_untrusted_chat_cannot_authorize_privileged_qwen_plan(self) -> None:
+        qwen = PrivilegedQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="npc",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                ),
+            )
+            service.store.publish(
+                "events",
+                make_message(
+                    "event.chat", timestamp_ms=2_000_000,
+                    speaker="Alice", text="Goblin, form our squad.",
+                    authorized=False,
+                ),
+                stem="untrusted-chat",
+            )
+            result = service.run_once()
+            self.assertEqual(result.status, "controller_rejected")
+            self.assertIn("authorized", result.detail)
+            self.assertEqual(list(service.store.iter_ready("commands")), [])
         finally:
             service.close()
 
