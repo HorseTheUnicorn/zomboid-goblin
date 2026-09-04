@@ -7,6 +7,13 @@ commands, and persistence around that body. The Python service on `.76`
 supplies bounded decisions and a read-only tracker. No Steam/PZ client is
 installed or required on `.76`.
 
+This repository is the own Goblin mod built on top of Bandits2. Bandits2 is a
+required framework dependency, not a replacement for GoblinSurvivor and not a
+source tree copied into this project. GoblinSurvivor calls the verified
+Bandits2 server APIs to create and drive the networked body, then owns the
+Goblin-specific identity, friendly/protection policy, persistence, chat, and
+command rules.
+
 ## Runtime layout
 
 - `.03` (`192.168.0.3`): dedicated PZ server, existing save, Bandits2

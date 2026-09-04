@@ -22,15 +22,16 @@ Role: Goblin AI host.
   was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the `623f3c1` checkout at
-  `/home/goblin/zomboid-goblin-623f3c1`; this build includes deterministic
+- The agent and relay are running from the `07f8f85` checkout at
+  `/home/goblin/zomboid-goblin-07f8f85`; this build includes deterministic
   survival fallback, event-driven Qwen planning, persistent settlement
-  assignments, and the bounded SSE tracker stream.
+  assignments, the bounded SSE tracker stream, and the read-only B42 map UI.
 - The B42 tracker map cache is installed read-only at
   `/home/goblin/share/pz-map/b42/muldraugh`; it contains 4,914 current
   `biomemap` tiles from `.03` (20 MB on disk). The tracker UI is served from
-  the checkout's `web/` directory once the service is updated to the map/UI
-  revision.
+  the checkout's `web/` directory. Live checks returned HTTP 200 for `/` and
+  an in-bounds map tile, HTTP 404 for an out-of-bounds tile, and HTTP 405 for
+  a POST attempt.
 
 ## `.03` — `192.168.0.3` / Proxmox CT100
 

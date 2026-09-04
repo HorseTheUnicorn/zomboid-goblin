@@ -20,15 +20,27 @@ protection hooks, separate coarse/exact telemetry, semantic target resolution,
 chat forwarding, a narrow nearest-zombie combat bridge, and Bandits2-backed
 settlement assignment persistence for jobs, guards, and squads.
 
-The `.76` agent/relay runtime remains at revision `623f3c1`; the follow-up
-`ecb40f4` change is the Bandits2-backed mod package and does not change the
-Python runtime. The `.03` server package and the Windows client package are
-now at `ecb40f4`. The dedicated servertest profile advertises Workshop item
+The `.76` agent/relay runtime and read-only tracker are now running from the
+`07f8f85` checkout at `/home/goblin/zomboid-goblin-07f8f85`; this includes the
+B42 map UI, bounded tile routes, and HEAD support. The `.03` server package
+and the Windows client package remain at the Bandits2-backed mod revision
+`ecb40f4`. The dedicated servertest profile advertises Workshop item
 `3268487204` and loads `Bandits2` before `GoblinSurvivor`; the server was
 restarted and its fresh log reports `adapter=bandits2 friendly=true
 control_ready=true`. Goblin speech now uses the verified Bandits2 body chat
 primitive, while the framework's canned `Bandit.Say` helper remains behind
 the adapter boundary.
+
+The important distinction is intentional: GoblinSurvivor is our own mod, and
+Bandits2 is its runtime dependency/body engine. We use Bandits2's verified
+public API rather than copying or modifying Bandits2 source. The custom policy
+and persistence layer is therefore updateable independently while retaining
+Bandits2's networked NPC implementation and friendly `Companion` behavior.
+
+The tracker is live on `.76`: `/` returns the read-only website,
+`/api/map/manifest` returns the B42 map metadata, and a bounded
+`/map/biomemap_<x>_<y>.png` tile returns successfully. The current map layer
+still needs in-world landmark calibration once a human player is online.
 
 The next live acceptance check is deliberately concrete: join the dedicated
 server with a client that has both Workshop packages. The bridge state must
