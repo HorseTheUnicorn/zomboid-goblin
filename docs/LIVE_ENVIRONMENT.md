@@ -46,8 +46,8 @@ Role: Project Zomboid dedicated server.
 - The active multiplayer save is under
   `/home/zomboid/Zomboid/Saves/Multiplayer/servertest`.
 - The bridge endpoint is `/home/zomboid/Zomboid/Lua/goblin-bridge`.
-- The live server now has the Bandits2-backed GoblinSurvivor package from the
-  current deployed revision recorded below; the package reports
+- The live server now has the Bandits2-backed GoblinSurvivor package from
+  revision `a9224db`; the package reports
   `adapter=bandits2`, `friendly=true`, and `control_ready=true` during
   bootstrap. The active package includes the managed-friendly roster.
 - The required Bandits2 cache is present at
@@ -55,7 +55,8 @@ Role: Project Zomboid dedicated server.
   `servertest.ini` now includes Workshop item `3268487204` and loads
   `Bandits2` before `GoblinSurvivor`; Bandits2 source is not copied into this
   repository.
-- GoblinSurvivor is currently installed as the direct server package. The
+- GoblinSurvivor is currently installed as the direct server package at
+  `/home/zomboid/Zomboid/mods/GoblinSurvivor/42`. The
   previously used Workshop ID `3794624741` was checked against Steam and is
   no longer available, so it is intentionally not included in
   `WorkshopItems=`. A new unlisted publication must be created before the
@@ -74,17 +75,20 @@ Role: Project Zomboid dedicated server.
 
 The native Windows client is the actual player/test client, not the `.76`
 agent host. Its direct GoblinSurvivor package is synchronized from revision
-`58ff9a2` at both:
+`a9224db` at:
 
-- `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor\Contents\mods\GoblinSurvivor`
 - `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
+
+The outer Workshop upload package for the same revision is at:
+
+- `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor`
 
 The active paths are direct local syncs rather than a Steam Workshop delivery;
 the running client must be restarted before this revision can be exercised.
 The public Workshop publication still needs to be updated to this exact
-revision before other users can receive GoblinSurvivor automatically. Any
-pre-sync copies are retained only under an explicit revision-named sibling
-path.
+revision before other users can receive GoblinSurvivor automatically. Server
+package backups are retained under `/home/zomboid/backups`, outside the PZ mod
+search path.
 
 ## Operational boundary
 
@@ -93,4 +97,4 @@ deployment changed only the server-side GoblinSurvivor package and the mod
 ordering/Workshop declaration in `servertest.ini`; it did not copy Bandits2
 source into the repository or alter the multiplayer save. Future server-side
 mod changes require a separate review and a small, timestamped safety backup
-before deployment.
+outside `Zomboid/mods` before deployment.

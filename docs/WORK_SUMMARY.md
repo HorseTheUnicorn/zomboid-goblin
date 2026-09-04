@@ -20,18 +20,26 @@ protection hooks, separate coarse/exact telemetry, semantic target resolution,
 chat forwarding, a narrow nearest-zombie combat bridge, and Bandits2-backed
 settlement assignment persistence for jobs, guards, and squads.
 
-The `.76` agent/relay runtime and read-only tracker now run from the
-`58ff9a2` checkout at `/home/goblin/zomboid-goblin-58ff9a2`; this includes the
-B42 map UI, bounded tile routes, HEAD support, and the managed-friendly roster.
-The `.03` server package and the two direct local Windows package paths are
-now synchronized from the same `58ff9a2` revision. The running Windows client
-must be restarted before testing this roster build; other users still need the
-exact corresponding Workshop publication. The dedicated servertest
-profile advertises Workshop item `3268487204` and loads `Bandits2` before
-`GoblinSurvivor`; the server was restarted and its fresh log reports
-`adapter=bandits2 friendly=true control_ready=true`. Goblin speech now uses
+The `.76` agent/relay runtime and read-only tracker continue to run from the
+`58ff9a2` checkout at `/home/goblin/zomboid-goblin-58ff9a2`; the newer
+`a9224db` change is server-side Bandits2 profile persistence and does not
+require an agent restart. The `.03` server package and both Windows package
+forms are deployed from `a9224db`. The running Windows client must be
+restarted before testing this revision; other users still need the exact
+corresponding Workshop publication. The dedicated servertest profile
+advertises Workshop item `3268487204` and loads `Bandits2` before
+`GoblinSurvivor`. The server was restarted with no players connected; its
+fresh boot has no GoblinSurvivor/Bandits2 lookup errors. Goblin speech now uses
 the verified Bandits2 body chat primitive, while the framework's canned
 `Bandit.Say` helper remains behind the adapter boundary.
+
+The server package is installed at the direct local-mod path
+`/home/zomboid/Zomboid/mods/GoblinSurvivor/42`. The Windows test has the
+matching direct package at `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor` and
+the outer Workshop staging package at
+`C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor`. Revision backups are kept
+under `/home/zomboid/backups`, never as sibling directories under
+`Zomboid/mods`, because the PZ mod loader can discover those siblings too.
 
 The old GoblinSurvivor Workshop item `3794624741` was checked and is no longer
 available. It is therefore not advertised by the server: the current local
@@ -50,10 +58,12 @@ The tracker is live on `.76`: `/` returns the read-only website,
 `/map/biomemap_<x>_<y>.png` tile returns successfully. The current map layer
 still needs in-world landmark calibration once a human player is online.
 
-The next live acceptance check is deliberately concrete: join the dedicated
-server with a client that has both Workshop packages. The bridge state must
-eventually show `body_mode=npc`, `control_ready=true`, and
-`npc_engine_ready=true` after a player is online.
+The next live acceptance check is deliberately concrete: restart the Windows
+client and join the dedicated server with both Workshop dependencies present.
+The bridge state must eventually show `body_mode=npc`, `control_ready=true`,
+and `npc_engine_ready=true` after a player is online. The current tracker
+check is still the safe zero-player state, so the in-world body bind has not
+yet been exercised after `a9224db`.
 
 Local checks cover strict bridge behavior, semantic coordinate separation, NPC
 command publication, deterministic squad/job policy, and tracker read-only

@@ -22,6 +22,13 @@ config: /home/zomboid/Zomboid/Server/servertest.ini
 bridge: /home/zomboid/Zomboid/Lua/goblin-bridge
 ```
 
+For a direct server install, the package root is
+`/home/zomboid/Zomboid/mods/GoblinSurvivor` and the B42 files are directly
+under its `42/` directory. The repository's `mod/` directory is the Workshop
+upload layout; its corresponding local package is
+`mod/Contents/mods/GoblinSurvivor`. Do not copy the outer `mod/` directory
+into the server's local-mod directory.
+
 The bridge `config.ini` also accepts `GoblinCommanders=Name1,Name2`,
 `MinimumBaseGuards=1`, and the bounded `GoblinManagedNpcCount=3` roster
 setting. Set the count to `0` when only the protected Goblin body is wanted.
@@ -31,7 +38,10 @@ base from inside the game, an authorized player sends `!goblin base set`.
 That command is resolved and persisted on `.03`; it is not a Qwen command.
 
 Before restarting, take a bounded backup of the server INI, GoblinSurvivor
-package, and save. Do not copy Bandits2 source into this repository. Restart
+package, and save. Keep package backups outside `Zomboid/mods` (for example,
+under `/home/zomboid/backups`); sibling directories there can be discovered as
+additional copies by the PZ mod loader. Do not copy Bandits2 source into this
+repository. Restart
 only the dedicated-server unit and verify its process and UDP query/game
 ports. Inspect the newest DebugLog for Lua errors and confirm the bootstrap
 reports `adapter=bandits2 friendly=true control_ready=true`.
@@ -49,6 +59,12 @@ paths from the configured map root. Keep Qwen loopback-only.
 For a tunnel origin on the Proxmox host, set the tracker bind explicitly to
 `GOBLIN_TRACKER_BIND=192.168.0.76`; otherwise the default loopback bind keeps
 the tracker private.
+
+On Windows, keep both forms synchronized from the same revision: the direct
+client package is `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`, while the
+Workshop staging package is
+`C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor` and contains
+`Contents\mods\GoblinSurvivor`.
 
 To refresh the live `.76` checkout without copying secrets, clone the pushed
 revision into a new directory, verify the package, and update both the agent
