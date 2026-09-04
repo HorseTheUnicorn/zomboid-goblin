@@ -1,20 +1,22 @@
 # NPC architecture
 
 `goblin.primary` is the sole stable Goblin identity. `NPCRegistry` binds that
-identity to a Bandits-backed server zombie, scans for it after restarts, and
-requests a replacement through the observed `BanditServer.Spawner.Individual`
-API when an online player anchor exists. `GoblinNPC` exposes the narrow
-profile/state surface used by telemetry and commands.
+identity to a server-created, networked vanilla `IsoZombie` body marked with
+this mod's own `getModData()` fields. It scans the loaded zombie population
+after restarts and requests a replacement through the documented
+`addZombiesInOutfit` server Lua function when an online player anchor exists.
+`GoblinNPC` exposes the narrow profile/state surface used by telemetry and
+commands.
 
 The execution path is:
 
 ```text
 ValidatedIntent -> SafetyController -> SafeAction -> NpcBodyDriver
--> command.npc_action -> CommandLoop -> ActionExecutor -> BanditsAdapter
+-> command.npc_action -> CommandLoop -> ActionExecutor -> VanillaNpcAdapter
 ```
 
 Protection is reapplied on every server tick. It records the protected NPC
-profile, resets Bandits infection/needs fields, uses exposed engine hooks when
-available, and relies on the persistent recovery loop when a hook is absent.
+profile, disables body damage and vanilla aggro when the exposed hooks exist,
+and relies on the persistent recovery loop when a hook is absent.
 Unsupported combat, inventory, vehicle, or building primitives remain
-rejected until their exact Build 42/Bandits contracts are verified.
+rejected until their exact Build 42 contracts are verified.

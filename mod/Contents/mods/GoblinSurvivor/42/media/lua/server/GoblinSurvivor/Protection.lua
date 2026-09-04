@@ -1,5 +1,4 @@
 local Config = require("GoblinSurvivor/Config")
-local BanditsAdapter = require("GoblinSurvivor/BanditsAdapter")
 
 local Protection = {}
 
@@ -27,14 +26,10 @@ function Protection.apply(zombie)
     -- Use engine methods only when this Build 42 runtime exposes them.  The
     -- recovery loop remains the authoritative fallback for missing hooks.
     callIfPresent(zombie, "setImmortal", true)
+    callIfPresent(zombie, "setNoDamage", true)
+    callIfPresent(zombie, "setTarget", nil)
+    callIfPresent(zombie, "setUseless", true)
     callIfPresent(zombie, "setHealth", 1.0)
-    local brain = BanditsAdapter.getBrain(zombie)
-    if brain ~= nil then
-        brain.infection = 0
-        brain.hunger = 0
-        brain.thirst = 0
-        brain.fatigue = 0
-    end
     return true
 end
 

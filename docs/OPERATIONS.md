@@ -18,11 +18,12 @@ ss -lunp | grep -E '16261|16262'
 tail -n 200 /home/zomboid/Zomboid/Logs/*DebugLog-server.txt
 ```
 
-If the server reports that the Bandits adapter is unavailable, stop issuing
-commands and inspect the installed Workshop package/API notes. The adapter is
-designed to fail closed. If the Goblin is absent, keep the server running with
-players online long enough for the Bandits individual spawn anchor to become
-available; the registry retries and persists the stable identity.
+If the server reports that the vanilla NPC API is unavailable, stop issuing
+commands and inspect the current Build 42 server log before changing the
+loadout. The adapter is designed to fail closed. If the Goblin is absent, keep
+the server running with a player online long enough for the server-side spawn
+anchor to become available; the registry retries and persists the stable
+identity.
 
 Never place Steam, PZ server, VNC, Qwen admin, or bridge credentials in shell
 arguments, logs, chat, tracker state, or browser URLs.

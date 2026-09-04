@@ -1,5 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
-local BanditsAdapter = require("GoblinSurvivor/BanditsAdapter")
+local VanillaNpcAdapter = require("GoblinSurvivor/VanillaNpcAdapter")
 
 local NPCRegistry = {
     entries = {},
@@ -48,8 +48,7 @@ local function bindExisting()
     local count = type(list.size) == "function" and list:size() or #list
     for index = 0, count - 1 do
         local zombie = type(list.get) == "function" and list:get(index) or list[index + 1]
-        local brain = BanditsAdapter.getBrain(zombie)
-        if brain ~= nil and brain.bid == Config.npcId then
+        if VanillaNpcAdapter.isOwned(zombie) then
             local entry = NPCRegistry.entries[Config.npcId]
             entry.zombie = zombie
             entry.active = true
@@ -69,7 +68,7 @@ function NPCRegistry.load()
         npc_id = Config.npcId,
         name = Config.npcName,
         role = Config.npcRole,
-        bandit_id = Config.npcId,
+        engine = "vanilla-zombie",
         active = saved == nil or saved.active ~= false,
         alive = saved == nil or saved.alive ~= false,
         zombie = nil
@@ -132,14 +131,17 @@ function NPCRegistry.spawnGoblin()
     if anchor == nil then
         return nil, "waiting for an online player anchor"
     end
-    local ok, detail = BanditsAdapter.spawnIndividual(anchor, entry.bandit_id, Config.npcProgram)
+    local ok, detail, zombie = VanillaNpcAdapter.spawnIndividual(
+        anchor, entry.npc_id, Config.npcProgram
+    )
     if not ok then
         return nil, detail
     end
-    NPCRegistry.spawnPending = true
+    NPCRegistry.spawnPending = false
+    entry.zombie = zombie
     entry.alive = true
     NPCRegistry.save()
-    return nil, detail
+    return zombie, detail
 end
 
 function NPCRegistry.markRecovered(zombie)

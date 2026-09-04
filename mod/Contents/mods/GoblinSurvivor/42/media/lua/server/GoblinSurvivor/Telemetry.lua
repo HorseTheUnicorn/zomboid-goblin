@@ -1,7 +1,6 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
-local BanditsAdapter = require("GoblinSurvivor/BanditsAdapter")
 
 local Telemetry = {}
 

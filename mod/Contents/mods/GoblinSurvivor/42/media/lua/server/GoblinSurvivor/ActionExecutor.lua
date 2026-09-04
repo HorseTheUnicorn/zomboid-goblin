@@ -1,5 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
-local BanditsAdapter = require("GoblinSurvivor/BanditsAdapter")
+local VanillaNpcAdapter = require("GoblinSurvivor/VanillaNpcAdapter")
 local Perception = require("GoblinSurvivor/Perception")
 local Protection = require("GoblinSurvivor/Protection")
 local SquadManager = require("GoblinSurvivor/SquadManager")
@@ -21,8 +21,18 @@ local function safeText(value, maximum)
     return type(value) == "string" and #value > 0 and #value <= maximum
 end
 
-local function positionTask(point)
-    return {{ action = "GoTo", x = point.x, y = point.y, z = point.z }}
+local function positionTask(point, action, target)
+    local task = {
+        action = "GoTo",
+        mode = action,
+        x = point.x,
+        y = point.y,
+        z = point.z
+    }
+    if action == "FOLLOW" and type(target) == "table" then
+        task.target_player = target.player or target.name or target.label
+    end
+    return { task }
 end
 
 function ActionExecutor.execute(message, zombie)
@@ -35,8 +45,8 @@ function ActionExecutor.execute(message, zombie)
     if zombie == nil then
         return false, "Goblin NPC is not bound"
     end
-    if not BanditsAdapter.available() then
-        return false, "Bandits API contract is unavailable"
+    if not VanillaNpcAdapter.available() then
+        return false, "vanilla server NPC API is unavailable"
     end
     Protection.apply(zombie)
     local action = message.action
@@ -59,7 +69,7 @@ function ActionExecutor.execute(message, zombie)
         return InventoryManager.execute(message)
     end
     if action == "NOOP" or action == "HOLD_POSITION" or action == "REST" then
-        return BanditsAdapter.clearTasks(zombie)
+        return VanillaNpcAdapter.clearTasks(zombie)
     end
     if action == "SAY" then
         if not safeText(message.text, 240) then return false, "SAY text is invalid" end
@@ -72,7 +82,9 @@ function ActionExecutor.execute(message, zombie)
     if movementActions[action] then
         local point, detail = Perception.resolveTarget(message.target, zombie)
         if point == nil then return false, detail end
-        local ok, taskDetail = BanditsAdapter.setTasks(zombie, positionTask(point))
+        local ok, taskDetail = VanillaNpcAdapter.setTasks(
+            zombie, positionTask(point, action, message.target)
+        )
         return ok, taskDetail
     end
     if action == "BUILD" then return BuildManager.execute(message) end

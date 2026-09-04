@@ -1,7 +1,0 @@
-version=1
-id=3794624741
-title=GoblinSurvivor
-description=Build 42 multiplayer bridge for the Goblin Project Zomboid integration.
-description=Server-side persistent Goblin NPC integration; joining players do not need a control client.
-tags=Build 42;Multiplayer;Misc;WIP
-visibility=unlisted

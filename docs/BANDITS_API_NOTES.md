@@ -1,6 +1,6 @@
-# Bandits API notes
+# Historical Bandits API notes
 
-Status: downloaded and enabled on the live server on 2026-09-03.
+Status: inspection-only historical record; not a runtime dependency.
 
 The live server is Build 42.20.4. Its Workshop cache and active
 `WorkshopItems=` configuration were inspected through the Proxmox console.
@@ -57,11 +57,12 @@ not inferred from the Workshop description:
   `Delete(bid)`, `Get(bid)`, and `GetAll()` are present in the deployed custom
   data module.
 
-The deployed `BanditsAdapter.lua` currently relies only on the visibly
+An earlier revision used a `BanditsAdapter.lua` boundary around the visibly
 validated `Individual`, `Restore`, `Custom.Create/Get`, `Brain.Get/Add`, and
-brain-task fields. Movement is submitted as the observed `GoTo` task shape
-after the server resolves a semantic target. Combat, vehicle, inventory, and
-building actions stay unsupported until their exact contracts are inspected.
+brain-task fields. That adapter was removed from the runtime so the current
+mod does not depend on or repackage the Workshop item. The notes remain only to
+record why the dependency was retired and which code paths must not be revived
+without explicit permission and a fresh compatibility review.
 
 ## Remaining inspection before extending control
 
@@ -76,7 +77,8 @@ Before enabling NPC control, record the exact deployed files and functions for:
 - target handling, death/despawn, and multiplayer synchronization;
 - public extension hooks.
 
-`BanditsAdapter.lua` is the only module allowed to depend on those names. If a
-capability is absent, it must return an explicit unsupported result and let the
-deterministic safety layer choose a fallback. It must never claim that an NPC
-action succeeded merely because a command was accepted by the bridge.
+The current `VanillaNpcAdapter.lua` is the only module allowed to depend on
+body-specific Build 42 names. If a capability is absent, it must return an
+explicit unsupported result and let the deterministic safety layer choose a
+fallback. It must never claim that an NPC action succeeded merely because a
+command was accepted by the bridge.
