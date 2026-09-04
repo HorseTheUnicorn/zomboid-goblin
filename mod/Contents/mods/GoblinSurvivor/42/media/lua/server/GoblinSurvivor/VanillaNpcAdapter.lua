@@ -146,6 +146,7 @@ function VanillaNpcAdapter.prepare(body, npcId)
     callIfPresent(body, "setNoDamage", true)
     callIfPresent(body, "setTarget", nil)
     callIfPresent(body, "setDisplayName", Config.npcName)
+    callIfPresent(body, "transmitModData")
     return true, "vanilla NPC prepared"
 end
 

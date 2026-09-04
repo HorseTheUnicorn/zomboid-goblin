@@ -42,6 +42,14 @@ local function zombieList()
     return okList and zombies or nil
 end
 
+local function bodyExists(zombie)
+    if zombie == nil or type(zombie.isExistInTheWorld) ~= "function" then
+        return true
+    end
+    local ok, exists = pcall(function() return zombie:isExistInTheWorld() end)
+    return not ok or exists == true
+end
+
 local function bindExisting()
     local list = zombieList()
     if list == nil then return nil end
@@ -104,7 +112,10 @@ function NPCRegistry.findGoblin()
     if entry == nil or entry.zombie == nil then
         bindExisting()
     end
-    if entry.zombie ~= nil and type(entry.zombie.isDead) == "function" then
+    if entry.zombie ~= nil and not bodyExists(entry.zombie) then
+        entry.zombie = nil
+        entry.alive = false
+    elseif entry.zombie ~= nil and type(entry.zombie.isDead) == "function" then
         local okDead, dead = pcall(function() return entry.zombie:isDead() end)
         if okDead and dead then
             entry.zombie = nil
@@ -131,10 +142,12 @@ function NPCRegistry.spawnGoblin()
     if anchor == nil then
         return nil, "waiting for an online player anchor"
     end
+    NPCRegistry.spawnPending = true
     local ok, detail, zombie = VanillaNpcAdapter.spawnIndividual(
         anchor, entry.npc_id, Config.npcProgram
     )
     if not ok then
+        NPCRegistry.spawnPending = false
         return nil, detail
     end
     NPCRegistry.spawnPending = false
