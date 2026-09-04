@@ -6,7 +6,8 @@ coarse labels and distance buckets. The tracker APIs are read-only:
 
 - `GET /api/state`
 - `GET /api/events`
-- `GET /api/stream` (bounded SSE snapshot)
+- `GET /api/stream` (bounded SSE stream with an initial snapshot, live updates,
+  keepalives, and reconnect-safe re-snapshots)
 - `GET /api/history/goblin`
 - `GET /api/health`
 

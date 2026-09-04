@@ -206,8 +206,20 @@ class TrackerStore:
 class TrackerApp:
     """Read-only tracker API. There are deliberately no control endpoints."""
 
-    def __init__(self, store: TrackerStore) -> None:
+    def __init__(
+        self,
+        store: TrackerStore,
+        *,
+        max_streams: int = 8,
+        stream_seconds: float = 300.0,
+    ) -> None:
+        if max_streams < 1:
+            raise ValueError("max_streams must be positive")
+        if not 30.0 <= stream_seconds <= 3600.0:
+            raise ValueError("stream_seconds must be between 30 and 3600")
         self.store = store
+        self.stream_seconds = stream_seconds
+        self.stream_slots = threading.BoundedSemaphore(max_streams)
 
     def handle(self, method: str, path: str) -> tuple[int, dict[str, str], Any]:
         route = urlsplit(path).path
@@ -229,19 +241,97 @@ class TrackerApp:
         app = self
 
         class Handler(BaseHTTPRequestHandler):
+            @staticmethod
+            def _security_headers() -> dict[str, str]:
+                return {
+                    "X-Content-Type-Options": "nosniff",
+                    "Referrer-Policy": "no-referrer",
+                    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'",
+                    "X-Frame-Options": "DENY",
+                }
+
+            def _stream(self) -> None:
+                if not app.stream_slots.acquire(blocking=False):
+                    self.send_response(503)
+                    for key, value in self._security_headers().items():
+                        self.send_header(key, value)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", "40")
+                    self.end_headers()
+                    self.wfile.write(b'{"ok":false,"error":"stream capacity"}')
+                    return
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Cache-Control", "no-cache, no-store")
+                    self.send_header("Connection", "keep-alive")
+                    self.send_header("X-Accel-Buffering", "no")
+                    for key, value in self._security_headers().items():
+                        self.send_header(key, value)
+                    # The stream is deliberately lengthless; the bounded
+                    # lifetime below closes it so clients can reconnect.
+                    self.end_headers()
+
+                    def send(event: str, payload: Mapping[str, Any]) -> None:
+                        encoded = json.dumps(
+                            dict(payload), ensure_ascii=False, allow_nan=False,
+                            separators=(",", ":"),
+                        )
+                        body = (
+                            f"event: {event}\n"
+                            f"data: {encoded}\n\n"
+                        ).encode("utf-8")
+                        self.wfile.write(body)
+                        self.wfile.flush()
+
+                    self.wfile.write(b"retry: 2000\n\n")
+                    self.wfile.flush()
+                    sequence, state, events = app.store.wait_for_update(-1, 0)
+                    send(
+                        "snapshot",
+                        {
+                            "sequence": sequence,
+                            "state": app.store.public_state_from(state),
+                            "events": events,
+                        },
+                    )
+                    deadline = time.monotonic() + app.stream_seconds
+                    while time.monotonic() < deadline:
+                        timeout = min(15.0, max(0.1, deadline - time.monotonic()))
+                        next_sequence, next_state, next_events = app.store.wait_for_update(
+                            sequence, timeout
+                        )
+                        if next_sequence == sequence:
+                            self.wfile.write(b": keepalive\n\n")
+                            self.wfile.flush()
+                            continue
+                        sequence = next_sequence
+                        send(
+                            "update",
+                            {
+                                "sequence": sequence,
+                                "state": app.store.public_state_from(next_state),
+                                "events": next_events,
+                            },
+                        )
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    # A browser closing or reconnecting is normal for SSE.
+                    return
+                finally:
+                    app.stream_slots.release()
+
             def do_GET(self) -> None:
-                status, headers, payload = app.handle("GET", self.path)
                 if self.path.split("?", 1)[0] == "/api/stream":
-                    encoded = "data: " + json.dumps(payload, separators=(",", ":")) + "\n\n"
-                    body = encoded.encode("utf-8")
-                    content_type = "text/event-stream"
-                else:
-                    body = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
-                    content_type = headers.get("Content-Type", "application/json")
+                    self._stream()
+                    return
+                status, headers, payload = app.handle("GET", self.path)
+                body = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+                content_type = headers.get("Content-Type", "application/json")
                 self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
-                self.send_header("X-Content-Type-Options", "nosniff")
+                for key, value in self._security_headers().items():
+                    self.send_header(key, value)
                 for key, value in headers.items():
                     if key.lower() != "content-type":
                         self.send_header(key, value)

@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import unittest
+from urllib.request import urlopen
 
 from goblin_zomboid.controllers import Action, SafeAction
 from goblin_zomboid.entities import EntityRegistry, JobManager, SquadManager
@@ -105,6 +107,39 @@ class EntityAndTrackerTests(unittest.TestCase):
         self.assertEqual(public["npcs"][0]["x"], 100)
         self.assertEqual(TrackerApp(tracker).handle("POST", "/api/state")[0], 405)
         tracker.close()
+
+    def test_tracker_stream_sends_initial_snapshot_and_live_update(self) -> None:
+        tracker = TrackerStore(self.directory / "stream.sqlite3")
+        tracker.record_state({"npc_id": "goblin.primary", "npc_alive": False})
+        app = TrackerApp(tracker, stream_seconds=30)
+        server = app.server("127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        response = None
+        try:
+            response = urlopen(
+                f"http://127.0.0.1:{server.server_port}/api/stream", timeout=3
+            )
+            initial: list[bytes] = []
+            while b"event: snapshot\n" not in b"".join(initial):
+                line = response.readline()
+                self.assertNotEqual(line, b"")
+                initial.append(line)
+            tracker.record_state({"npc_id": "goblin.primary", "npc_alive": True})
+            update: list[bytes] = []
+            while b"event: update\n" not in b"".join(update):
+                line = response.readline()
+                self.assertNotEqual(line, b"")
+                update.append(line)
+            self.assertIn(b"event: update\n", b"".join(update))
+            self.assertIn(b"npc_alive", b"".join(update))
+        finally:
+            if response is not None:
+                response.close()
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+            tracker.close()
 
 
 if __name__ == "__main__":
