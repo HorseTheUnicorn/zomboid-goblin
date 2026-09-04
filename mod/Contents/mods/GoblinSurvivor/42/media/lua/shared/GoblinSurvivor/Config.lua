@@ -15,7 +15,11 @@ local Config = {
     defaultBridgeRoot = "goblin-bridge",
     heartbeatSeconds = 5,
     maxMessageBytes = 262144,
-    trackerExactTelemetry = true
+    trackerExactTelemetry = true,
+    -- Keep the first server-side body request out of the player's square.
+    -- This is a safety margin for runtimes where a newly-created vanilla
+    -- zombie has not yet received its friendly/protection state.
+    npcSpawnOffsetTiles = 16
 }
 
 local function parseBoolean(value, defaultValue)

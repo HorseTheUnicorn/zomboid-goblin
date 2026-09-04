@@ -110,6 +110,18 @@ function VanillaNpcAdapter.available()
     return type(addZombiesInOutfit) == "function"
 end
 
+function VanillaNpcAdapter.spawnPoint(anchor)
+    local point = position(anchor)
+    if point == nil then return nil end
+    local offset = tonumber(Config.npcSpawnOffsetTiles) or 16
+    if offset < 8 then offset = 8 end
+    return {
+        x = math.floor(point.x + offset),
+        y = math.floor(point.y + offset),
+        z = math.floor(point.z)
+    }
+end
+
 function VanillaNpcAdapter.capabilities()
     return {
         available = VanillaNpcAdapter.available(),
@@ -159,7 +171,9 @@ function VanillaNpcAdapter.spawnIndividual(anchor, npcId, _program)
         return false, "online player anchor has no position", nil
     end
 
-    local x, y, z = math.floor(point.x), math.floor(point.y), math.floor(point.z)
+    local spawnPoint = VanillaNpcAdapter.spawnPoint(anchor)
+    if spawnPoint == nil then return false, "online player anchor has no spawn point", nil, nil end
+    local x, y, z = spawnPoint.x, spawnPoint.y, spawnPoint.z
     -- The long overload asks the engine for an invulnerable, standing body.
     -- prepare() repeats the safety hooks after creation for runtimes that do
     -- not honor every optional argument.
@@ -172,16 +186,18 @@ function VanillaNpcAdapter.spawnIndividual(anchor, npcId, _program)
         -- Keep compatibility with runtimes exposing only the short overload.
         ok, spawned = pcall(addZombiesInOutfit, x, y, z, 1, "Survivor", 50)
     end
-    if not ok then
-        return false, "vanilla server NPC spawn failed", nil
-    end
+    if not ok then return false, "vanilla server NPC spawn failed", nil, nil end
     local body = firstValue(spawned)
-    if body == nil then
-        return false, "vanilla server NPC spawn returned no body", nil
+    if body ~= nil then
+        local prepared, detail = VanillaNpcAdapter.prepare(body, npcId)
+        if not prepared then return false, detail, nil, nil end
+        return true, "vanilla NPC spawned", body, spawnPoint
     end
-    local prepared, detail = VanillaNpcAdapter.prepare(body, npcId)
-    if not prepared then return false, detail, nil end
-    return true, "vanilla NPC spawned", body
+    -- Some B42 Java/Lua bridges return an empty value even though the engine
+    -- accepted the request.  The OnZombieCreate hook binds that one body;
+    -- callers must not retry this request in a tight loop.
+    return true, "vanilla NPC spawn submitted; awaiting OnZombieCreate", nil,
+        spawnPoint
 end
 
 function VanillaNpcAdapter.getBrain(body)

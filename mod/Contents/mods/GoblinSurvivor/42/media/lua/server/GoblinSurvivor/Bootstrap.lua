@@ -2,6 +2,7 @@ local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local Persistence = require("GoblinSurvivor/Persistence")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
+local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local CommandLoop = require("GoblinSurvivor/CommandLoop")
 
@@ -70,6 +71,11 @@ end
 if Events and Events.OnZombieDead and type(Events.OnZombieDead.Add) == "function" then
     Events.OnZombieDead.Add(function(zombie)
         GoblinNPC.onZombieDeath(zombie)
+    end)
+end
+if Events and Events.OnZombieCreate and type(Events.OnZombieCreate.Add) == "function" then
+    Events.OnZombieCreate.Add(function(zombie)
+        NPCRegistry.onZombieCreate(zombie)
     end)
 end
 
