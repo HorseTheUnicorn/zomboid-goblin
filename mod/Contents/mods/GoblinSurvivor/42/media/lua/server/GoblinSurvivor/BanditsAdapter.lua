@@ -163,10 +163,20 @@ function BanditsAdapter.capabilities()
 end
 
 local function bodyBrain(body)
+    -- NPCRegistry asks for status while the persistent identity has no live
+    -- body (normal during startup, logout, or a bounded respawn cooldown).
+    -- Bandits2's Get function dereferences its argument immediately, so do
+    -- not pass a missing/non-entity body into the framework API.
+    if body == nil or not functionExists(body, "getModData") then
+        return nil
+    end
     local brain = rawget(_G, "BanditBrain")
     if type(brain) ~= "table" or not functionExists(brain, "Get") then
         return nil
     end
+    -- Avoid calling Bandits2.Get for an object whose mod-data contract is not
+    -- available.  This is also the safe path for partially removed bodies.
+    if dataFor(body) == nil then return nil end
     local ok, result = invoke(brain, "Get", body)
     return ok and type(result) == "table" and result or nil
 end
