@@ -120,7 +120,7 @@ elif [[ ! -e "$config_file" ]]; then
         'GoblinBridgeRoot=goblin-bridge' \
         'GoblinNpcId=goblin.primary' \
         'GoblinNpcName=Goblin' \
-        'GoblinNpcProgram=Bandit' \
+        'GoblinNpcProgram=Companion' \
         'GoblinNpcProtected=true' \
         'GoblinTrackerExact=true' > "$config_file"
 fi

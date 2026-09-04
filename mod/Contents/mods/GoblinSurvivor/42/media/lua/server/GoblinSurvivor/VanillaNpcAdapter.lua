@@ -125,6 +125,7 @@ end
 function VanillaNpcAdapter.capabilities()
     return {
         available = VanillaNpcAdapter.available(),
+        friendly = false,
         spawnIndividual = type(addZombiesInOutfit) == "function",
         networkedBody = "IsoZombie",
         movement = type(IsoGameCharacter) == "table"

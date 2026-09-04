@@ -2,7 +2,7 @@
 
 The Python process never drives a Steam/PZ client. It emits one typed,
 high-level command for the dedicated server, where the Lua mod resolves the
-stable NPC id through the original vanilla NPC adapter. This module
+stable NPC id through the friendly Bandits2 NPC adapter. This module
 intentionally contains no game coordinates and no Lua/script escape hatch.
 """
 

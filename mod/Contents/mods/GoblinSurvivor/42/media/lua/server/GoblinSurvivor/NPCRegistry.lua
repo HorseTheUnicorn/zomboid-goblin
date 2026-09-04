@@ -1,5 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
-local VanillaNpcAdapter = require("GoblinSurvivor/VanillaNpcAdapter")
+local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 
 local NPCRegistry = {
     entries = {},
@@ -7,8 +7,15 @@ local NPCRegistry = {
     spawnPending = false,
     pendingSpawn = nil,
     spawnBlocked = false,
-    spawnNextAt = 0
+    spawnNextAt = 0,
+    lastBindWarningAt = 0
 }
+
+local function log(message)
+    if type(print) == "function" then
+        print("[GoblinSurvivor] NPCRegistry: " .. tostring(message))
+    end
+end
 
 local function nowMs()
     if type(getTimestampMs) == "function" then
@@ -78,13 +85,26 @@ local function bindExisting()
     local count = type(list.size) == "function" and list:size() or #list
     for index = 0, count - 1 do
         local zombie = type(list.get) == "function" and list:get(index) or list[index + 1]
-        if VanillaNpcAdapter.isOwned(zombie) then
+        -- A candidate is identified by the selected framework's stable
+        -- profile id.  It is not accepted until prepare() has re-applied the
+        -- friendly/protected state and the adapter proves it.
+        if NpcAdapter.isCandidate(zombie) then
+            local prepared = NpcAdapter.prepare(zombie, Config.npcId)
+            if not prepared or not NpcAdapter.isOwned(zombie) then
+                local now = nowMs()
+                if now - NPCRegistry.lastBindWarningAt >= 30000 then
+                    log("found Goblin profile candidate but friendly bind failed")
+                    NPCRegistry.lastBindWarningAt = now
+                end
+            else
             local entry = NPCRegistry.entries[Config.npcId]
             entry.zombie = zombie
             entry.active = true
             entry.alive = true
             NPCRegistry.spawnPending = false
+            NPCRegistry.pendingSpawn = nil
             return zombie
+            end
         end
     end
     return nil
@@ -98,7 +118,7 @@ function NPCRegistry.load()
         npc_id = Config.npcId,
         name = Config.npcName,
         role = Config.npcRole,
-        engine = "vanilla-zombie",
+        engine = NpcAdapter.engineName(),
         active = saved == nil or saved.active ~= false,
         alive = saved == nil or saved.alive ~= false,
         zombie = nil
@@ -139,6 +159,7 @@ function NPCRegistry.findGoblin()
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
         NPCRegistry.spawnBlocked = true
+        log("bounded spawn request expired without a friendly Goblin body")
     end
     if entry == nil or entry.zombie == nil then
         bindExisting()
@@ -183,8 +204,12 @@ function NPCRegistry.onZombieCreate(zombie)
     NPCRegistry.load()
     local entry = NPCRegistry.entries[Config.npcId]
     if entry ~= nil and entry.zombie ~= nil then return false, "Goblin is already bound" end
-    local prepared, detail = VanillaNpcAdapter.prepare(zombie, Config.npcId)
-    if not prepared then return false, detail end
+    -- OnZombieCreate can fire before Bandits2 finishes building its brain.
+    -- In that case the bounded registry scan below will bind it later; never
+    -- claim an arbitrary normal zombie from this event.
+    if not NpcAdapter.isCandidate(zombie) then return false, "not a Goblin profile candidate" end
+    local prepared, detail = NpcAdapter.prepare(zombie, Config.npcId)
+    if not prepared or not NpcAdapter.isOwned(zombie) then return false, detail end
     entry.zombie = zombie
     entry.active = true
     entry.alive = true
@@ -218,7 +243,11 @@ function NPCRegistry.spawnGoblin()
     if anchor == nil then
         return nil, "waiting for an online player anchor"
     end
-    local plannedPoint = VanillaNpcAdapter.spawnPoint(anchor)
+    if not NpcAdapter.available() then
+        log("spawn held: no friendly NPC adapter is available")
+        return nil, "friendly NPC adapter is unavailable"
+    end
+    local plannedPoint = NpcAdapter.spawnPoint(anchor)
     if plannedPoint == nil then
         return nil, "online player anchor has no safe spawn point"
     end
@@ -228,12 +257,13 @@ function NPCRegistry.spawnGoblin()
         point = plannedPoint,
         deadline = nowMs() + 10000
     }
-    local ok, detail, zombie, spawnPoint = VanillaNpcAdapter.spawnIndividual(
+    local ok, detail, zombie, spawnPoint = NpcAdapter.spawnIndividual(
         anchor, entry.npc_id, Config.npcProgram
     )
     if not ok then
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
+        log(detail)
         return nil, detail
     end
     -- OnZombieCreate may run synchronously inside the Java call.  Preserve
@@ -241,13 +271,19 @@ function NPCRegistry.spawnGoblin()
     if not NPCRegistry.spawnPending then
         return NPCRegistry.findGoblin(), detail
     end
-    if zombie ~= nil then
+    if zombie ~= nil and NpcAdapter.isOwned(zombie) then
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
         entry.zombie = zombie
         entry.alive = true
         NPCRegistry.save()
         return zombie, detail
+    end
+    if zombie ~= nil then
+        NPCRegistry.spawnPending = false
+        NPCRegistry.pendingSpawn = nil
+        log("adapter returned a body that failed the friendly ownership proof")
+        return nil, "spawned body failed the friendly ownership proof"
     end
     NPCRegistry.pendingSpawn = {
         point = spawnPoint or plannedPoint,

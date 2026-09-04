@@ -1,5 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
-local VanillaNpcAdapter = require("GoblinSurvivor/VanillaNpcAdapter")
+local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Perception = require("GoblinSurvivor/Perception")
 local Protection = require("GoblinSurvivor/Protection")
 local SquadManager = require("GoblinSurvivor/SquadManager")
@@ -45,8 +45,8 @@ function ActionExecutor.execute(message, zombie)
     if zombie == nil then
         return false, "Goblin NPC is not bound"
     end
-    if not VanillaNpcAdapter.available() then
-        return false, "vanilla server NPC API is unavailable"
+    if not NpcAdapter.available() then
+        return false, "friendly NPC adapter is unavailable"
     end
     Protection.apply(zombie)
     local action = message.action
@@ -60,7 +60,7 @@ function ActionExecutor.execute(message, zombie)
         return JobManager.assign(message)
     end
     if action == "SECURE_BASE" then
-        return false, "base security task is not implemented by the vanilla adapter"
+        return false, "base security task is not implemented by the verified NPC adapter"
     end
     if action == "EAT" or action == "DRINK" or action == "BANDAGE" or action == "RELOAD" then
         return InventoryManager.execute(message)
@@ -69,7 +69,7 @@ function ActionExecutor.execute(message, zombie)
         return InventoryManager.execute(message)
     end
     if action == "NOOP" or action == "HOLD_POSITION" or action == "REST" then
-        return VanillaNpcAdapter.clearTasks(zombie)
+        return NpcAdapter.clearTasks(zombie)
     end
     if action == "SAY" then
         if not safeText(message.text, 240) then return false, "SAY text is invalid" end
@@ -82,7 +82,7 @@ function ActionExecutor.execute(message, zombie)
     if movementActions[action] then
         local point, detail = Perception.resolveTarget(message.target, zombie)
         if point == nil then return false, detail end
-        local ok, taskDetail = VanillaNpcAdapter.setTasks(
+        local ok, taskDetail = NpcAdapter.setTasks(
             zombie, positionTask(point, action, message.target)
         )
         return ok, taskDetail
