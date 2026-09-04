@@ -15,7 +15,7 @@ INTENTS = {
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
     "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
     "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
-    "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE",
+    "DEFEND_AREA", "GUARD", "PATROL", "FLEE", "ENTER_VEHICLE", "EXIT_VEHICLE",
     "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
 }
 MODE_ALLOWED = {
@@ -210,7 +210,8 @@ class IntentValidator:
         target_required = {
             "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA",
             "JOIN_PARTY", "TRADE", "HELP", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD",
-            "PATROL", "CLEAR_BUILDING", "ENTER_VEHICLE",
+            "PATROL", "CLEAR_BUILDING", "ENTER_VEHICLE", "FLEE", "RETREAT", "REGROUP",
+            "GO_HOME", "RETURN_TO_BASE",
         }
         if intent in target_required and "target" not in raw:
             raise IntentError(f"{intent} requires a target")
@@ -254,4 +255,3 @@ class IntentValidator:
             if key in raw:
                 result[key] = _text(raw[key], key, maximum=96)
         return ValidatedIntent(intent=intent, mode=mode, data=result)
-

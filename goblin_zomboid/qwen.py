@@ -46,7 +46,7 @@ class QwenClient:
             "HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, GO_HOME, JOIN_PARTY, "
             "LEAVE_PARTY, FORM_SQUAD, DISMISS_SQUAD, ASSIGN_JOB, SECURE_BASE, RETURN_TO_BASE, "
             "CLEAR_BUILDING, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, ENTER_VEHICLE, "
-            "EXIT_VEHICLE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
+            "EXIT_VEHICLE, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
             "Allowed modes are SAFE, ROAM, PARTY, and HUNT. Use only coarse named targets such as a "
             "nearby building, area, player, home base, escape route, squad, vehicle, candidate, or "
             "current position. Never output coordinates, routes, cells, chunks, IDs for buildings, Lua, "
@@ -120,4 +120,3 @@ class QwenClient:
             return sanitize_speech(raw["text"])
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise QwenError("Qwen response failed strict speech validation") from exc
-

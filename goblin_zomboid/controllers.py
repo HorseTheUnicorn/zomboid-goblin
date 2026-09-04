@@ -225,6 +225,7 @@ class TacticalController:
         "SAY": Action.SAY,
         "MOVE_TO": Action.MOVE_TO,
         "FOLLOW": Action.FOLLOW,
+        "FLEE": Action.FLEE,
         "SEARCH": Action.SEARCH,
         "SCAVENGE": Action.SCAVENGE,
         "RETREAT": Action.RETREAT,

@@ -57,6 +57,21 @@ class ValidatorTests(unittest.TestCase):
                     },
                 }
             )
+
+    def test_movement_recovery_intents_require_semantic_targets(self) -> None:
+        for intent in ("FLEE", "RETREAT", "REGROUP", "GO_HOME", "RETURN_TO_BASE"):
+            with self.subTest(intent=intent):
+                with self.assertRaises(IntentError):
+                    self.validator.validate({"intent": intent, "mode": "ROAM"})
+
+        result = self.validator.validate(
+            {
+                "intent": "FLEE",
+                "mode": "PARTY",
+                "target": {"kind": "escape_route", "name": "nearest safe route"},
+            }
+        )
+        self.assertEqual(result.intent, "FLEE")
         with self.assertRaises(IntentError):
             self.validator.validate(
                 {
@@ -97,4 +112,3 @@ class ValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
