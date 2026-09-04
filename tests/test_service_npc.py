@@ -22,6 +22,13 @@ class FakeQwen:
         )
 
 
+class BrokenQwen:
+    def propose_intent(self, _context: object):
+        from goblin_zomboid.qwen import QwenError
+
+        raise QwenError("test model outage")
+
+
 class NpcServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = Path(tempfile.mkdtemp(prefix="goblin-service-npc-"))
@@ -69,6 +76,30 @@ class NpcServiceTests(unittest.TestCase):
             command = service.store.read_ready(item)
             self.assertEqual(command.type, "command.npc_action")
             self.assertEqual(command.fields["npc_id"], "goblin.primary")
+        finally:
+            service.close()
+
+    def test_qwen_outage_uses_deterministic_survival_fallback(self) -> None:
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=BrokenQwen(),
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="npc",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="ROAM",
+                    threat_level="overwhelming",
+                ),
+            )
+            result = service.run_once()
+            self.assertEqual(result.status, "fallback_command_published")
+            self.assertEqual(service.last_action["action"], "FLEE")
         finally:
             service.close()
 

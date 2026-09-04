@@ -381,15 +381,11 @@ class GoblinService:
             self.last_detail = "waiting for the persistent server-side NPC contract"
             return ServiceResult(self.last_status, self.last_detail)
         if self.qwen is None:
-            self.last_status = "no_brain"
-            self.last_detail = "no Qwen adapter configured"
-            return ServiceResult(self.last_status, self.last_detail)
+            return self._run_deterministic_fallback(body, "no Qwen adapter configured")
         try:
             intent = self.qwen.propose_intent(self.last_state)
         except QwenError as exc:
-            self.last_status = "brain_rejected"
-            self.last_detail = str(exc)
-            return ServiceResult(self.last_status, self.last_detail)
+            return self._run_deterministic_fallback(body, f"Qwen unavailable: {exc}")
         reference_error = self._validate_references(intent)
         if reference_error is not None:
             self.last_status = "controller_rejected"
@@ -409,6 +405,38 @@ class GoblinService:
         self.last_action = decision.action.as_dict()
         self.last_status = "npc_command_published"
         self.last_detail = "validated action sent to the dedicated server NPC executor"
+        return ServiceResult(self.last_status, self.last_detail, result.detail)
+
+    def _run_deterministic_fallback(
+        self, body: BodyState, reason: str
+    ) -> ServiceResult:
+        """Keep immediate survival behavior alive without a model call.
+
+        The fallback deliberately receives no intent.  ``SafetyController``
+        can therefore emit only its deterministic reflex/combat decision, and
+        the normal typed gate and NPC driver still protect the bridge boundary.
+        A calm body produces no command rather than a guessed high-level plan.
+        """
+        decision = self.safety.decide(None, body)
+        if not decision.accepted:
+            self.last_status = "fallback_rejected"
+            self.last_detail = f"{reason}; deterministic fallback rejected: {decision.reason}"
+            self.last_action = None
+            return ServiceResult(self.last_status, self.last_detail)
+        if decision.action is None:
+            self.last_status = "fallback_safe"
+            self.last_detail = f"{reason}; no immediate reflex was required"
+            self.last_action = None
+            return ServiceResult(self.last_status, self.last_detail)
+        result = self.npc_driver.execute(decision.action)
+        if not result.accepted:
+            self.last_status = "fallback_failed"
+            self.last_detail = f"{reason}; fallback action failed: {result.detail}"
+            self.last_action = decision.action.as_dict()
+            return ServiceResult(self.last_status, self.last_detail)
+        self.last_action = decision.action.as_dict()
+        self.last_status = "fallback_command_published"
+        self.last_detail = f"{reason}; deterministic {decision.action.action.value} sent"
         return ServiceResult(self.last_status, self.last_detail, result.detail)
 
     def run_once(self) -> ServiceResult:
