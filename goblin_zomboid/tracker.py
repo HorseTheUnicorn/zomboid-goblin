@@ -409,6 +409,16 @@ class TrackerApp:
                     self._stream()
                     return
                 status, headers, payload = app.handle("GET", self.path)
+                self._send_payload(status, headers, payload, include_body=True)
+
+            def _send_payload(
+                self,
+                status: int,
+                headers: Mapping[str, str],
+                payload: Any,
+                *,
+                include_body: bool,
+            ) -> None:
                 if isinstance(payload, bytes):
                     body = payload
                 else:
@@ -423,7 +433,20 @@ class TrackerApp:
                     if key.lower() != "content-type":
                         self.send_header(key, value)
                 self.end_headers()
-                self.wfile.write(body)
+                if include_body:
+                    self.wfile.write(body)
+
+            def do_HEAD(self) -> None:
+                if self.path.split("?", 1)[0] == "/api/stream":
+                    self._send_payload(
+                        405,
+                        {"Allow": "GET"},
+                        {"ok": False, "error": "read-only tracker"},
+                        include_body=False,
+                    )
+                    return
+                status, headers, payload = app.handle("GET", self.path)
+                self._send_payload(status, headers, payload, include_body=False)
 
             def do_POST(self) -> None:
                 status, headers, payload = app.handle("POST", self.path)
