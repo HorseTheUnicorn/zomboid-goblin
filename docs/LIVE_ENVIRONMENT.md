@@ -22,8 +22,9 @@ Role: Goblin AI host.
   was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the `d7e70df` checkout at
-  `/home/goblin/zomboid-goblin-d7e70df`.
+- The agent and relay are running from the `74d7e9a` checkout at
+  `/home/goblin/zomboid-goblin-74d7e9a`; this build includes the deterministic
+  survival fallback used when Qwen is unavailable.
 
 ## `.03` — `192.168.0.3` / Proxmox CT100
 
