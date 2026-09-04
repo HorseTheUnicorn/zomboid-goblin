@@ -33,6 +33,12 @@ profile advertises Workshop item `3268487204` and loads `Bandits2` before
 the verified Bandits2 body chat primitive, while the framework's canned
 `Bandit.Say` helper remains behind the adapter boundary.
 
+The old GoblinSurvivor Workshop item `3794624741` was checked and is no longer
+available. It is therefore not advertised by the server: the current local
+Windows test uses the synchronized direct package, while automatic delivery
+to other clients still requires a new unlisted Workshop publication and its
+new published-file ID to be added alongside Bandits2.
+
 The important distinction is intentional: GoblinSurvivor is our own mod, and
 Bandits2 is its runtime dependency/body engine. We use Bandits2's verified
 public API rather than copying or modifying Bandits2 source. The custom policy

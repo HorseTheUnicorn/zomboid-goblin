@@ -55,6 +55,11 @@ Role: Project Zomboid dedicated server.
   `servertest.ini` now includes Workshop item `3268487204` and loads
   `Bandits2` before `GoblinSurvivor`; Bandits2 source is not copied into this
   repository.
+- GoblinSurvivor is currently installed as the direct server package. The
+  previously used Workshop ID `3794624741` was checked against Steam and is
+  no longer available, so it is intentionally not included in
+  `WorkshopItems=`. A new unlisted publication must be created before the
+  server can deliver this own-mod package automatically to other clients.
 - The server was healthy during inventory: `zomboid-servertest.service` was
   active, `ProjectZomboid64 -servername servertest` was running, and UDP ports
   `16261` and `16262` were bound.
