@@ -17,15 +17,20 @@ The Python side already has a typed NpcBodyDriver, strict intent validation,
 deterministic safety/entity/squad/base-job gates, bounded SQLite telemetry, and
 the atomic filesystem bridge. The Lua side has bounded spawn/rebind behavior,
 protection hooks, separate coarse/exact telemetry, semantic target resolution,
-chat forwarding, and a narrow nearest-zombie combat bridge.
+chat forwarding, a narrow nearest-zombie combat bridge, and Bandits2-backed
+settlement assignment persistence for jobs, guards, and squads.
 
-The next live acceptance check is deliberately concrete: enable
-WorkshopItems=3268487204 and Mods=Bandits2;GoblinSurvivor;... on the dedicated
-servertest profile, restart .03, then join with a client that has both
-Workshop packages. The server log must report
-adapter=bandits2 friendly=true control_ready=true; the bridge state must
-eventually show body_mode=npc, control_ready=true, and npc_engine_ready=true
-after a player is online.
+The current deployed revision is `623f3c1`. The dedicated servertest profile
+advertises Workshop item `3268487204` and loads `Bandits2` before
+`GoblinSurvivor`; the server was restarted and its fresh log reports
+`adapter=bandits2 friendly=true control_ready=true`. The matching Python
+agent/relay revision is active on .76, and the Windows client package has been
+synchronized to the same GoblinSurvivor files.
+
+The next live acceptance check is deliberately concrete: join the dedicated
+server with a client that has both Workshop packages. The bridge state must
+eventually show `body_mode=npc`, `control_ready=true`, and
+`npc_engine_ready=true` after a player is online.
 
 Local checks cover strict bridge behavior, semantic coordinate separation, NPC
 command publication, deterministic squad/job policy, and tracker read-only

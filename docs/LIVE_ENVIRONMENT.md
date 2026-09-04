@@ -22,10 +22,10 @@ Role: Goblin AI host.
   was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the `fa28a49` checkout at
-  `/home/goblin/zomboid-goblin-fa28a49`; this build includes deterministic
-  survival fallback, event-driven Qwen planning, and the bounded SSE tracker
-  stream.
+- The agent and relay are running from the `623f3c1` checkout at
+  `/home/goblin/zomboid-goblin-623f3c1`; this build includes deterministic
+  survival fallback, event-driven Qwen planning, persistent settlement
+  assignments, and the bounded SSE tracker stream.
 
 ## `.03` — `192.168.0.3` / Proxmox CT100
 
@@ -51,9 +51,9 @@ Role: Project Zomboid dedicated server.
   active, `ProjectZomboid64 -servername servertest` was running, and UDP ports
   `16261` and `16262` were bound.
 - The server's existing save and other mod loadout were left in place. The
-  Bandits2 deployment used the bounded backup directory
-  `/home/zomboid/backups/goblin-bandits-d7e70df-pre/`, containing the prior
-  server-side GoblinSurvivor package and `servertest.ini`.
+  latest Bandits2 deployment used the bounded backup directory
+  `/home/zomboid/backups/goblin-bandits-623f3c1-pre/`, containing the prior
+  server-side GoblinSurvivor package.
 
 ## Operational boundary
 
