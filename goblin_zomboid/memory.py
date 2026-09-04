@@ -73,12 +73,6 @@ class MemoryStore:
                     claimed_at INTEGER NOT NULL,
                     PRIMARY KEY(run_id, player_id)
                 );
-                CREATE TABLE IF NOT EXISTS character_state (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    lifecycle TEXT NOT NULL,
-                    manifest_json TEXT,
-                    updated_at INTEGER NOT NULL
-                );
                 """
             )
 
@@ -223,60 +217,6 @@ class MemoryStore:
             )
         ) as rows:
             return [dict(row) for row in rows]
-
-    def character_record(self) -> dict[str, Any] | None:
-        """Return the durable character lifecycle without exposing it publicly."""
-        with self.lock, closing(
-            self.connection.execute(
-                "SELECT lifecycle, manifest_json, updated_at FROM character_state WHERE id = 1"
-            )
-        ) as rows:
-            row = rows.fetchone()
-        if row is None:
-            return None
-        manifest: dict[str, Any] | None = None
-        manifest_error = False
-        if row["manifest_json"] is not None:
-            try:
-                parsed = json.loads(row["manifest_json"])
-            except (TypeError, json.JSONDecodeError):
-                parsed = None
-            if isinstance(parsed, dict):
-                manifest = parsed
-            else:
-                manifest_error = True
-        return {
-            "lifecycle": row["lifecycle"],
-            "manifest": manifest,
-            "manifest_error": manifest_error,
-            "updated_at": row["updated_at"],
-        }
-
-    def save_character_state(
-        self,
-        lifecycle: str,
-        manifest: Mapping[str, Any] | None,
-        *,
-        updated_at: int | None = None,
-    ) -> None:
-        if not isinstance(lifecycle, str) or not lifecycle or len(lifecycle) > 32:
-            raise ValueError("invalid character lifecycle")
-        if manifest is not None and not isinstance(manifest, Mapping):
-            raise ValueError("character manifest must be an object")
-        manifest_json = _json(dict(manifest)) if manifest is not None else None
-        timestamp = int(updated_at if updated_at is not None else time.time())
-        with self.lock:
-            self.connection.execute(
-                """
-                INSERT INTO character_state(id, lifecycle, manifest_json, updated_at)
-                VALUES (1, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    lifecycle=excluded.lifecycle,
-                    manifest_json=excluded.manifest_json,
-                    updated_at=excluded.updated_at
-                """,
-                (lifecycle, manifest_json, timestamp),
-            )
 
     def claim_loot(
         self,

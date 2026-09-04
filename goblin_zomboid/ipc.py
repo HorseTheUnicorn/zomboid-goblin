@@ -363,7 +363,7 @@ class CommandConsumer:
         ledger: RequestLedger,
         *,
         max_age_ms: int = 30_000,
-        expected_type: str = "command.intent",
+        expected_type: str | set[str] | None = None,
     ) -> None:
         self.store = store
         self.ledger = ledger
@@ -381,7 +381,12 @@ class CommandConsumer:
                 message = self.store.read_ready(
                     item, max_age_ms=self.max_age_ms, now=now
                 )
-                if message.type != self.expected_type:
+                accepted_types = (
+                    {self.expected_type}
+                    if isinstance(self.expected_type, str)
+                    else self.expected_type or {"command.intent", "command.npc_action"}
+                )
+                if message.type not in accepted_types:
                     raise ProtocolError("unexpected command type")
                 if self.ledger.seen(message.request_id):
                     self.store.archive(item, "duplicate request id")
@@ -417,7 +422,7 @@ class CommandConsumer:
 
 
 class EventConsumer:
-    """Reads bounded server/client events exactly once per request id."""
+    """Reads bounded dedicated-server events exactly once per request id."""
 
     def __init__(
         self,

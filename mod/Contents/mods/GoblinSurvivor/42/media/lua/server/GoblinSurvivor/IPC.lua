@@ -25,7 +25,7 @@ local readyIndexName = ".ready-index.json"
 local function fileExists(path)
     -- Build 42 exposes two similarly named helpers with different path
     -- roots.  On the dedicated server, serverFileExists is the authoritative
-    -- check for the Lua cache used by this bridge.  Prefer it so a client
+    -- check for the Lua cache used by this bridge.  Prefer it so the server
     -- helper returning false for a server-relative path cannot disable the
     -- whole server integration.
     local serverFileExistsFn = rawget(_G, "serverFileExists")

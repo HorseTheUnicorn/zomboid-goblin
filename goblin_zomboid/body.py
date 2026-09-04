@@ -18,6 +18,11 @@ _TARGET_KINDS = {
     "home_base",
     "candidate",
     "current_position",
+    "goblin",
+    "squad",
+    "base",
+    "vehicle",
+    "job",
 }
 _COORDINATE_RE = re.compile(
     r"(?:\bcoordinates?\b|\b(?:x|y|z)\s*[:=]|\bcell\s*[:=]|\bchunk\s*[:=])",
@@ -59,6 +64,8 @@ class DeterministicActionGate:
             return DriverResult(False, "rejected", "unsafe item count")
         if action.action not in set(Action):
             return DriverResult(False, "rejected", "unknown action")
+        if action.reason and len(action.reason) > 240:
+            return DriverResult(False, "rejected", "action reason is too long")
         return DriverResult(True, "admitted", "typed action passed the gate")
 
 
@@ -75,4 +82,3 @@ class SensorOnlyBodyDriver:
         if not admitted.accepted:
             return admitted
         return DriverResult(False, "sensor_only", "body feasibility gate is incomplete")
-

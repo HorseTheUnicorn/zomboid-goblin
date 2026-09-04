@@ -24,7 +24,6 @@ _DROP_KEYS = {
     "raw_packet",
     "packet",
     "exact_distance",
-    "distance",
     "location",
     "exact_location",
 }
@@ -48,6 +47,16 @@ def _redact(value: Any) -> Any:
         for key, nested in value.items():
             if isinstance(key, str) and _is_sensitive_key(key):
                 continue
+            # A numeric distance is a location side channel.  Named buckets
+            # such as "near" or "far" are useful coarse perception and are
+            # deliberately retained for Qwen/reflex decisions.
+            if (
+                isinstance(key, str)
+                and key.casefold().replace("-", "_") == "distance"
+                and isinstance(nested, (int, float))
+                and not isinstance(nested, bool)
+            ):
+                continue
             clean[key] = _redact(nested)
         return clean
     if isinstance(value, list):
@@ -66,11 +75,19 @@ def brain_view(state: Mapping[str, Any]) -> dict[str, Any]:
 def public_view(state: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(state, Mapping):
         raise TypeError("state must be an object")
-    allowed = ("alive", "hunt_active", "prize_tier")
+    allowed = (
+        "alive", "hunt_active", "prize_tier", "npc_id", "npc_alive", "npc_active",
+        "body_mode", "control_ready", "npc_engine_ready",
+        "threat_level", "threat_bucket", "server_status", "players", "npcs",
+        "squads", "base", "events", "updated_at",
+    )
     result: dict[str, Any] = {}
     for key in allowed:
-        if key in state and isinstance(state[key], (bool, int, float, str, type(None))):
-            result[key] = state[key]
+        if key not in state:
+            continue
+        value = _redact(state[key])
+        if isinstance(value, (bool, int, float, str, type(None), list, dict)):
+            result[key] = value
     return result
 
 

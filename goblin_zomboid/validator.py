@@ -11,118 +11,40 @@ from typing import Any
 MAX_INTENT_BYTES = 16 * 1024
 MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
-    "WAIT",
-    "SAY",
-    "MOVE_TO",
-    "FOLLOW",
-    "SEARCH",
-    "SCAVENGE",
-    "RETREAT",
-    "REST",
-    "GO_HOME",
-    "JOIN_PARTY",
-    "LEAVE_PARTY",
-    "HUNT_START",
-    "HUNT_HINT",
-    "HUNT_RELOCATE",
-    "HUNT_REWARD",
-    "TRADE",
-    "HELP",
+    "WAIT", "SAY", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
+    "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
+    "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
+    "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
+    "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE",
+    "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
 }
 MODE_ALLOWED = {
-    "SAFE": {"WAIT", "SAY", "RETREAT", "REST", "GO_HOME", "HUNT_HINT", "HELP"},
-    "ROAM": {
-        "WAIT",
-        "SAY",
-        "MOVE_TO",
-        "SEARCH",
-        "SCAVENGE",
-        "RETREAT",
-        "REST",
-        "GO_HOME",
-        "HUNT_HINT",
-        "HELP",
-    },
-    "PARTY": {
-        "WAIT",
-        "SAY",
-        "MOVE_TO",
-        "FOLLOW",
-        "SEARCH",
-        "SCAVENGE",
-        "RETREAT",
-        "REST",
-        "GO_HOME",
-        "JOIN_PARTY",
-        "LEAVE_PARTY",
-        "HUNT_HINT",
-        "TRADE",
-        "HELP",
-    },
-    "HUNT": {
-        "WAIT",
-        "SAY",
-        "MOVE_TO",
-        "SEARCH",
-        "SCAVENGE",
-        "RETREAT",
-        "REST",
-        "GO_HOME",
-        "HUNT_START",
-        "HUNT_HINT",
-        "HUNT_RELOCATE",
-        "HUNT_REWARD",
-        "HELP",
-    },
+    "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
+    "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE"},
+    "PARTY": INTENTS - {"ASSIGN_JOB", "SECURE_BASE", "PATROL", "GUARD"},
+    "HUNT": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "GUARD", "PATROL"},
 }
 TARGET_KINDS = {
-    "nearby_building",
-    "named_location",
-    "area",
-    "player",
-    "home_base",
-    "escape_route",
-    "candidate",
-    "current_position",
+    "nearby_building", "named_location", "area", "player", "home_base", "escape_route",
+    "candidate", "current_position", "nearby_threat", "goblin", "squad", "base", "vehicle", "job",
 }
 ALLOWED_KEYS = {
-    "intent",
-    "mode",
-    "text",
-    "priority",
-    "abort_if",
-    "target",
-    "item",
-    "candidate",
-    "loot_focus",
+    "intent", "mode", "text", "priority", "abort_if", "target", "item", "candidate", "loot_focus",
+    "npc_id", "leader", "requested_members", "members", "job", "formation", "squad_id", "zone", "mission",
 }
 TARGET_KEYS = {"kind", "name", "player", "label"}
 ITEM_KEYS = {"name", "category", "count"}
 CANDIDATE_KEYS = {"kind", "label", "clue"}
 FORBIDDEN_KEYS = {
-    "code",
-    "command",
-    "eval",
-    "exec",
-    "lua",
-    "shell",
-    "script",
-    "raw",
-    "raw_packet",
-    "packet",
-    "x",
-    "y",
-    "z",
-    "cell",
-    "chunk",
-    "building_id",
-    "teleport",
+    "code", "command", "eval", "exec", "lua", "shell", "script", "raw", "raw_packet", "packet",
+    "x", "y", "z", "cell", "chunk", "building_id", "teleport", "path", "paths", "absolute_path",
 }
 TEXT_COORDINATE_RE = re.compile(
     r"(?:\bcoordinates?\b|\b(?:x|y|z)\s*[:=]|\bcell\s*[:=]|\bchunk\s*[:=])",
     re.IGNORECASE,
 )
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+ENTITY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 
 
 class IntentError(ValueError):
@@ -160,6 +82,13 @@ def _text(value: Any, field: str, *, maximum: int) -> str:
         raise IntentError(f"invalid {field}")
     if TEXT_COORDINATE_RE.search(value):
         raise IntentError(f"{field} contains location coordinates")
+    return value
+
+
+def _id(value: Any, field: str) -> str:
+    value = _text(value, field, maximum=96)
+    if ENTITY_ID_RE.fullmatch(value) is None:
+        raise IntentError(f"invalid {field}")
     return value
 
 
@@ -210,11 +139,16 @@ def _candidate(value: Any) -> dict[str, str]:
     kind = _text(raw.get("kind"), "candidate.kind", maximum=32).casefold()
     if kind not in {"nearby_building", "area", "named_location", "candidate"}:
         raise IntentError("candidate has an unsafe kind")
-    label = raw.get("label")
-    result = {"kind": kind, "label": _text(label, "candidate.label", maximum=96)}
+    result = {"kind": kind, "label": _text(raw.get("label"), "candidate.label", maximum=96)}
     if "clue" in raw:
         result["clue"] = _text(raw["clue"], "candidate.clue", maximum=160)
     return result
+
+
+def _id_list(value: Any, field: str) -> list[str]:
+    if not isinstance(value, list) or not value or len(value) > 16:
+        raise IntentError(f"{field} must contain 1 to 16 ids")
+    return [_id(item, f"{field} item") for item in value]
 
 
 class IntentValidator:
@@ -235,10 +169,7 @@ class IntentValidator:
             raise IntentError(f"non-finite JSON value: {value}")
 
         try:
-            raw = json.loads(
-                encoded.decode("utf-8"),
-                parse_constant=reject_constant,
-            )
+            raw = json.loads(encoded.decode("utf-8"), parse_constant=reject_constant)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise IntentError("invalid JSON intent") from exc
         return self.validate(raw)
@@ -250,7 +181,6 @@ class IntentValidator:
         unknown = set(raw).difference(ALLOWED_KEYS)
         if unknown:
             raise IntentError(f"unknown intent field: {sorted(unknown)[0]}")
-
         intent = _text(raw.get("intent"), "intent", maximum=32).upper()
         mode = _text(raw.get("mode"), "mode", maximum=16).upper()
         if intent not in INTENTS:
@@ -267,35 +197,25 @@ class IntentValidator:
             raise IntentError("SAY requires text")
         if intent == "SAY" and "target" in raw:
             raise IntentError("SAY does not accept a target")
-
         priority = raw.get("priority", 1)
         if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 3:
             raise IntentError("priority must be between 0 and 3")
         result["priority"] = priority
-
         if "abort_if" in raw:
             abort_if = raw["abort_if"]
             if not isinstance(abort_if, list) or not abort_if or len(abort_if) > 8:
                 raise IntentError("abort_if must be a short non-empty list")
-            result["abort_if"] = [
-                _text(condition, "abort_if item", maximum=80)
-                for condition in abort_if
-            ]
+            result["abort_if"] = [_text(condition, "abort_if item", maximum=80) for condition in abort_if]
 
         target_required = {
-            "MOVE_TO",
-            "FOLLOW",
-            "SEARCH",
-            "SCAVENGE",
-            "JOIN_PARTY",
-            "TRADE",
-            "HELP",
+            "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA",
+            "JOIN_PARTY", "TRADE", "HELP", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD",
+            "PATROL", "CLEAR_BUILDING", "ENTER_VEHICLE",
         }
         if intent in target_required and "target" not in raw:
             raise IntentError(f"{intent} requires a target")
         if "target" in raw:
             result["target"] = _target(raw["target"])
-
         if "item" in raw:
             result["item"] = _item(raw["item"])
         if "candidate" in raw:
@@ -308,5 +228,30 @@ class IntentValidator:
                 raise IntentError("unsupported loot_focus")
             result["loot_focus"] = loot_focus
 
+        if "npc_id" in raw:
+            result["npc_id"] = _id(raw["npc_id"], "npc_id")
+        if "leader" in raw:
+            result["leader"] = _id(raw["leader"], "leader")
+        if "squad_id" in raw:
+            result["squad_id"] = _id(raw["squad_id"], "squad_id")
+        for key in ("requested_members", "members"):
+            if key in raw:
+                result[key] = _id_list(raw[key], key)
+        if intent == "FORM_SQUAD" and "requested_members" not in result and "members" not in result:
+            raise IntentError("FORM_SQUAD requires requested_members")
+        if intent == "FORM_SQUAD" and "leader" not in result:
+            raise IntentError("FORM_SQUAD requires leader")
+        if "job" in raw:
+            result["job"] = _text(raw["job"], "job", maximum=32).casefold()
+        if intent == "ASSIGN_JOB" and "job" not in result:
+            raise IntentError("ASSIGN_JOB requires job")
+        if "formation" in raw:
+            formation = _text(raw["formation"], "formation", maximum=16).casefold()
+            if formation not in {"line", "wedge", "column", "ring", "loose"}:
+                raise IntentError("unsupported formation")
+            result["formation"] = formation
+        for key in ("zone", "mission"):
+            if key in raw:
+                result[key] = _text(raw[key], key, maximum=96)
         return ValidatedIntent(intent=intent, mode=mode, data=result)
 

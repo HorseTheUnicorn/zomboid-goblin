@@ -1,6 +1,7 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
-local ClientBridge = require("GoblinSurvivor/ClientBridge")
+local Persistence = require("GoblinSurvivor/Persistence")
+local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local CommandLoop = require("GoblinSurvivor/CommandLoop")
 
@@ -25,10 +26,12 @@ local function tick()
         return
     end
     local now = monotonicSeconds()
+    -- Command consumption and protection are server-local and remain
+    -- independent of the slower telemetry heartbeat.
+    CommandLoop.tick()
     if Bootstrap.lastHeartbeat == 0 or now - Bootstrap.lastHeartbeat >= Config.heartbeatSeconds then
         Telemetry.writeHeartbeat()
         Telemetry.writeState()
-        CommandLoop.tick()
         Bootstrap.lastHeartbeat = now
     end
 end
@@ -43,6 +46,7 @@ local function emitInitialTelemetry()
     end
     Telemetry.writeHeartbeat()
     Telemetry.writeState()
+    Telemetry.writeExactState()
     Bootstrap.lastHeartbeat = monotonicSeconds()
 end
 
@@ -54,13 +58,19 @@ function Bootstrap.start()
     if not IPC.initialize() then
         return
     end
-    ClientBridge.start()
+    Persistence.load()
     Bootstrap.started = true
     -- Do not query multiplayer players during this callback.  On some Build
     -- 42 server startup paths OnServerStarted is emitted before the UDP
     -- engine is fully usable; the next OnTick performs the first telemetry
     -- pass after the engine is ready.
     Bootstrap.lastHeartbeat = monotonicSeconds()
+end
+
+if Events and Events.OnZombieDead and type(Events.OnZombieDead.Add) == "function" then
+    Events.OnZombieDead.Add(function(zombie)
+        GoblinNPC.onZombieDeath(zombie)
+    end)
 end
 
 -- Build 42's getOnlinePlayers() is not safe during OnInitGlobalModData: the

@@ -2,17 +2,20 @@ local Config = {
     protocol = 1,
     enabled = false,
     bridgeRootOverride = "",
-    bodyUsername = "Goblin",
+    npcId = "goblin.primary",
+    npcName = "Goblin",
+    npcProgram = "Bandit",
+    npcRole = "companion",
+    protected = true,
     gameBuildOverride = "",
-    goblinSurvivorSha256 = "",
     fileOptions = {},
     configFileName = "config.ini",
-    manifestSidecarName = "manifest.sha256",
     -- PZ's supported file API resolves paths below its Lua cache directory.
     -- The SSH relay maps this relative root to the corresponding guest path.
     defaultBridgeRoot = "goblin-bridge",
     heartbeatSeconds = 5,
-    maxMessageBytes = 262144
+    maxMessageBytes = 262144,
+    trackerExactTelemetry = true
 }
 
 local function parseBoolean(value, defaultValue)
@@ -145,12 +148,20 @@ function Config.refresh()
     else
         Config.bridgeRootOverride = ""
     end
-    local username = readOption("GoblinClientUsername", Config.bodyUsername)
-    if type(username) == "string"
-        and #username >= 1
-        and #username <= 32
-        and string.find(username, "^[A-Za-z0-9_%-]+$") then
-        Config.bodyUsername = username
+    local npcId = readOption("GoblinNpcId", Config.npcId)
+    if type(npcId) == "string"
+        and #npcId >= 1
+        and #npcId <= 96
+        and string.find(npcId, "^[A-Za-z0-9_%.:%-]+$") then
+        Config.npcId = npcId
+    end
+    local npcName = readOption("GoblinNpcName", Config.npcName)
+    if type(npcName) == "string" and #npcName >= 1 and #npcName <= 32 then
+        Config.npcName = npcName
+    end
+    local npcProgram = readOption("GoblinNpcProgram", Config.npcProgram)
+    if type(npcProgram) == "string" and #npcProgram >= 1 and #npcProgram <= 32 then
+        Config.npcProgram = npcProgram
     end
     local build = readOption("GoblinGameBuild", Config.gameBuildOverride)
     if type(build) == "string"
@@ -159,14 +170,8 @@ function Config.refresh()
         and string.find(build, "^[A-Za-z0-9][A-Za-z0-9%._%+%- ]*$") then
         Config.gameBuildOverride = build
     end
-    local digest = readOption("GoblinSurvivorSHA256", "")
-    if type(digest) == "string"
-        and string.find(digest, "^[0-9a-fA-F]+$")
-        and #digest == 64 then
-        Config.goblinSurvivorSha256 = string.lower(digest)
-    else
-        Config.goblinSurvivorSha256 = ""
-    end
+    Config.protected = parseBoolean(readOption("GoblinNpcProtected", true), true)
+    Config.trackerExactTelemetry = parseBoolean(readOption("GoblinTrackerExact", true), true)
     return Config
 end
 

@@ -23,12 +23,19 @@ EVENT_FIELDS = {
     "death": {"cause"},
     "respawn": {"cooldown_seconds"},
     "chat": {"speaker", "text"},
+    "npc_ready": {"npc_id", "active"},
+    "npc_spawned": {"npc_id", "role"},
+    "npc_recovered": {"npc_id", "reason"},
+    "squad_changed": {"squad_id", "leader", "member_count"},
+    "base_job_changed": {"npc_id", "job"},
+    "tracker_update": {"entity_kind", "entity_id"},
 }
 ALLOWED_VALUES = {
     "threat_level": {"none", "near", "overwhelming"},
     "severity": {"minor", "moderate", "critical"},
     "rarity": {"common", "uncommon", "rare", "legendary"},
     "temperature": {"cold", "warm", "hot"},
+    "entity_kind": {"goblin", "player", "npc", "squad", "base"},
 }
 FORBIDDEN_FIELDS = {
     "x",
@@ -80,7 +87,7 @@ class EventGate:
             if key in ALLOWED_VALUES:
                 if value not in ALLOWED_VALUES[key]:
                     raise ValueError(f"invalid event value: {key}")
-            elif key in {"player", "party", "speaker", "body_part", "cause", "text"}:
+            elif key in {"player", "party", "speaker", "body_part", "cause", "text", "npc_id", "role", "reason", "squad_id", "leader", "job", "entity_id"}:
                 if not isinstance(value, str) or not value.strip() or len(value) > 240:
                     raise ValueError(f"invalid event text: {key}")
                 if key == "text" and _TEXT_LOCATION_RE.search(value):
@@ -94,6 +101,12 @@ class EventGate:
             elif key == "cooldown_seconds":
                 if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 3600:
                     raise ValueError("invalid cooldown")
+            elif key == "active":
+                if not isinstance(value, bool):
+                    raise ValueError("invalid active flag")
+            elif key == "member_count":
+                if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 16:
+                    raise ValueError("invalid member count")
         return clean | dict(fields)
 
     def make(

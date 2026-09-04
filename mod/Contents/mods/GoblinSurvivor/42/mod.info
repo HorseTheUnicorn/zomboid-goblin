@@ -1,5 +1,4 @@
 name=GoblinSurvivor
 id=GoblinSurvivor
-description=Safety-first Goblin sensor bridge; autonomous body disabled until the feasibility gate passes.
-version=0.1.0
-
+description=Server-side persistent Goblin NPC bridge for Bandits 2; no native Steam/PZ client required.
+version=0.2.0

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from .mods import MOD_PARITY_STATUSES
 from .validator import ValidatedIntent
 
 
@@ -29,6 +28,22 @@ class Action(str, Enum):
     BANDAGE = "BANDAGE"
     RELOAD = "RELOAD"
     CLAIM_REWARD = "CLAIM_REWARD"
+    FOLLOW_GOBLIN = "FOLLOW_GOBLIN"
+    HOLD_POSITION = "HOLD_POSITION"
+    REGROUP = "REGROUP"
+    LOOT_AREA = "LOOT_AREA"
+    DEFEND_PLAYER = "DEFEND_PLAYER"
+    DEFEND_AREA = "DEFEND_AREA"
+    GUARD = "GUARD"
+    PATROL = "PATROL"
+    FORM_SQUAD = "FORM_SQUAD"
+    DISMISS_SQUAD = "DISMISS_SQUAD"
+    ASSIGN_JOB = "ASSIGN_JOB"
+    SECURE_BASE = "SECURE_BASE"
+    RETURN_TO_BASE = "RETURN_TO_BASE"
+    CLEAR_BUILDING = "CLEAR_BUILDING"
+    ENTER_VEHICLE = "ENTER_VEHICLE"
+    EXIT_VEHICLE = "EXIT_VEHICLE"
 
 
 @dataclass(frozen=True)
@@ -48,8 +63,10 @@ class BodyState:
     has_water: bool = False
     has_medical: bool = False
     mode: str = "SAFE"
-    client_mod_parity: str = "missing"
-    client_control_ready: bool = False
+    control_ready: bool = False
+    npc_engine_ready: bool = False
+    npc_id: str = "goblin.primary"
+    body_mode: str = "sensor_only"
 
     def __post_init__(self) -> None:
         for name in ("hunger", "thirst", "fatigue", "panic", "injury"):
@@ -60,20 +77,26 @@ class BodyState:
             raise ValueError("unknown threat level")
         if self.mode not in {"SAFE", "ROAM", "PARTY", "HUNT"}:
             raise ValueError("unknown body mode")
-        if self.client_mod_parity not in MOD_PARITY_STATUSES:
-            raise ValueError("unknown client mod parity status")
+        if self.body_mode not in {"disabled", "sensor_only", "npc"}:
+            raise ValueError("unknown execution body mode")
+        if not self.npc_id or len(self.npc_id) > 96:
+            raise ValueError("invalid npc id")
 
     @property
     def body_ready(self) -> bool:
         """A body is executable after the server-computed control contract."""
 
-        return self.body_present and self.client_control_ready
+        return (
+            self.body_present
+            and self.control_ready
+            and self.npc_engine_ready
+        )
 
     @property
     def creation_ready(self) -> bool:
         """Character creation may start before the first player body exists."""
 
-        return self.client_control_ready
+        return self.control_ready
 
 
 @dataclass(frozen=True)
@@ -85,12 +108,20 @@ class SafeAction:
     target_label: str | None = None
     item_name: str | None = None
     item_count: int | None = None
+    npc_id: str = "goblin.primary"
+    leader: str | None = None
+    members: tuple[str, ...] = ()
+    job: str | None = None
+    formation: str | None = None
+    text: str | None = None
+    squad_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "action": self.action.value,
             "priority": self.priority,
             "reason": self.reason,
+            "npc_id": self.npc_id,
         }
         if self.target_kind is not None:
             result["target"] = {
@@ -102,6 +133,18 @@ class SafeAction:
                 "name": self.item_name,
                 "count": self.item_count or 1,
             }
+        if self.leader is not None:
+            result["leader"] = self.leader
+        if self.members:
+            result["members"] = list(self.members)
+        if self.job is not None:
+            result["job"] = self.job
+        if self.formation is not None:
+            result["formation"] = self.formation
+        if self.text is not None:
+            result["text"] = self.text
+        if self.squad_id is not None:
+            result["squad_id"] = self.squad_id
         return result
 
 
@@ -195,6 +238,22 @@ class TacticalController:
         "HUNT_REWARD": Action.CLAIM_REWARD,
         "TRADE": Action.MOVE_TO,
         "HELP": Action.FOLLOW,
+        "FOLLOW_GOBLIN": Action.FOLLOW_GOBLIN,
+        "HOLD_POSITION": Action.HOLD_POSITION,
+        "REGROUP": Action.REGROUP,
+        "LOOT_AREA": Action.LOOT_AREA,
+        "DEFEND_PLAYER": Action.DEFEND_PLAYER,
+        "DEFEND_AREA": Action.DEFEND_AREA,
+        "GUARD": Action.GUARD,
+        "PATROL": Action.PATROL,
+        "FORM_SQUAD": Action.FORM_SQUAD,
+        "DISMISS_SQUAD": Action.DISMISS_SQUAD,
+        "ASSIGN_JOB": Action.ASSIGN_JOB,
+        "SECURE_BASE": Action.SECURE_BASE,
+        "RETURN_TO_BASE": Action.RETURN_TO_BASE,
+        "CLEAR_BUILDING": Action.CLEAR_BUILDING,
+        "ENTER_VEHICLE": Action.ENTER_VEHICLE,
+        "EXIT_VEHICLE": Action.EXIT_VEHICLE,
     }
 
     def decide(self, intent: ValidatedIntent, state: BodyState) -> ControllerResult:
@@ -215,6 +274,14 @@ class TacticalController:
             "JOIN_PARTY",
             "TRADE",
             "HELP",
+            "FOLLOW_GOBLIN",
+            "LOOT_AREA",
+            "DEFEND_PLAYER",
+            "DEFEND_AREA",
+            "GUARD",
+            "PATROL",
+            "CLEAR_BUILDING",
+            "ENTER_VEHICLE",
         } and not isinstance(target, dict):
             return ControllerResult(False, None, "intent target is missing")
         target_kind = target.get("kind") if isinstance(target, dict) else None
@@ -225,6 +292,7 @@ class TacticalController:
             target_kind = None
             target_label = None
         item = intent.data.get("item")
+        members = intent.data.get("members", intent.data.get("requested_members", []))
         result = SafeAction(
             action=action,
             priority=intent.data.get("priority", 1),
@@ -233,6 +301,25 @@ class TacticalController:
             target_label=target_label,
             item_name=item.get("name") if isinstance(item, dict) else None,
             item_count=item.get("count") if isinstance(item, dict) else None,
+            npc_id=str(intent.data.get("npc_id", "goblin.primary")),
+            leader=(
+                str(intent.data["leader"])
+                if isinstance(intent.data.get("leader"), str)
+                else None
+            ),
+            members=tuple(str(member) for member in members if isinstance(member, str)),
+            job=(str(intent.data["job"]) if isinstance(intent.data.get("job"), str) else None),
+            formation=(
+                str(intent.data["formation"])
+                if isinstance(intent.data.get("formation"), str)
+                else None
+            ),
+            text=(str(intent.data["text"]) if isinstance(intent.data.get("text"), str) else None),
+            squad_id=(
+                str(intent.data["squad_id"])
+                if isinstance(intent.data.get("squad_id"), str)
+                else None
+            ),
         )
         return ControllerResult(True, result, "accepted by tactical controller")
 
@@ -250,9 +337,9 @@ class SafetyController:
     ) -> ControllerResult:
         if not state.body_ready:
             if intent is None:
-                return ControllerResult(True, None, "body driver or client mod parity is unavailable")
+                return ControllerResult(True, None, "NPC body driver is unavailable")
             if self.tactical._mapping[intent.intent] not in {Action.SAY, Action.NOOP}:
-                return ControllerResult(False, None, "body driver or client mod parity is unavailable")
+                return ControllerResult(False, None, "NPC body driver is unavailable")
             return self.tactical.decide(intent, state)
         reflex = self.reflex.decide(state)
         if reflex is not None:

@@ -4,9 +4,11 @@
 # Build 42 ignores unknown server-option keys. Place this file at:
 #   <cachedir>/Lua/goblin-bridge/config.ini
 # The bridge provisioner creates this file automatically with the safe values.
-# Keep the master switch false until every body and parity gate passes.
+# Keep the master switch false until the server-side NPC and bridge checks pass.
 GoblinEnabled=false
 GoblinBridgeRoot=goblin-bridge
-GoblinClientUsername=Goblin
-GoblinGameBuild=
-GoblinSurvivorSHA256=
+GoblinNpcId=goblin.primary
+GoblinNpcName=Goblin
+GoblinNpcProgram=Bandit
+GoblinNpcProtected=true
+GoblinTrackerExact=true

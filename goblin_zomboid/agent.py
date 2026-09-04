@@ -59,7 +59,7 @@ class AgentRuntime:
             return "waiting_for_pz", None, "sensor_only"
         age = max(0, int(self.clock() * 1000) - heartbeat.timestamp_ms)
         body_mode = heartbeat.fields.get("body_mode", "sensor_only")
-        if body_mode not in {"disabled", "sensor_only", "live_client"}:
+        if body_mode not in {"disabled", "sensor_only", "npc"}:
             body_mode = "sensor_only"
         return "safe", age, body_mode
 

@@ -75,8 +75,8 @@ class ControllerTests(unittest.TestCase):
             thirst=0.95,
             has_water=True,
             mode="SAFE",
-            client_mod_parity="verified",
-            client_control_ready=True,
+            control_ready=True,
+            npc_engine_ready=True,
         )
         result = SafetyController().decide(intent, state)
         self.assertTrue(result.accepted)

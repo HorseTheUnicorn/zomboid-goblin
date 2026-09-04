@@ -10,8 +10,8 @@ Group=goblin
 WorkingDirectory=/home/goblin/zomboid-goblin
 Environment=GOBLIN_BRIDGE_ROOT=/mnt/goblin-zomboid
 Environment=GOBLIN_ENABLED=false
-# Leave this true during staging. Set false only after the body-feasibility
-# gate has been explicitly approved for this host.
+# Leave this true during staging. Set false only after the server-side NPC
+# contract has been verified.
 Environment=GOBLIN_START_PAUSED=true
 Environment=GOBLIN_PZ_HOST=192.168.0.3
 Environment=GOBLIN_MEMORY_PATH=/var/lib/goblin-zomboid-agent/memory.sqlite3

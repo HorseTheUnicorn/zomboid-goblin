@@ -115,12 +115,14 @@ elif [[ ! -e "$config_file" ]]; then
     umask 007
     printf '%s\n' \
         '# GoblinSurvivor integration configuration.' \
-        '# Keep the master switch false until every activation gate passes.' \
+        '# Keep the master switch false until the NPC and bridge checks pass.' \
         'GoblinEnabled=false' \
         'GoblinBridgeRoot=goblin-bridge' \
-        'GoblinClientUsername=Goblin' \
-        'GoblinGameBuild=' \
-        'GoblinSurvivorSHA256=' > "$config_file"
+        'GoblinNpcId=goblin.primary' \
+        'GoblinNpcName=Goblin' \
+        'GoblinNpcProgram=Bandit' \
+        'GoblinNpcProtected=true' \
+        'GoblinTrackerExact=true' > "$config_file"
 fi
 chown root:goblinbridge "$config_file"
 chmod 0660 "$config_file"

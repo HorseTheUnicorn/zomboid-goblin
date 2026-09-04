@@ -1,18 +1,28 @@
-# Operations and failure behavior
+# Operations
 
-## Stop conditions
+Useful local checks:
 
-Leave the system in sensor-only mode when the PZ heartbeat is missing, stale, malformed, or from the wrong protocol version. Leave it paused when the body feasibility gate has not passed. The service does not retry an unsafe action by changing its target or by emitting lower-level instructions.
+```text
+systemctl status goblin-zomboid-agent.service goblin-zomboid-relay.service
+curl -fsS http://127.0.0.1:8781/healthz
+curl -fsS http://127.0.0.1:8782/api/health
+curl -fsS http://127.0.0.1:8782/api/state
+curl -fsS http://127.0.0.1:8782/api/events
+```
 
-## Message lifecycle
+On `.03`, use the Proxmox CT console to check:
 
-A writer commits the JSON payload first and then its ready marker. Readers ignore files without both pieces. Valid commands are recorded in a bounded durable request ledger before a controller can act. Duplicate request IDs are archived without execution. Malformed, stale, unknown, and oversized items go to deadletter with a bounded reason.
+```text
+systemctl status zomboid-servertest.service
+ss -lunp | grep -E '16261|16262'
+tail -n 200 /home/zomboid/Zomboid/Logs/*DebugLog-server.txt
+```
 
-## Observability
+If the server reports that the Bandits adapter is unavailable, stop issuing
+commands and inspect the installed Workshop package/API notes. The adapter is
+designed to fail closed. If the Goblin is absent, keep the server running with
+players online long enough for the Bandits individual spawn anchor to become
+available; the registry retries and persists the stable identity.
 
-The runtime heartbeat contains only coarse status, body mode, feature flag, and age. The public status endpoint is an explicit allowlist containing alive, hunt_active, and prize_tier only. The admin endpoint requires a configured token and may show private diagnostic state. No endpoint returns raw model prompts, credentials, or arbitrary command text.
-
-## Recovery
-
-If a bridge channel is damaged, pause the service, preserve the archive and deadletter directories, fix the mount or permissions, then rerun the protocol tests. Do not delete the save to clear a bridge problem. Restore from the verified save backup only if the PZ test itself damaged the disposable copy.
-
+Never place Steam, PZ server, VNC, Qwen admin, or bridge credentials in shell
+arguments, logs, chat, tracker state, or browser URLs.
