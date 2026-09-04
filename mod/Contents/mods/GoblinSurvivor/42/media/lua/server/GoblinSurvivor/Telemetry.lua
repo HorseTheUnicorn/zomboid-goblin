@@ -1,6 +1,7 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
+local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Perception = require("GoblinSurvivor/Perception")
 local BaseManager = require("GoblinSurvivor/BaseManager")
 local GuardManager = require("GoblinSurvivor/GuardManager")
@@ -56,6 +57,9 @@ function Telemetry.writeHeartbeat()
         npc_id = npc.npc_id,
         control_ready = npc.control_ready,
         npc_engine_ready = npc.npc_engine_ready,
+        friendly = npc.friendly,
+        protected = npc.protected,
+        needs_disabled = npc.needs_disabled,
         spawn_status = npc.spawn_status,
         spawn_pending = npc.spawn_pending,
         spawn_attempts = npc.spawn_attempts
@@ -65,7 +69,9 @@ end
 function Telemetry.writeState()
     if not IPC.isReady() then return false end
     local npc = GoblinNPC.getGoblinState()
-    local perception = Perception.coarseState(GoblinNPC.findGoblin())
+    local zombie = GoblinNPC.findGoblin()
+    local perception = Perception.coarseState(zombie)
+    local body = NpcAdapter.status(zombie)
     return IPC.publishRuntime("zomboid-state", {
         protocol = Config.protocol,
         request_id = "zomboid-state",
@@ -80,17 +86,26 @@ function Telemetry.writeState()
         control_ready = npc.control_ready,
         npc_engine_ready = npc.npc_engine_ready,
         role = npc.role,
-        mode = "ROAM",
+        mode = body.mode or "SAFE",
+        task = body.task,
+        target_player = body.target_player,
         threat_level = perception.threat_level or "none",
         hunger = 0,
         thirst = 0,
         fatigue = 0,
         panic = 0,
         injury = 0,
-        weapon_ready = true,
-        has_food = true,
-        has_water = true,
-        has_medical = true,
+        -- Goblin is a protected Bandits2 IsoZombie body. The framework does
+        -- not expose survivor hunger/thirst/inventory readiness through the
+        -- verified adapter, so these values are deliberately conservative
+        -- rather than fabricated as available supplies.
+        weapon_ready = body.weapon_ready == true,
+        has_food = body.has_food == true,
+        has_water = body.has_water == true,
+        has_medical = body.has_medical == true,
+        friendly = body.friendly == true,
+        protected = body.protected == true,
+        needs_disabled = body.needs_disabled == true,
         spawn_status = npc.spawn_status,
         spawn_pending = npc.spawn_pending,
         spawn_attempts = npc.spawn_attempts,

@@ -23,6 +23,9 @@ the exact Bandits2 brain fields before the registry marks the body ready.
 Protection and the friendly brain policy are reapplied on every server tick.
 There is no vanilla fallback: if the verified Bandits2 API is unavailable, the
 mod remains in `sensor_only` and does not expose a normal zombie as Goblin.
+The adapter reports the actual Bandits2 task/follow mode and protection proof
+to telemetry. Goblin speech uses the framework body chat primitive because
+Bandits2's canned `Bandit.Say` helper cannot carry arbitrary Qwen text.
 
 The first combat primitive is deliberately narrow: an approved `ATTACK`
 intent can select only the nearest live hostile zombie inside a fixed radius.

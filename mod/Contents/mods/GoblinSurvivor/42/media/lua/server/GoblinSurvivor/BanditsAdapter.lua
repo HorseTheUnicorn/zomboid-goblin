@@ -560,6 +560,81 @@ function BanditsAdapter.getBrain(body)
     return bodyBrain(body)
 end
 
+-- Bandits2's public Bandit.Say function is a canned-phrase/sound helper: it
+-- looks up a key in Bandit.SoundTab. Goblin speech is arbitrary, bounded
+-- text produced by the private Python service, so use the same networked
+-- body's verified chat-line primitive instead of pretending a Qwen sentence
+-- is a Bandits sound key. This is the only framework-specific speech detail
+-- exposed to the rest of GoblinSurvivor.
+function BanditsAdapter.say(body, text)
+    if not BanditsAdapter.isOwned(body) then
+        return false, "friendly Bandits2 NPC speech contract is unavailable"
+    end
+    if type(text) ~= "string" or #text < 1 or #text > 240 then
+        return false, "NPC speech is malformed"
+    end
+    if functionExists(body, "addLineChatElement") then
+        local ok = pcall(body.addLineChatElement, body, text, 0.1, 0.8, 0.1)
+        if ok then return true, "speech accepted by Bandits2 body" end
+    end
+    return false, "Bandits2 body chat-line API is unavailable"
+end
+
+local function modeFor(data, brain)
+    if data ~= nil and data.goblin_combat == true then
+        return "HUNT"
+    end
+    local task = data ~= nil and data.goblin_task or nil
+    if type(task) == "table" then
+        local mode = string.upper(tostring(task.mode or ""))
+        if mode == "FOLLOW" or mode == "FOLLOW_GOBLIN"
+            or type(task.target_player) == "string" then
+            return "PARTY"
+        end
+    end
+    -- Companion's own behavior follows this stable Bandits2 master link when
+    -- no explicit GoblinSurvivor task is active.
+    if brain ~= nil and brain.master ~= nil then
+        return "PARTY"
+    end
+    return "ROAM"
+end
+
+function BanditsAdapter.status(body)
+    if not BanditsAdapter.isOwned(body) then
+        return {
+            mode = "SAFE",
+            task = nil,
+            target_player = nil,
+            friendly = false,
+            protected = false,
+            needs_disabled = false,
+            weapon_ready = false,
+            has_food = false,
+            has_water = false,
+            has_medical = false
+        }
+    end
+    local data = dataFor(body)
+    local brain = bodyBrain(body)
+    local task = data ~= nil and data.goblin_task or nil
+    return {
+        mode = modeFor(data, brain),
+        task = type(task) == "table" and task.mode or nil,
+        target_player = type(task) == "table" and task.target_player or nil,
+        friendly = BanditsAdapter.isFriendly(body),
+        protected = data ~= nil and data.goblin_protected == true,
+        needs_disabled = data ~= nil and data.goblin_needs_disabled == true,
+        -- Bandits2's verified individual spawn does not expose an inventory
+        -- readiness query through the adapter contract. Do not claim that an
+        -- unverified weapon or consumable exists.
+        weapon_ready = data ~= nil and data.goblin_weapon_ready == true,
+        has_food = false,
+        has_water = false,
+        has_medical = false
+    }
+end
+
 function BanditsAdapter.setTasks(body, tasks)
     if not BanditsAdapter.isOwned(body) or type(tasks) ~= "table" then
         return false, "friendly Bandits2 NPC task contract is unavailable"

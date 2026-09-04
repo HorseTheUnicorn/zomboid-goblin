@@ -62,6 +62,14 @@ function NpcAdapter.getBrain(body)
     return BanditsNpcAdapter.getBrain(body)
 end
 
+function NpcAdapter.say(body, text)
+    return BanditsNpcAdapter.say(body, text)
+end
+
+function NpcAdapter.status(body)
+    return BanditsNpcAdapter.status(body)
+end
+
 function NpcAdapter.setTasks(body, tasks)
     return BanditsNpcAdapter.setTasks(body, tasks)
 end

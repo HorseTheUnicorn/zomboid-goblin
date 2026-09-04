@@ -74,11 +74,7 @@ function ActionExecutor.execute(message, zombie)
     end
     if action == "SAY" then
         if not safeText(message.text, 240) then return false, "SAY text is invalid" end
-        if type(zombie.Say) ~= "function" then
-            return false, "PZ NPC speech method is unavailable"
-        end
-        local ok = pcall(zombie.Say, zombie, message.text)
-        return ok, ok and "speech accepted" or "NPC speech failed"
+        return NpcAdapter.say(zombie, message.text)
     end
     if action == "ATTACK" then
         local target = message.target

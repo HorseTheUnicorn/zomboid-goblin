@@ -37,6 +37,11 @@ invented from the Workshop description:
   framework task queue.
 - The verified friendly program is Companion; the installed package also
   contains ZPCompanion.lua and ZPCompanionGuard.lua.
+- The verified speech helper is `Bandit.Say(bandit, phrase, force)`, but it
+  accepts a Bandits `SoundTab` phrase key rather than arbitrary text. The
+  adapter therefore uses the Bandits2 body method `addLineChatElement` for
+  bounded Goblin/Qwen chat text; `ActionExecutor` never calls framework names
+  directly.
 
 ## Friendly Goblin contract
 
