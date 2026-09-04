@@ -20,12 +20,15 @@ protection hooks, separate coarse/exact telemetry, semantic target resolution,
 chat forwarding, a narrow nearest-zombie combat bridge, and Bandits2-backed
 settlement assignment persistence for jobs, guards, and squads.
 
-The current deployed revision is `623f3c1`. The dedicated servertest profile
-advertises Workshop item `3268487204` and loads `Bandits2` before
-`GoblinSurvivor`; the server was restarted and its fresh log reports
-`adapter=bandits2 friendly=true control_ready=true`. The matching Python
-agent/relay revision is active on .76, and the Windows client package has been
-synchronized to the same GoblinSurvivor files.
+The `.76` agent/relay runtime remains at revision `623f3c1`; the follow-up
+`ecb40f4` change is the Bandits2-backed mod package and does not change the
+Python runtime. The `.03` server package and the Windows client package are
+now at `ecb40f4`. The dedicated servertest profile advertises Workshop item
+`3268487204` and loads `Bandits2` before `GoblinSurvivor`; the server was
+restarted and its fresh log reports `adapter=bandits2 friendly=true
+control_ready=true`. Goblin speech now uses the verified Bandits2 body chat
+primitive, while the framework's canned `Bandit.Say` helper remains behind
+the adapter boundary.
 
 The next live acceptance check is deliberately concrete: join the dedicated
 server with a client that has both Workshop packages. The bridge state must

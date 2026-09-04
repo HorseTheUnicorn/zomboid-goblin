@@ -39,9 +39,10 @@ Role: Project Zomboid dedicated server.
 - The active multiplayer save is under
   `/home/zomboid/Zomboid/Saves/Multiplayer/servertest`.
 - The bridge endpoint is `/home/zomboid/Zomboid/Lua/goblin-bridge`.
-- The live server now has the Bandits2-backed GoblinSurvivor package deployed;
-  the package reports `adapter=bandits2`, `friendly=true`, and
-  `control_ready=true` during bootstrap.
+- The live server now has the Bandits2-backed GoblinSurvivor package from
+  revision `ecb40f4` deployed; the package reports `adapter=bandits2`,
+  `friendly=true`, and `control_ready=true` during bootstrap. The active
+  package contains 32 files.
 - The required Bandits2 cache is present at
   `/home/zomboid/pzserver/steamapps/workshop/content/108600/3268487204`.
   `servertest.ini` now includes Workshop item `3268487204` and loads
@@ -52,8 +53,21 @@ Role: Project Zomboid dedicated server.
   `16261` and `16262` were bound.
 - The server's existing save and other mod loadout were left in place. The
   latest Bandits2 deployment used the bounded backup directory
-  `/home/zomboid/backups/goblin-bandits-623f3c1-pre/`, containing the prior
-  server-side GoblinSurvivor package.
+  `/home/zomboid/backups/goblin-bandits-ecb40f4-pre/`, containing the prior
+  server-side GoblinSurvivor package, server configuration, and save archive.
+
+## Windows test client
+
+The native Windows client is the actual player/test client, not the `.76`
+agent host. Its direct GoblinSurvivor package is synchronized from revision
+`ecb40f4` at both:
+
+- `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor\Contents\mods\GoblinSurvivor`
+- `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
+
+Each active path has 32 files with zero hash mismatches and zero extra files.
+The pre-sync copies were retained under the corresponding explicit
+`GoblinSurvivor-pre-ecb40f4` sibling paths.
 
 ## Operational boundary
 
