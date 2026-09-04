@@ -20,16 +20,18 @@ protection hooks, separate coarse/exact telemetry, semantic target resolution,
 chat forwarding, a narrow nearest-zombie combat bridge, and Bandits2-backed
 settlement assignment persistence for jobs, guards, and squads.
 
-The `.76` agent/relay runtime and read-only tracker are now running from the
-`07f8f85` checkout at `/home/goblin/zomboid-goblin-07f8f85`; this includes the
-B42 map UI, bounded tile routes, and HEAD support. The `.03` server package
-and the Windows client package remain at the Bandits2-backed mod revision
-`ecb40f4`. The dedicated servertest profile advertises Workshop item
-`3268487204` and loads `Bandits2` before `GoblinSurvivor`; the server was
-restarted and its fresh log reports `adapter=bandits2 friendly=true
-control_ready=true`. Goblin speech now uses the verified Bandits2 body chat
-primitive, while the framework's canned `Bandit.Say` helper remains behind
-the adapter boundary.
+The `.76` agent/relay runtime and read-only tracker now run from the
+`58ff9a2` checkout at `/home/goblin/zomboid-goblin-58ff9a2`; this includes the
+B42 map UI, bounded tile routes, HEAD support, and the managed-friendly roster.
+The `.03` server package is deployed from the same `58ff9a2` revision. The
+Windows client package is still at the earlier direct-sync revision
+`ecb40f4` and must be synchronized to `58ff9a2` (or use the exact published
+Workshop package) before testing this roster build. The dedicated servertest
+profile advertises Workshop item `3268487204` and loads `Bandits2` before
+`GoblinSurvivor`; the server was restarted and its fresh log reports
+`adapter=bandits2 friendly=true control_ready=true`. Goblin speech now uses
+the verified Bandits2 body chat primitive, while the framework's canned
+`Bandit.Say` helper remains behind the adapter boundary.
 
 The important distinction is intentional: GoblinSurvivor is our own mod, and
 Bandits2 is its runtime dependency/body engine. We use Bandits2's verified

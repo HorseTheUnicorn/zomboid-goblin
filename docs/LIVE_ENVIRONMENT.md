@@ -22,8 +22,8 @@ Role: Goblin AI host.
   was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the current deployed checkout recorded
-  below at `/home/goblin/zomboid-goblin-<revision>`; this build includes
+- The agent and relay are running from the current deployed checkout
+  `/home/goblin/zomboid-goblin-58ff9a2`; this build includes
   deterministic survival fallback, event-driven Qwen planning, persistent
   settlement assignments, the bounded SSE tracker stream, the read-only B42
   map UI, and the Bandits2-backed managed-friendly roster.
@@ -60,8 +60,10 @@ Role: Project Zomboid dedicated server.
   `16261` and `16262` were bound.
 - The server's existing save and other mod loadout were left in place. The
   latest Bandits2 deployment used the bounded backup directory
-  `/home/zomboid/backups/goblin-bandits-ecb40f4-pre/`, containing the prior
-  server-side GoblinSurvivor package, server configuration, and save archive.
+  `/home/zomboid/backups/goblin-managed-roster-58ff9a2-pre/`, containing the
+  live server configuration, save archive, and prior server-side
+  GoblinSurvivor package. The earlier Bandits2 deployment backup remains at
+  `/home/zomboid/backups/goblin-bandits-ecb40f4-pre/`.
 
 ## Windows test client
 
@@ -72,9 +74,11 @@ agent host. Its direct GoblinSurvivor package is synchronized from revision
 - `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor\Contents\mods\GoblinSurvivor`
 - `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
 
-The active paths must be synchronized from the same deployed revision as the
-server package. Any pre-sync copies are retained only under an explicit
-revision-named sibling path.
+The active paths are currently synchronized from revision `ecb40f4`, which is
+behind the live `.03` package at `58ff9a2`. Before testing this deployment from
+Windows, synchronize both paths from `58ff9a2` or publish and subscribe to the
+exact corresponding Workshop package. Any pre-sync copies are retained only
+under an explicit revision-named sibling path.
 
 ## Operational boundary
 
