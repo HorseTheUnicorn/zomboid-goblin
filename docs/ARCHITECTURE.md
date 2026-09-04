@@ -5,7 +5,7 @@ The system has three deliberately separate planes:
 1. PZ server plane (`.03`): GoblinSurvivor runs only on the dedicated server.
    `NPCRegistry` owns the stable `goblin.primary` identity, `Protection`
    maintains the protected profile, `ActionExecutor` resolves semantic actions,
-   and `NpcAdapter` selects the Bandits2-backed server-side body integration.
+   and `NpcAdapter` owns the self-contained server-side body integration.
 2. Agent plane (`.76`): Qwen receives `brain_view`, proposes strict JSON, and
    Python applies reflex, combat, entity, job, and squad gates before writing
    a `command.npc_action` bridge message.
@@ -24,7 +24,7 @@ The data flow is:
 PZ perception -> coarse state -> Qwen -> validated intent
     -> deterministic controller -> NpcBodyDriver
     -> command.npc_action -> Lua ActionExecutor
-    -> NpcAdapter -> Bandits2 friendly persistent NPC body
+    -> NpcAdapter -> friendly persistent GoblinSurvivor body
 
 PZ exact telemetry ---------------------------------> TrackerStore -> map
 ```
@@ -33,11 +33,11 @@ There is no native Steam/PZ gameplay client in this project. Human players
 connect normally to the dedicated server and are not required to install a
 Goblin control client.
 
-The body adapter uses Bandits2's public Build 42 server Lua spawn and brain
-surface, while keeping Goblin identity, protection, command validation, and
-telemetry in this repository. Bandits2 is a runtime dependency, not a copied
-or repackaged asset. If it is missing or its friendly contract cannot be
-proven, the mod stays in `sensor_only` and does not spawn a normal hostile
-zombie. Higher-level combat, inventory, vehicle, and building behaviors remain
-owned by this repository and are enabled only after their engine contracts are
-validated.
+The body adapter uses Build 42's public server Lua spawn and movement surface.
+Its small survivor-style brain and friendly policy were developed from the
+validated Bandits2 behavior, but the runtime implementation is owned by this
+repository and does not copy or load Bandits2. If the friendly contract cannot
+be proven, the mod stays in `sensor_only` and does not expose a normal hostile
+zombie as Goblin. Higher-level combat, inventory, vehicle, and building
+behaviors remain owned by this repository and are enabled only after their
+engine contracts are validated.

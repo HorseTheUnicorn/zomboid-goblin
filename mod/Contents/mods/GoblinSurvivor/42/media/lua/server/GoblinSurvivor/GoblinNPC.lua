@@ -51,4 +51,14 @@ function GoblinNPC.onZombieDeath(zombie)
     end
 end
 
+function GoblinNPC.onZombieUpdate(zombie)
+    -- OnZombieUpdate runs close to the zombie AI update. Reasserting the
+    -- standalone friendly target policy here closes the window in which a
+    -- normal zombie could reacquire a player between slower command ticks.
+    if zombie ~= nil and NpcAdapter.isOwned(zombie) then
+        Protection.apply(zombie)
+        NpcAdapter.tick(zombie)
+    end
+end
+
 return GoblinNPC

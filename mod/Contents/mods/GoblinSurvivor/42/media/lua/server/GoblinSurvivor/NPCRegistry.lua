@@ -97,13 +97,13 @@ local function bindExisting()
                     NPCRegistry.lastBindWarningAt = now
                 end
             else
-            local entry = NPCRegistry.entries[Config.npcId]
-            entry.zombie = zombie
-            entry.active = true
-            entry.alive = true
-            NPCRegistry.spawnPending = false
-            NPCRegistry.pendingSpawn = nil
-            return zombie
+                local entry = NPCRegistry.entries[Config.npcId]
+                entry.zombie = zombie
+                entry.active = true
+                entry.alive = true
+                NPCRegistry.spawnPending = false
+                NPCRegistry.pendingSpawn = nil
+                return zombie
             end
         end
     end
@@ -204,12 +204,18 @@ function NPCRegistry.onZombieCreate(zombie)
     NPCRegistry.load()
     local entry = NPCRegistry.entries[Config.npcId]
     if entry ~= nil and entry.zombie ~= nil then return false, "Goblin is already bound" end
-    -- OnZombieCreate can fire before Bandits2 finishes building its brain.
-    -- In that case the bounded registry scan below will bind it later; never
-    -- claim an arbitrary normal zombie from this event.
-    if not NpcAdapter.isCandidate(zombie) then return false, "not a Goblin profile candidate" end
+    -- OnZombieCreate can fire before the standalone adapter has finished
+    -- building its brain. In that case the bounded registry scan below will
+    -- bind it later; never claim an arbitrary normal zombie from this event.
+    if not NpcAdapter.isCandidate(zombie)
+        and not NpcAdapter.isEventCandidate(zombie) then
+        return false, "not a Goblin profile candidate"
+    end
     local prepared, detail = NpcAdapter.prepare(zombie, Config.npcId)
-    if not prepared or not NpcAdapter.isOwned(zombie) then return false, detail end
+    if not prepared or not NpcAdapter.isOwned(zombie) then
+        NpcAdapter.discard(zombie)
+        return false, detail
+    end
     entry.zombie = zombie
     entry.active = true
     entry.alive = true
@@ -282,6 +288,7 @@ function NPCRegistry.spawnGoblin()
     if zombie ~= nil then
         NPCRegistry.spawnPending = false
         NPCRegistry.pendingSpawn = nil
+        NpcAdapter.discard(zombie)
         log("adapter returned a body that failed the friendly ownership proof")
         return nil, "spawned body failed the friendly ownership proof"
     end

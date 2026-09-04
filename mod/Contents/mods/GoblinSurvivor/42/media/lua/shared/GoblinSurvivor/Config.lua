@@ -4,8 +4,8 @@ local Config = {
     bridgeRootOverride = "",
     npcId = "goblin.primary",
     npcName = "Goblin",
-    -- Bandits2's survivor brain is the friendly body implementation.  The
-    -- adapter normalizes the old VanillaZombie value for existing configs.
+    -- Companion names the standalone survivor-style policy.  The adapter
+    -- normalizes the old VanillaZombie value for existing configs.
     npcProgram = "Companion",
     npcRole = "companion",
     protected = true,

@@ -1,12 +1,11 @@
 # NPC architecture
 
 `goblin.primary` is the sole stable Goblin identity. `NPCRegistry` binds that
-identity to a server-created, networked Bandits2 survivor body marked with
-this mod's own `getModData()` fields. It scans the loaded zombie population
-after restarts and requests one replacement through Bandits2's public
-`BanditServer.Spawner.Individual` entry point when an online player anchor
-exists. `GoblinNPC` exposes the narrow profile/state surface used by
-telemetry and commands.
+identity to a server-created, networked body marked with this mod's own
+`getModData()` fields. It scans the loaded zombie population after restarts
+and requests one replacement through the Build 42 server spawn API when an
+online player anchor exists. `GoblinNPC` exposes the narrow profile/state
+surface used by telemetry and commands.
 
 The execution path is:
 
@@ -15,15 +14,14 @@ ValidatedIntent -> SafetyController -> SafeAction -> NpcBodyDriver
 -> command.npc_action -> CommandLoop -> ActionExecutor -> NpcAdapter
 ```
 
-`NpcAdapter` selects `BanditsAdapter` only when the installed Bandits2 API is
-complete. The Bandits adapter creates or repairs one private profile and clan,
-sets `friendly=true`, uses the `Companion` program, clears both Bandits
-hostility flags, and requires `loyal=true` and `permanent=true` before the
-registry marks the body ready. Protection is reapplied on every server tick;
-the body is also cleared of vanilla aggro when the exposed hooks exist. A
-normal vanilla `IsoZombie` remains a sensor-only fallback because it has no
-verified friendly relationship contract. The adapter deliberately does not
-mark the body `useless`, because that population flag could make a persistent
-NPC eligible for engine cleanup.
+`NpcAdapter` exposes the self-contained `VanillaNpcAdapter` implementation.
+Its small survivor-style brain was shaped from the validated Bandits2
+behavior, but it is implemented in this repository and does not load Bandits2
+globals or assets. It sets friendly and companion policy fields, clears the
+zombie target on every server tick, and requires those fields plus the target
+hook before the registry marks the body ready. Protection is reapplied on
+every server tick. The adapter deliberately does not mark the body `useless`,
+because that population flag could make a persistent NPC eligible for engine
+cleanup.
 Unsupported combat, inventory, vehicle, or building primitives remain
 rejected until their exact Build 42 contracts are verified.

@@ -1,12 +1,24 @@
--- Original, dependency-free NPC body adapter.
+-- Standalone, dependency-free NPC body adapter.
 --
 -- Build 42 exposes networked zombie creation and movement to server Lua.  We
 -- use that public surface as the transportable body and keep Goblin identity,
--- protection, tasks, and persistence in this mod's own data.  No Workshop
--- framework code or globals are required here.
+-- a small survivor-style brain, friendly policy, protection, tasks, and
+-- persistence in this mod's own data.  Its policy shape was developed from
+-- the validated Bandits2 behavior, but no Bandits2 code or runtime global is
+-- required here.
 local Config = require("GoblinSurvivor/Config")
 
 local VanillaNpcAdapter = {}
+
+local engineName = "goblin-survivor"
+
+local function nowMs()
+    if type(getTimestampMs) == "function" then
+        local ok, value = pcall(getTimestampMs)
+        if ok and type(value) == "number" then return value end
+    end
+    return os.time() * 1000
+end
 
 local function functionExists(owner, name)
     return owner ~= nil and type(owner[name]) == "function"
@@ -82,14 +94,6 @@ local function playerFor(label)
     return result
 end
 
-local function nowMs()
-    if type(getTimestampMs) == "function" then
-        local ok, value = pcall(getTimestampMs)
-        if ok and type(value) == "number" then return value end
-    end
-    return os.time() * 1000
-end
-
 local function pathTo(body, x, y, z)
     if body == nil then return false, "NPC body is missing" end
     if functionExists(body, "pathToLocationF") then
@@ -110,6 +114,10 @@ function VanillaNpcAdapter.available()
     return type(addZombiesInOutfit) == "function"
 end
 
+function VanillaNpcAdapter.engineName()
+    return engineName
+end
+
 function VanillaNpcAdapter.spawnPoint(anchor)
     local point = position(anchor)
     if point == nil then return nil end
@@ -125,42 +133,103 @@ end
 function VanillaNpcAdapter.capabilities()
     return {
         available = VanillaNpcAdapter.available(),
-        friendly = false,
+        -- A normal zombie has no faction API.  The standalone contract is
+        -- therefore conditional: it is friendly only when the runtime can
+        -- repeatedly clear the zombie target, and each body is re-verified by
+        -- isFriendly() after preparation.
+        friendly = type(addZombiesInOutfit) == "function",
         spawnIndividual = type(addZombiesInOutfit) == "function",
         networkedBody = "IsoZombie",
         movement = type(IsoGameCharacter) == "table"
             or type(IsoZombie) == "table",
         speech = true,
         restore = false,
-        externalFramework = false
+        externalFramework = false,
+        framework = "GoblinSurvivor"
     }
 end
 
-function VanillaNpcAdapter.isOwned(body)
+function VanillaNpcAdapter.isCandidate(body)
     local data = dataFor(body)
     return data ~= nil
         and data.goblin_npc_id == Config.npcId
         and data.goblin_owned == true
 end
 
-function VanillaNpcAdapter.prepare(body, npcId)
+-- OnZombieCreate is received for the one bounded request point.  Before the
+-- standalone adapter marks the body, there is no profile field to inspect;
+-- the registry has already applied the request-point distance check.
+function VanillaNpcAdapter.isEventCandidate(body)
+    return body ~= nil and dataFor(body) ~= nil
+        and functionExists(body, "setTarget")
+end
+
+function VanillaNpcAdapter.isFriendly(body)
+    local data = dataFor(body)
+    return data ~= nil
+        and data.goblin_npc_id == Config.npcId
+        and data.goblin_owned == true
+        and data.goblin_friendly == true
+        and functionExists(body, "setTarget")
+end
+
+function VanillaNpcAdapter.isOwned(body)
+    return VanillaNpcAdapter.isCandidate(body)
+        and VanillaNpcAdapter.isFriendly(body)
+end
+
+local function characterId(player)
+    if player ~= nil and functionExists(player, "getUsername") then
+        local ok, username = pcall(function() return player:getUsername() end)
+        if ok and type(username) == "string" and username ~= "" then
+            return username
+        end
+    end
+    return nil
+end
+
+local function brainFor(data)
+    if data == nil then return nil end
+    if type(data.goblin_brain) ~= "table" then
+        data.goblin_brain = {}
+    end
+    return data.goblin_brain
+end
+
+function VanillaNpcAdapter.prepare(body, npcId, anchor)
     local data = dataFor(body)
     if data == nil then return false, "NPC mod-data API is unavailable" end
+    if not functionExists(body, "setTarget") then
+        return false, "standalone friendly target API is unavailable"
+    end
     data.goblin_npc_id = npcId or Config.npcId
     data.goblin_owned = true
-    data.goblin_engine = "vanilla-zombie"
+    data.goblin_friendly = true
+    data.goblin_engine = engineName
     data.goblin_protected = true
     data.goblin_task = nil
     data.goblin_next_path_at = nil
+    local brain = brainFor(data)
+    brain.program = "Companion"
+    brain.hostile = false
+    brain.hostile_players = false
+    brain.loyal = true
+    brain.permanent = true
+    local master = characterId(anchor)
+    if master ~= nil then brain.master = master end
 
     -- These are all guarded because minor Build 42 updates can change which
     -- engine hooks are exposed to server Lua.  The data marker remains the
     -- authoritative ownership check used by the registry.
     callIfPresent(body, "setNoDamage", true)
+    callIfPresent(body, "setImmortal", true)
     callIfPresent(body, "setTarget", nil)
     callIfPresent(body, "setDisplayName", Config.npcName)
     callIfPresent(body, "transmitModData")
-    return true, "vanilla NPC prepared"
+    if not VanillaNpcAdapter.isFriendly(body) then
+        return false, "standalone body failed the friendly ownership proof"
+    end
+    return true, "friendly standalone NPC prepared"
 end
 
 function VanillaNpcAdapter.spawnIndividual(anchor, npcId, _program)
@@ -190,8 +259,11 @@ function VanillaNpcAdapter.spawnIndividual(anchor, npcId, _program)
     if not ok then return false, "vanilla server NPC spawn failed", nil, nil end
     local body = firstValue(spawned)
     if body ~= nil then
-        local prepared, detail = VanillaNpcAdapter.prepare(body, npcId)
-        if not prepared then return false, detail, nil, nil end
+        local prepared, detail = VanillaNpcAdapter.prepare(body, npcId, anchor)
+        if not prepared then
+            VanillaNpcAdapter.discard(body)
+            return false, detail, nil, nil
+        end
         return true, "vanilla NPC spawned", body, spawnPoint
     end
     -- Some B42 Java/Lua bridges return an empty value even though the engine
@@ -201,10 +273,20 @@ function VanillaNpcAdapter.spawnIndividual(anchor, npcId, _program)
         spawnPoint
 end
 
+function VanillaNpcAdapter.discard(body)
+    if body == nil then return false end
+    -- A body that fails the friendly proof must not remain as an ordinary
+    -- zombie at the requested location.
+    callIfPresent(body, "removeFromSquare")
+    callIfPresent(body, "removeFromWorld")
+    return true
+end
+
 function VanillaNpcAdapter.getBrain(body)
-    -- The own mod-data table is the deliberate replacement for a foreign
+    -- The own mod-data brain is the deliberate replacement for a foreign
     -- framework brain.  Callers only use it for local, bounded task state.
-    return dataFor(body)
+    local data = dataFor(body)
+    return data and data.goblin_brain or nil
 end
 
 function VanillaNpcAdapter.setTasks(body, tasks)
@@ -219,6 +301,12 @@ function VanillaNpcAdapter.setTasks(body, tasks)
     end
     local data = dataFor(body)
     if data == nil then return false, "NPC mod-data API is unavailable" end
+    local brain = brainFor(data)
+    brain.program = "Companion"
+    brain.hostile = false
+    brain.hostile_players = false
+    brain.loyal = true
+    brain.permanent = true
     data.goblin_task = {
         mode = task.mode or "MOVE_TO",
         x = task.x,
@@ -240,16 +328,28 @@ function VanillaNpcAdapter.clearTasks(body)
         data.goblin_next_path_at = nil
     end
     callIfPresent(body, "setTarget", nil)
+    local brain = data and brainFor(data) or nil
+    if brain ~= nil then
+        brain.hostile = false
+        brain.hostile_players = false
+    end
     return true, "tasks cleared"
 end
 
 function VanillaNpcAdapter.tick(body)
     if not VanillaNpcAdapter.isOwned(body) then return false end
 
+    -- This is the standalone equivalent of the reference brain's friendly
+    -- guard.
     -- A friendly body must never retain the vanilla zombie aggro target.  The
     -- explicit combat action remains a separate, future capability.
     callIfPresent(body, "setTarget", nil)
     local data = dataFor(body)
+    local brain = brainFor(data)
+    brain.hostile = false
+    brain.hostile_players = false
+    brain.loyal = true
+    brain.permanent = true
     local task = data and data.goblin_task or nil
     if type(task) ~= "table" then return true end
 

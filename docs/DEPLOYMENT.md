@@ -8,10 +8,10 @@ depend on a direct SSH path to the container.
 
 ## Server-side mod
 
-Install the `GoblinSurvivor` package under the server's Build 42 mod path and
-enable the server-side mod. The published Bandits2 Workshop item
-`3268487204` is required before it in the server loadout because it supplies
-the friendly survivor brain. The live server's target paths are:
+Install the self-contained `GoblinSurvivor` package under the server's Build
+42 mod path and enable the server-side mod. Bandits2 was used as a behavior
+reference during development and is not required by the server or joining
+clients. The live server's target paths are:
 
 ```text
 service: zomboid-servertest.service
@@ -41,6 +41,6 @@ default tracker port is unavailable. Keep Qwen loopback-only.
   bounded response/ack and is archived.
 - `/api/state` and `/api/history/goblin` work; POST control/move/spawn routes
   do not exist.
-- A Bandits2 or friendly-brain capability failure leaves Goblin in
+- A standalone spawn or friendly-body capability failure leaves Goblin in
   `sensor_only`; it never substitutes a normal hostile zombie or falls back to
   a native client.

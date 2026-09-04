@@ -38,10 +38,10 @@ Role: Project Zomboid dedicated server.
 - `GoblinSurvivor` is present in the active `Mods=` loadout as the original
   server-side vanilla-adapter package. The old GoblinSurvivor Workshop copy is
   not required by the active configuration.
-- `Bandits2` and Workshop item `3268487204` are required in the active
-  `Mods=`/`WorkshopItems=` loadout before `GoblinSurvivor`. The cached package
-  is inspected at the path recorded in `docs/BANDITS_API_NOTES.md` and is used
-  by `BanditsAdapter.lua` only through its public server API.
+- `Bandits2` and Workshop item `3268487204` are not required in the active
+  `Mods=`/`WorkshopItems=` loadout. The cached package remains only as the
+  development reference recorded in `docs/BANDITS_API_NOTES.md`; the
+  self-contained `GoblinSurvivor` adapter does not load it.
 - The server was healthy during inventory: `zomboid-servertest.service` was
   active, `ProjectZomboid64 -servername servertest` was running, and UDP ports
   `16261` and `16262` were bound.

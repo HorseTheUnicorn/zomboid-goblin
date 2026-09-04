@@ -1,16 +1,16 @@
 # Zomboid Goblin
 
 Goblin is a persistent, server-side Project Zomboid NPC. The dedicated Build
-42 server owns a friendly Bandits2 survivor body and its movement; the Python
+42 server owns a friendly GoblinSurvivor body and its movement; the Python
 service on `.76` supplies bounded high-level decisions and a read-only tracker.
 No Steam/PZ client is installed or required on `.76`, and players do not need
 to install a control client.
 
 ## Runtime layout
 
-- `.03` (`192.168.0.3`): dedicated PZ server, existing save, the published
-  Bandits2 framework (Workshop item `3268487204`), and the server-side
-  GoblinSurvivor package.
+- `.03` (`192.168.0.3`): dedicated PZ server, existing save, and the
+  server-side GoblinSurvivor package. Bandits2 was used as a behavior
+  reference during development; it is not a runtime dependency.
 - `.76` (`192.168.0.76`): local Qwen, Python agent/relay, memory, and tracker
   website/API. It has no Goblin gameplay client.
 - `goblin.primary`: stable NPC identity. Death or unload is handled by the
@@ -42,7 +42,8 @@ command, spawn, move, attack, or admin mutation endpoint.
 Qwen emits one strict JSON intent. Python validates it, deterministic safety
 and entity/job/squad gates inspect it, and `NpcBodyDriver` writes a typed
 `command.npc_action` message. Lua validates the message again and resolves
-semantic targets locally before calling the friendly Bandits2 NPC adapter.
+semantic targets locally before calling the self-contained friendly NPC
+adapter.
 Unsupported engine capabilities fail closed.
 
 See [docs/NPC_ARCHITECTURE.md](docs/NPC_ARCHITECTURE.md),

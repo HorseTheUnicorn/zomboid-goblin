@@ -3,6 +3,7 @@ local IPC = require("GoblinSurvivor/IPC")
 local Persistence = require("GoblinSurvivor/Persistence")
 local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
+local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local CommandLoop = require("GoblinSurvivor/CommandLoop")
 
@@ -61,6 +62,10 @@ function Bootstrap.start()
     end
     Persistence.load()
     Bootstrap.started = true
+    local capabilities = NpcAdapter.capabilities()
+    print("[GoblinSurvivor] adapter=" .. tostring(capabilities.selected_adapter)
+        .. " friendly=" .. tostring(capabilities.friendly)
+        .. " control_ready=" .. tostring(capabilities.control_ready))
     -- Do not query multiplayer players during this callback.  On some Build
     -- 42 server startup paths OnServerStarted is emitted before the UDP
     -- engine is fully usable; the next OnTick performs the first telemetry
@@ -76,6 +81,11 @@ end
 if Events and Events.OnZombieCreate and type(Events.OnZombieCreate.Add) == "function" then
     Events.OnZombieCreate.Add(function(zombie)
         NPCRegistry.onZombieCreate(zombie)
+    end)
+end
+if Events and Events.OnZombieUpdate and type(Events.OnZombieUpdate.Add) == "function" then
+    Events.OnZombieUpdate.Add(function(zombie)
+        GoblinNPC.onZombieUpdate(zombie)
     end)
 end
 
