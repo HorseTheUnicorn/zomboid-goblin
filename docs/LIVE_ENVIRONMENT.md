@@ -69,16 +69,17 @@ Role: Project Zomboid dedicated server.
 
 The native Windows client is the actual player/test client, not the `.76`
 agent host. Its direct GoblinSurvivor package is synchronized from revision
-`ecb40f4` at both:
+`58ff9a2` at both:
 
 - `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor\Contents\mods\GoblinSurvivor`
 - `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
 
-The active paths are currently synchronized from revision `ecb40f4`, which is
-behind the live `.03` package at `58ff9a2`. Before testing this deployment from
-Windows, synchronize both paths from `58ff9a2` or publish and subscribe to the
-exact corresponding Workshop package. Any pre-sync copies are retained only
-under an explicit revision-named sibling path.
+The active paths are direct local syncs rather than a Steam Workshop delivery;
+the running client must be restarted before this revision can be exercised.
+The public Workshop publication still needs to be updated to this exact
+revision before other users can receive GoblinSurvivor automatically. Any
+pre-sync copies are retained only under an explicit revision-named sibling
+path.
 
 ## Operational boundary
 

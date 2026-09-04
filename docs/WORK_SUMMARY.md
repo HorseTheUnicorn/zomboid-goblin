@@ -23,10 +23,10 @@ settlement assignment persistence for jobs, guards, and squads.
 The `.76` agent/relay runtime and read-only tracker now run from the
 `58ff9a2` checkout at `/home/goblin/zomboid-goblin-58ff9a2`; this includes the
 B42 map UI, bounded tile routes, HEAD support, and the managed-friendly roster.
-The `.03` server package is deployed from the same `58ff9a2` revision. The
-Windows client package is still at the earlier direct-sync revision
-`ecb40f4` and must be synchronized to `58ff9a2` (or use the exact published
-Workshop package) before testing this roster build. The dedicated servertest
+The `.03` server package and the two direct local Windows package paths are
+now synchronized from the same `58ff9a2` revision. The running Windows client
+must be restarted before testing this roster build; other users still need the
+exact corresponding Workshop publication. The dedicated servertest
 profile advertises Workshop item `3268487204` and loads `Bandits2` before
 `GoblinSurvivor`; the server was restarted and its fresh log reports
 `adapter=bandits2 friendly=true control_ready=true`. Goblin speech now uses
