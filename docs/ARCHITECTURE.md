@@ -5,7 +5,7 @@ The system has three deliberately separate planes:
 1. PZ server plane (`.03`): GoblinSurvivor runs only on the dedicated server.
    `NPCRegistry` owns the stable `goblin.primary` identity, `Protection`
    maintains the protected profile, `ActionExecutor` resolves semantic actions,
-   and `NpcAdapter` owns the self-contained server-side body integration.
+   and `NpcAdapter` owns the Bandits2-backed server-side body integration.
 2. Agent plane (`.76`): Qwen receives `brain_view`, proposes strict JSON, and
    Python applies reflex, combat, entity, job, and squad gates before writing
    a `command.npc_action` bridge message.
@@ -33,11 +33,12 @@ There is no native Steam/PZ gameplay client in this project. Human players
 connect normally to the dedicated server and are not required to install a
 Goblin control client.
 
-The body adapter uses Build 42's public server Lua spawn and movement surface.
-Its small survivor-style brain and friendly policy were developed from the
-validated Bandits2 behavior, but the runtime implementation is owned by this
-repository and does not copy or load Bandits2. If the friendly contract cannot
-be proven, the mod stays in `sensor_only` and does not expose a normal hostile
-zombie as Goblin. Higher-level combat, inventory, vehicle, and building
-behaviors remain owned by this repository and are enabled only after their
-engine contracts are validated.
+The body adapter uses the exact Bandits2 B42.20 API observed on `.03`:
+`BanditServer.Spawner.Individual` for one body, `BanditCustom` for the
+stable profile, `BanditBrain` for the friendly policy, and Bandits2 movement
+tasks. `BanditsAdapter.lua` is the only module that knows those names. If
+the Bandits2 API or friendly contract cannot be proven, the mod stays in
+`sensor_only` and does not expose a normal hostile zombie as Goblin.
+Higher-level combat, inventory, vehicle, and building behaviors remain owned
+by this repository and are enabled only after their engine contracts are
+validated.

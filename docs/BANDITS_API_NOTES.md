@@ -1,84 +1,75 @@
 # Bandits2 API notes
 
-Status: development reference only; not a runtime dependency and not part of
-the GoblinSurvivor server loadout.
+Status: runtime dependency for the GoblinSurvivor NPC body and behavior.
+GoblinSurvivor does not copy Bandits2 source; it requires the installed
+Workshop package on the .03 server and on joining clients.
 
-The live server is Build 42.20.4. Its Workshop cache and active
-`WorkshopItems=` configuration were inspected through the Proxmox console.
-The initial inventory found no Bandits framework files. The public Workshop
-item was then downloaded anonymously with SteamCMD as the `zomboid` user and
-enabled temporarily in the live `servertest` profile for compatibility
-inspection. The installed package is at
-`steamapps/workshop/content/108600/3268487204/mods/Bandits/42.20` and reports
-`id=Bandits2` in `mod.info`.
-
-The reference package inspected for the server is the official Workshop item
+The live server is Build 42.20.4. The installed Workshop package is at
+steamapps/workshop/content/108600/3268487204/mods/Bandits/42.20 and reports
+id=Bandits2 in mod.info. The dependency is the public Workshop item
 [B42 Bandits NPC](https://steamcommunity.com/sharedfiles/filedetails/?id=3268487204):
 
-- Workshop item ID: `3268487204`
-- Published mod ID reported by the Workshop page: `Bandits2`
-- Intended role: NPC framework and Bandits behavior, not a Goblin-specific mod
-
-The observed friendly/companion brain shape informed the self-contained
-`VanillaNpcAdapter.lua`: a private profile, explicit hostile flags, loyal and
-permanent policy, target clearing, and bounded movement tasks. GoblinSurvivor
-does not copy Bandits2 source, load its globals, or require its Workshop item.
+- Workshop item ID: 3268487204
+- PZ mod ID: Bandits2
+- Role: networked NPC body, profile data, Companion program, and NPC behavior
 
 ## Observed B42.20 API surface
 
-The following names were read from the deployed Lua package on `.03`; they are
-not inferred from the Workshop description:
+These names were read from the installed package on .03; they are not
+invented from the Workshop description:
 
-- `BanditServer.Spawner.Type(player, args)` spawns a group using a required
-  `args.cid`, with optional `args.size`, `args.program`, `args.x/y/z`, or
-  `args.spawnPoints`.
-- `BanditServer.Spawner.Clan(player, args)` spawns a clan using `args.cid` and
-  the same group-oriented arguments.
-- `BanditServer.Spawner.Individual(player, args)` spawns one individual using
-  `args.bid`, optional `args.x/y/z`, and optional `args.program`.
-- `BanditServer.Spawner.Restore(player, args)` calls the package's restore path
-  using a serialized brain argument.
-- `BanditServer.Spawner.Vehicle(player, args)` is the package's vehicle spawn
-  entry point.
-- `BanditServer.Wanderers.AddGroup(group)` registers a wandering group;
-  `BanditServer.Wanderers.destinations`, `.speed`, and `.contactRange` are
-  package-owned scheduler state.
-- `BanditBrain.Get(zombie)`, `BanditBrain.Add(zombie, brain)`,
-  `BanditBrain.Remove(zombie)`, `BanditBrain.HasTask(brain)`,
-  `BanditBrain.HasMoveTask(brain)`, `BanditBrain.HasActionTask(brain)`,
-  `BanditBrain.HasTaskType(brain, taskType)`, and
-  `BanditBrain.HasTaskTypes(brain, taskTypes)` are exposed by the deployed
-  shared brain module.
-- `BanditUtils.IsController(zombie)`, `GetZombieID(character)`,
-  `GetCharacterID(character)`, `GetClosestBanditLocation(character, config)`,
-  `GetTarget(character, config)`, and `GetMoveTaskTarget(...)` are present in
-  the deployed utility module.
-- `BanditCustom.GetMods()`, `Load()`, `Save()`, `ClanCreate(cid)`,
-  `ClanDelete(cid)`, `ClanGet(cid)`, `ClanGetAll()`, `Create(bid)`,
-  `Delete(bid)`, `Get(bid)`, and `GetAll()` are present in the deployed custom
-  data module.
+- BanditServer.Spawner.Individual(player, args) accepts a required args.bid,
+  optional args.x/y/z, and optional args.program. The wrapper creates one
+  networked body and applies the selected Bandits2 profile.
+- BanditCustom.Load(), Save(), ClanGet(cid), ClanCreate(cid), GetById(bid),
+  and Create(bid) manage the persistent clan/profile data used by the
+  adapter.
+- BanditBrain.Get(zombie) and Update(zombie, brain) read and publish the live
+  Bandits2 brain. Remove(zombie) is available for cleanup.
+- BanditUtils.GetCharacterID(character) provides the Bandits2 master ID.
+  GetMoveTask(endurance, x, y, z, walkType, dist, closeSlow) and
+  GetMoveTaskTarget(endurance, x, y, z, tid, isPlayer, walkType, dist)
+  return the framework's verified movement task shapes.
+- BanditCompatibility.AddZombiesInOutfit(...) is the body creation
+  implementation used by the Bandits2 spawner. GoblinSurvivor calls the public
+  spawner rather than this lower-level function.
+- Bandit.UpdateTask(zombie, task) and Bandit.ClearTasks(zombie) manage the
+  framework task queue.
+- The verified friendly program is Companion; the installed package also
+  contains ZPCompanion.lua and ZPCompanionGuard.lua.
 
-`NpcAdapter.lua` keeps the rest of GoblinSurvivor independent of the reference
-framework. The standalone adapter logs one bounded spawn diagnostic and never
-retries an unbound request in a per-tick loop.
+## Friendly Goblin contract
 
-## Reference boundary
+BanditsAdapter.lua creates or restores one private clan/profile and reapplies
+the following state before a body is considered owned:
 
-The reference inspection is complete enough for the current self-contained
-adapter. The following areas were recorded before implementation:
+- clan spawn policy: friendly=true, companion=true, all hostile/group spawn
+  modes disabled, and automatic spawn chance set to zero;
+- brain policy: hostile=false, hostileP=false, loyal=true, permanent=true,
+  and program.name=Companion;
+- GoblinSurvivor markers in body mod-data: stable NPC ID, ownership,
+  friendly-engine name, and protection state.
 
-- NPC creation and lookup;
-- brain/task representation;
-- movement/follow/attack tasks;
-- friendly/hostile state;
-- survivor persistence and entity recreation;
-- inventory/equipment and animation state;
-- target handling, death/despawn, and multiplayer synchronization;
-- public extension hooks.
+The adapter is the only runtime module that mentions Bandits2-specific names.
+NpcAdapter.lua is a stable facade for the registry, action executor,
+telemetry, and Python bridge. There is no vanilla fallback. If the exact API
+surface or friendly proof is unavailable, the registry stays in sensor_only
+and does not claim an ordinary hostile zombie.
 
-No runtime module is allowed to depend on Bandits-specific names;
-`VanillaNpcAdapter.lua` implements the self-contained body contract. If a
-capability is absent, the selected adapter returns an explicit unsupported
-result and the deterministic safety layer stays in `sensor_only`. It must
-never claim that an NPC action succeeded merely because a command was accepted
-by the bridge.
+The first combat bridge is intentionally narrow. Python/Lua perception may
+nominate only a live non-player zombie within the fixed semantic radius.
+GoblinSurvivor restores that one validated engine target while retaining the
+Bandits2 friendly brain flags. A generic Bandits2 attack-task contract has not
+been assumed; inventory, vehicles, and building actions remain fail-closed
+until their exact contracts are verified in the live server.
+
+## Load-order requirement
+
+The dedicated server must advertise and load Bandits2 before GoblinSurvivor:
+
+    WorkshopItems=3268487204,...
+    Mods=Bandits2;GoblinSurvivor;...
+
+The order and version must be identical for the server and joining clients.
+Steam's server Workshop loadout is the intended client-download path. .76
+does not install or run a native Steam/PZ client.

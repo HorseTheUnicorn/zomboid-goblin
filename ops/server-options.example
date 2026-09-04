@@ -9,6 +9,6 @@ GoblinEnabled=false
 GoblinBridgeRoot=goblin-bridge
 GoblinNpcId=goblin.primary
 GoblinNpcName=Goblin
-GoblinNpcProgram=Bandit
+GoblinNpcProgram=Companion
 GoblinNpcProtected=true
 GoblinTrackerExact=true

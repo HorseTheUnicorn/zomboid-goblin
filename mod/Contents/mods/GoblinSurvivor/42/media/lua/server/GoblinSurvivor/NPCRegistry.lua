@@ -249,9 +249,9 @@ function NPCRegistry.onZombieCreate(zombie)
     NPCRegistry.load()
     local entry = NPCRegistry.entries[Config.npcId]
     if entry ~= nil and entry.zombie ~= nil then return false, "Goblin is already bound" end
-    -- OnZombieCreate can fire before the standalone adapter has finished
-    -- building its brain. In that case the bounded registry scan below will
-    -- bind it later; never claim an arbitrary normal zombie from this event.
+    -- OnZombieCreate can fire before Bandits2 has finished building its brain.
+    -- In that case the bounded registry scan below will bind it later; never
+    -- claim an arbitrary normal zombie from this event.
     if not NpcAdapter.isCandidate(zombie)
         and not NpcAdapter.isEventCandidate(zombie) then
         return false, "not a Goblin profile candidate"

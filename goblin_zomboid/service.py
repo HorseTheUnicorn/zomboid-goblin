@@ -1,8 +1,9 @@
 """Server-side Goblin NPC orchestration.
 
 The service owns decisions and durable memory. The dedicated PZ server owns
-the NPC, exact world resolution, movement, and persistence of the
-vanilla-adapter body. No client or Steam lifecycle is part of this runtime.
+the NPC, exact world resolution, movement, and persistence of the Bandits2
+body through GoblinSurvivor's adapter. No client or Steam lifecycle is part of
+this runtime.
 """
 
 from __future__ import annotations

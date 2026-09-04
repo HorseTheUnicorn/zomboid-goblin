@@ -1,16 +1,16 @@
 # Zomboid Goblin
 
 Goblin is a persistent, server-side Project Zomboid NPC. The dedicated Build
-42 server owns a friendly GoblinSurvivor body and its movement; the Python
-service on `.76` supplies bounded high-level decisions and a read-only tracker.
-No Steam/PZ client is installed or required on `.76`, and players do not need
-to install a control client.
+42 server owns a friendly Bandits2 body running Bandits2's `Companion`
+behavior; GoblinSurvivor adds Goblin identity, safety, chat, high-level
+commands, and persistence around that body. The Python service on `.76`
+supplies bounded decisions and a read-only tracker. No Steam/PZ client is
+installed or required on `.76`.
 
 ## Runtime layout
 
-- `.03` (`192.168.0.3`): dedicated PZ server, existing save, and the
-  server-side GoblinSurvivor package. Bandits2 was used as a behavior
-  reference during development; it is not a runtime dependency.
+- `.03` (`192.168.0.3`): dedicated PZ server, existing save, Bandits2
+  Workshop item `3268487204`, and the server-side GoblinSurvivor package.
 - `.76` (`192.168.0.76`): local Qwen, Python agent/relay, memory, and tracker
   website/API. It has no Goblin gameplay client.
 - `goblin.primary`: stable NPC identity. Death or unload is handled by the
@@ -20,10 +20,13 @@ The model sees `brain_view` only: named targets, coarse threat/distance
 signals, and bounded events. Exact coordinates are stored separately in the
 tracker telemetry path for the map and never enter Qwen context.
 
-The downloaded GoblinSurvivor mod includes the small client relay needed for
-multiplayer conversation. It forwards only a local player's chat when the
-message mentions Goblin; the server verifies the sender, redacts coordinate-
-like text, and sends the event to the Python/Qwen service. Goblin is still a
+The GoblinSurvivor package includes the small client relay needed for
+multiplayer conversation, while Bandits2 supplies the networked NPC body and
+behavior. Joining clients therefore need the same Workshop dependencies that
+the server advertises; Steam can download them as part of the server's
+`WorkshopItems=` loadout. The relay forwards only a local player's chat when
+the message mentions Goblin; the server verifies the sender, redacts
+coordinate-like text, and sends the event to Python/Qwen. Goblin is still a
 server-side NPC, not a Steam account or player client.
 
 ## Development
@@ -48,7 +51,7 @@ command, spawn, move, attack, or admin mutation endpoint.
 Qwen emits one strict JSON intent. Python validates it, deterministic safety
 and entity/job/squad gates inspect it, and `NpcBodyDriver` writes a typed
 `command.npc_action` message. Lua validates the message again and resolves
-semantic targets locally before calling the self-contained friendly NPC
+semantic targets locally before calling the Bandits2-backed friendly NPC
 adapter.
 Unsupported engine capabilities fail closed.
 

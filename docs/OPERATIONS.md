@@ -18,14 +18,15 @@ ss -lunp | grep -E '16261|16262'
 tail -n 200 /home/zomboid/Zomboid/Logs/*DebugLog-server.txt
 ```
 
-Bandits2 is a development reference only; it is not required in the active
-server loadout. If the server reports that the standalone spawn or friendly
-body contract is unavailable, stop issuing commands and inspect the current
-Build 42 server log before changing the loadout. The adapter is designed to
-fail closed: it will not substitute a normal hostile zombie. If the Goblin is
-absent after a clean restart, keep the server running with a player online
-long enough for the server-side spawn anchor to become available, then inspect
-the single bounded spawn diagnostic in `*DebugLog-server.txt`.
+Bandits2 Workshop item `3268487204` is required in the active server loadout
+and must be available to joining clients. If the server reports that the
+Bandits2 spawn or friendly-body contract is unavailable, stop issuing commands
+and inspect the current Build 42 server log and Workshop cache. The adapter is
+designed to fail closed: it will not substitute a normal hostile zombie. If
+the Goblin is absent after a clean restart, keep the server running with a
+player online long enough for the server-side spawn anchor to become
+available, then inspect the single bounded spawn diagnostic in
+`*DebugLog-server.txt`.
 
 Never place Steam, PZ server, VNC, Qwen admin, or bridge credentials in shell
 arguments, logs, chat, tracker state, or browser URLs.

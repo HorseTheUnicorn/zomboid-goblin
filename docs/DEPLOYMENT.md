@@ -8,10 +8,12 @@ depend on a direct SSH path to the container.
 
 ## Server-side mod
 
-Install the self-contained `GoblinSurvivor` package under the server's Build
-42 mod path and enable the server-side mod. Bandits2 was used as a behavior
-reference during development and is not required by the server or joining
-clients. The live server's target paths are:
+Install the `GoblinSurvivor` package under the server's Build 42 mod path and
+enable it together with Bandits2. Bandits2 Workshop item `3268487204` is a
+runtime dependency for both the server and joining clients. Put `Bandits2`
+before `GoblinSurvivor` in the ordered `Mods=` value and include
+`3268487204` in `WorkshopItems=` so Steam clients receive the framework.
+The live server's target paths are:
 
 ```text
 service: zomboid-servertest.service
@@ -21,8 +23,10 @@ bridge: /home/zomboid/Zomboid/Lua/goblin-bridge
 ```
 
 Before restarting, take a bounded backup of the server INI, GoblinSurvivor
-package, and save. Restart only the dedicated-server unit and verify its
-process and UDP query/game ports. Inspect the newest DebugLog for Lua errors.
+package, and save. Do not copy Bandits2 source into this repository. Restart
+only the dedicated-server unit and verify its process and UDP query/game
+ports. Inspect the newest DebugLog for Lua errors and confirm the bootstrap
+reports `adapter=bandits2 friendly=true control_ready=true`.
 
 ## Agent
 
@@ -41,6 +45,6 @@ default tracker port is unavailable. Keep Qwen loopback-only.
   bounded response/ack and is archived.
 - `/api/state` and `/api/history/goblin` work; POST control/move/spawn routes
   do not exist.
-- A standalone spawn or friendly-body capability failure leaves Goblin in
+- A Bandits2 spawn or friendly-body capability failure leaves Goblin in
   `sensor_only`; it never substitutes a normal hostile zombie or falls back to
   a native client.

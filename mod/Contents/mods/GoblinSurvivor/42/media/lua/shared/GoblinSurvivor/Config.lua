@@ -4,8 +4,9 @@ local Config = {
     bridgeRootOverride = "",
     npcId = "goblin.primary",
     npcName = "Goblin",
-    -- Companion names the standalone survivor-style policy.  The adapter
-    -- normalizes the old VanillaZombie value for existing configs.
+    -- Companion is the verified friendly Bandits2 program used for Goblin.
+    -- The Bandits2 adapter ignores arbitrary program names and fails closed
+    -- to this known-safe program.
     npcProgram = "Companion",
     npcRole = "companion",
     protected = true,
@@ -19,8 +20,8 @@ local Config = {
     maxMessageBytes = 262144,
     trackerExactTelemetry = true,
     -- Keep the first server-side body request out of the player's square.
-    -- This is a safety margin for runtimes where a newly-created vanilla
-    -- zombie has not yet received its friendly/protection state.
+    -- This is a safety margin around the point passed to Bandits2's individual
+    -- spawner while its new networked body receives its friendly state.
     npcSpawnOffsetTiles = 16
 }
 

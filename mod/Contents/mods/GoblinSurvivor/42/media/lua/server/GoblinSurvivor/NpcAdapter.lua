@@ -1,19 +1,18 @@
 -- Stable body-adapter boundary for the rest of GoblinSurvivor.
 --
--- The shape of the standalone brain and its friendly/companion policy was
--- developed from the validated Bandits2 behavior, but the runtime body is
--- owned by this mod.  Keeping the implementation here avoids a second
--- Workshop dependency and lets joining clients download one Goblin package.
-local StandaloneNpcAdapter = require("GoblinSurvivor/VanillaNpcAdapter")
+-- Bandits2 is the required NPC body/behavior engine. Only this boundary and
+-- BanditsAdapter.lua know its names; the registry, command loop, telemetry,
+-- and policy modules remain framework-agnostic.
+local BanditsNpcAdapter = require("GoblinSurvivor/BanditsAdapter")
 
 local NpcAdapter = {}
 
 function NpcAdapter.engineName()
-    return "goblin-survivor"
+    return BanditsNpcAdapter.engineName()
 end
 
 function NpcAdapter.capabilities()
-    local capabilities = StandaloneNpcAdapter.capabilities()
+    local capabilities = BanditsNpcAdapter.capabilities()
     capabilities.selected_adapter = NpcAdapter.engineName()
     capabilities.control_ready = capabilities.available == true
         and capabilities.friendly == true
@@ -26,61 +25,61 @@ function NpcAdapter.available()
 end
 
 function NpcAdapter.spawnPoint(anchor)
-    return StandaloneNpcAdapter.spawnPoint(anchor)
+    return BanditsNpcAdapter.spawnPoint(anchor)
 end
 
 function NpcAdapter.isCandidate(body)
-    return StandaloneNpcAdapter.isCandidate(body)
+    return BanditsNpcAdapter.isCandidate(body)
 end
 
 function NpcAdapter.isEventCandidate(body)
-    return StandaloneNpcAdapter.isEventCandidate(body)
+    return BanditsNpcAdapter.isEventCandidate(body)
 end
 
 function NpcAdapter.isFriendly(body)
-    return StandaloneNpcAdapter.isFriendly(body)
+    return BanditsNpcAdapter.isFriendly(body)
 end
 
 function NpcAdapter.isOwned(body)
-    return StandaloneNpcAdapter.isOwned(body) and NpcAdapter.isFriendly(body)
+    return BanditsNpcAdapter.isOwned(body) and NpcAdapter.isFriendly(body)
 end
 
 function NpcAdapter.prepare(body, npcId, anchor)
     if not NpcAdapter.available() then
         return false, "friendly NPC adapter is unavailable"
     end
-    return StandaloneNpcAdapter.prepare(body, npcId, anchor)
+    return BanditsNpcAdapter.prepare(body, npcId, anchor)
 end
 
 function NpcAdapter.spawnIndividual(anchor, npcId, program)
     if not NpcAdapter.available() then
         return false, "friendly NPC adapter is unavailable", nil
     end
-    return StandaloneNpcAdapter.spawnIndividual(anchor, npcId, program)
+    return BanditsNpcAdapter.spawnIndividual(anchor, npcId, program)
 end
 
 function NpcAdapter.getBrain(body)
-    return StandaloneNpcAdapter.getBrain(body)
+    return BanditsNpcAdapter.getBrain(body)
 end
 
 function NpcAdapter.setTasks(body, tasks)
-    return StandaloneNpcAdapter.setTasks(body, tasks)
+    return BanditsNpcAdapter.setTasks(body, tasks)
 end
 
 function NpcAdapter.clearTasks(body)
-    return StandaloneNpcAdapter.clearTasks(body)
+    return BanditsNpcAdapter.clearTasks(body)
 end
 
 function NpcAdapter.setCombatTarget(body, target)
-    return StandaloneNpcAdapter.setCombatTarget(body, target)
+    return BanditsNpcAdapter.setCombatTarget(body, target)
 end
 
 function NpcAdapter.tick(body)
-    return StandaloneNpcAdapter.tick(body)
+    return BanditsNpcAdapter.tick(body)
 end
 
 function NpcAdapter.discard(body)
-    return StandaloneNpcAdapter.discard(body)
+    return BanditsNpcAdapter.discard(body)
 end
 
 return NpcAdapter

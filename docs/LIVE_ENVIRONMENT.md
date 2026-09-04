@@ -35,18 +35,20 @@ Role: Project Zomboid dedicated server.
 - The active multiplayer save is under
   `/home/zomboid/Zomboid/Saves/Multiplayer/servertest`.
 - The bridge endpoint is `/home/zomboid/Zomboid/Lua/goblin-bridge`.
-- `GoblinSurvivor` is present in the active `Mods=` loadout as the original
-  server-side vanilla-adapter package. The old GoblinSurvivor Workshop copy is
-  not required by the active configuration.
-- `Bandits2` and Workshop item `3268487204` are not required in the active
-  `Mods=`/`WorkshopItems=` loadout. The cached package remains only as the
-  development reference recorded in `docs/BANDITS_API_NOTES.md`; the
-  self-contained `GoblinSurvivor` adapter does not load it.
+- At the time of this inventory snapshot, `GoblinSurvivor` was still the
+  previously deployed server-side vanilla-adapter package and `Bandits2` was
+  cached but not yet enabled in servertest. The source tree now targets the
+  Bandits2-backed replacement described in `docs/BANDITS_API_NOTES.md`.
+- The required Bandits2 cache is present at
+  `/home/zomboid/pzserver/steamapps/workshop/content/108600/3268487204`.
+  The controlled deployment must add Workshop item `3268487204` and load
+  `Bandits2` before `GoblinSurvivor`; it must not copy Bandits2 source into
+  this repository.
 - The server was healthy during inventory: `zomboid-servertest.service` was
   active, `ProjectZomboid64 -servername servertest` was running, and UDP ports
   `16261` and `16262` were bound.
 - The server's existing save and other mod loadout were left in place. The
-  standalone swap used the bounded backup directory
+  previous standalone swap used the bounded backup directory
   `/home/zomboid/backups/goblin-standalone-7acd912/` before the restart.
 
 ## Operational boundary
