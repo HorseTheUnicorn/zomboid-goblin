@@ -1,8 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
-local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
-local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Perception = require("GoblinSurvivor/Perception")
 local BaseManager = require("GoblinSurvivor/BaseManager")
 local GuardManager = require("GoblinSurvivor/GuardManager")
@@ -12,13 +9,25 @@ local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 
 local Telemetry = {}
 
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            GoblinNPC = require("GoblinSurvivor/GoblinNPC"),
+            NPCRegistry = require("GoblinSurvivor/NPCRegistry"),
+            NpcAdapter = require("GoblinSurvivor/NpcAdapter")
+        }
+    end
+    return LegacyModules
+end
+
 local function clientActorMode()
     return Config.bodyMode == "client_survivor"
 end
 
 local function runtimeNpcState()
     if clientActorMode() then return ClientSurvivorServer.status() end
-    return GoblinNPC.getGoblinState()
+    return legacyModules().GoblinNPC.getGoblinState()
 end
 
 local function nowMs()
@@ -83,9 +92,17 @@ end
 function Telemetry.writeState()
     if not IPC.isReady() then return false end
     local npc = runtimeNpcState()
-    local zombie = clientActorMode() and nil or GoblinNPC.findGoblin()
+    local legacy = nil
+    local zombie = nil
+    if not clientActorMode() then
+        legacy = legacyModules()
+        zombie = legacy.GoblinNPC.findGoblin()
+    end
     local perception = Perception.coarseState(zombie)
-    local body = clientActorMode() and npc or NpcAdapter.status(zombie)
+    local body = npc
+    if legacy ~= nil then body = legacy.NpcAdapter.status(zombie) end
+    local roster = ClientSurvivorServer.statusAll()
+    if legacy ~= nil then roster = legacy.NPCRegistry.snapshot() end
     return IPC.publishRuntime("zomboid-state", {
         protocol = Config.protocol,
         request_id = "zomboid-state",
@@ -153,7 +170,7 @@ function Telemetry.writeState()
         squads = SquadManager.snapshot(),
         player_count = #perception.nearby_players,
         nearby_players = perception.nearby_players,
-         npcs = clientActorMode() and ClientSurvivorServer.statusAll() or NPCRegistry.snapshot()
+         npcs = roster
     })
 end
 
@@ -178,7 +195,7 @@ function Telemetry.writeExactState()
             })
         end
     else
-        for _, entity in ipairs(NPCRegistry.snapshotExact()) do
+        for _, entity in ipairs(legacyModules().NPCRegistry.snapshotExact()) do
             if entity.npc_id == Config.npcId then
                 entity.kind = "goblin"
             end

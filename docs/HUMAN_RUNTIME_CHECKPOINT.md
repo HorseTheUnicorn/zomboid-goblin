@@ -55,12 +55,13 @@ inObjectList=true pendingRemoval=false ... hair=Spike ...
 
 ## Cold-load evidence
 
-The 2026-09-05 client log reported `game loading took 162 seconds`. The
+The 2026-09-05 client log reported `game loading took 278 seconds`. The
 watchdog captured the loading thread waiting in `IsoWorld.init` during
-`WorldStreamer.isBusy()` from approximately 08:42:50 to 08:44:58.
-The filesystem work queues were empty during the stall. The seven human
-actors were created after world loading completed, so the roster is not the
-primary cause of the cold-start delay.
+`WorldStreamer.isBusy()` from 10:04:38 to 10:08:22 (about 224 seconds).
+The filesystem work queues were empty during the stall. The server login
+queue completed at 10:08:24, and the seven human actors were created only
+after world loading completed, so the roster is not the primary cause of the
+cold-start delay.
 
 ## Checks
 

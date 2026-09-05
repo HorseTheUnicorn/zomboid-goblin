@@ -1,13 +1,22 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local Net = require("GoblinSurvivor/Net")
-local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
-local ActionExecutor = require("GoblinSurvivor/ActionExecutor")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local Authority = require("GoblinSurvivor/Authority")
 local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 
 local CommandLoop = { seen = {}, seenOrder = {}, maxSeen = 2048 }
+
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            GoblinNPC = require("GoblinSurvivor/GoblinNPC"),
+            ActionExecutor = require("GoblinSurvivor/ActionExecutor")
+        }
+    end
+    return LegacyModules
+end
 
 local actions = {
     NOOP = true, DEBUG_KILL = true, DEBUG_SPAWN_ZOMBIE = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
@@ -139,8 +148,9 @@ local function process(stem)
     if Config.bodyMode == "client_survivor" then
         accepted, detail = ClientSurvivorServer.execute(message)
     else
-        local zombie = GoblinNPC.findGoblin()
-        accepted, detail = ActionExecutor.execute(message, zombie)
+        local legacy = legacyModules()
+        local zombie = legacy.GoblinNPC.findGoblin()
+        accepted, detail = legacy.ActionExecutor.execute(message, zombie)
     end
     local status = accepted and "accepted" or "failed"
     IPC.writeResponse(message.request_id, status, detail)
@@ -151,7 +161,7 @@ end
 function CommandLoop.tick()
     if not IPC.isReady() or not Config.enabled then return end
     if Config.bodyMode ~= "client_survivor" then
-        GoblinNPC.ensure()
+        legacyModules().GoblinNPC.ensure()
     end
     Telemetry.writeExactState()
     local ready = IPC.listReady("commands")

@@ -1,7 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
 local BaseManager = require("GoblinSurvivor/BaseManager")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
-local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 
 local GuardManager = {
     assignments = {},
@@ -9,6 +7,17 @@ local GuardManager = {
     lastDetail = "",
     loaded = false
 }
+
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            NPCRegistry = require("GoblinSurvivor/NPCRegistry"),
+            NpcAdapter = require("GoblinSurvivor/NpcAdapter")
+        }
+    end
+    return LegacyModules
+end
 
 local function safeId(value)
     return type(value) == "string" and #value > 0 and #value <= 96
@@ -43,13 +52,20 @@ end
 
 function GuardManager.load()
     if GuardManager.loaded then return end
+    if Config.bodyMode == "client_survivor" then
+        -- Client-survivor jobs are owned by ClientSurvivorServer. Do not load
+        -- the legacy registry merely to produce an empty telemetry snapshot.
+        GuardManager.loaded = true
+        return
+    end
     local data = persistentData()
     local saved = data and data.guards or nil
     if type(saved) == "table" then
+        local legacy = legacyModules()
         for npcId, assigned in pairs(saved) do
             if assigned == true and safeId(npcId) then
                 GuardManager.assignments[npcId] = true
-                local entry = NPCRegistry.get(npcId)
+                local entry = legacy.NPCRegistry.get(npcId)
                 if entry ~= nil then entry.role = "guard" end
             end
         end
@@ -65,7 +81,7 @@ function GuardManager.assign(npcId)
     if not BaseManager.hasAnchor() then
         return false, "home base has not been set"
     end
-    local entry = NPCRegistry.get(npcId)
+    local entry = legacyModules().NPCRegistry.get(npcId)
     if entry == nil or entry.active ~= true or entry.alive ~= true then
         return false, "guard NPC is unavailable"
     end
@@ -96,7 +112,8 @@ function GuardManager.secure(args, zombie)
     if type(args) ~= "table" or args.npc_id ~= Config.npcId then
         return false, "unknown guard NPC"
     end
-    if zombie == nil or not NpcAdapter.isOwned(zombie) then
+    local legacy = legacyModules()
+    if zombie == nil or not legacy.NpcAdapter.isOwned(zombie) then
         return false, "Goblin NPC is not a verified friendly native body"
     end
     local assigned, detail = GuardManager.assign(Config.npcId)
@@ -105,7 +122,7 @@ function GuardManager.secure(args, zombie)
     if point == nil then
         return false, "home base has not been set"
     end
-    local ok, taskDetail = NpcAdapter.setTasks(zombie, {
+    local ok, taskDetail = legacy.NpcAdapter.setTasks(zombie, {
         {
             action = "GoTo",
             mode = "GUARD",

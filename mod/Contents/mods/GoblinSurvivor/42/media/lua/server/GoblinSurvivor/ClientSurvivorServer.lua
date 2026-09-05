@@ -945,15 +945,28 @@ end
 
 function Server.tick()
     if Config.bodyMode ~= "client_survivor" then return false end
-    local player = firstPlayer()
+    local players = onlinePlayers()
+    local player = players[1]
     local state = ensureState(player)
     if state == nil then return false end
-    -- Keep the native authority and independent companion jobs alive after
-    -- the last player disconnects. A deliberate manual command remains in
-    -- force; only Goblin's automatic FOLLOW target is resumed when a player
-    -- returns. This does not invent a fake player or use a zombie fallback.
+    -- Keep semantic roster state and saved job assignments alive after the
+    -- last player disconnects, but do not ask Java to materialize or route
+    -- physical bodies without a loaded player/world anchor. Dedicated PZ
+    -- servers can unload the current cell immediately after the last client
+    -- leaves; repeatedly calling the authority in that window only produces
+    -- futile spawn/rebind attempts and noisy route diagnostics. The next
+    -- connected player resumes physical servicing from the saved state.
+    if #players == 0 then
+        cleanupLegacyBodies()
+        savePersistentRoster(false)
+        Server.lastTickAt = Protocol.nowMs()
+        return true
+    end
+    -- Only Goblin's automatic FOLLOW target is rebound when a player returns.
+    -- A deliberate manual command remains in force. This does not invent a
+    -- fake player or use a zombie fallback.
     local goblin = Server.states[Config.npcId]
-    if player ~= nil and goblin ~= nil and goblin.manual_control ~= true
+    if goblin ~= nil and goblin.manual_control ~= true
         and goblin.control_mode == "HOLD" then
         setFollow(goblin, "FOLLOW", player)
     end
@@ -963,7 +976,6 @@ function Server.tick()
     -- persisted by a previous native-body test and leave it beside the spawn
     -- point.
     cleanupLegacyBodies()
-    local players = onlinePlayers()
     for _, actorState in ipairs(orderedStates()) do
         if actorState.control_mode == "JOB" then
             local destination = workPointFor(actorState, actorState.job)

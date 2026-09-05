@@ -28,9 +28,10 @@ The local Build 42.20.4 run created Goblin plus six companions as
 actors were visible. One hostile-zombie fixture was killed with one shot and
 no incoming hit. Goblin was recreated at generation 2 after a death fixture.
 
-The cold client load took 162 seconds. The wait was in vanilla world
-streaming (`WorldStreamer.isBusy()` / `IsoWorld.init`) with no Workshop items
-configured; the roster was created after world loading completed.
+The latest cold client load took 278 seconds. About 224 seconds were spent
+waiting in vanilla world streaming (`WorldStreamer.isBusy()` / `IsoWorld.init`)
+with no Workshop items configured; the roster was created after world loading
+completed.
 
 ## Open work
 

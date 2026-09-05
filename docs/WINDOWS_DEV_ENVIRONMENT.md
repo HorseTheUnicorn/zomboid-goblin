@@ -39,8 +39,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 -Storm 
 ```
 
 Stop both processes before replacing a loaded package. Keep the same session
-alive during iteration because a cold Build 42 client load measured 162
-seconds, mostly waiting in the vanilla world streamer. Use
+alive during iteration because the latest cold Build 42 client load measured
+278 seconds, mostly waiting in vanilla `WorldStreamer.isBusy()` /
+`IsoWorld.init`. Use
 `-ManagedNpcCount 0` for an actor-only smoke test.
 
 ## Current gates

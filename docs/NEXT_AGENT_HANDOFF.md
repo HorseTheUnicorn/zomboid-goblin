@@ -87,12 +87,15 @@ The latest local run established:
 - Goblin death/recreation from generation 1 to generation 2 with the human
   body mode and firearm re-established.
 
-The client cold load measured 162 seconds. The dated PZ log shows the main
-wait in vanilla `WorldStreamer.isBusy()` / `IsoWorld.init` from approximately
-08:42:50 to 08:44:58, with the loading thread waiting and filesystem queues
-empty. The actors were created after world loading completed. The local
-profile has an empty Workshop item list, so this delay was not a Workshop
-download. Keep a warm session alive while iterating where possible.
+The latest client cold load measured 278 seconds in the game-loading state.
+The dated PZ log shows the main wait in vanilla `WorldStreamer.isBusy()` /
+`IsoWorld.init` from 10:04:38 to 10:08:22 (about 224 seconds), with the
+loading thread in `TIMED_WAITING` and filesystem queues empty. The server's
+login queue completed at 10:08:24, after world loading finished. The actors
+were created after that point, and the local profile has an empty Workshop
+item list, so this delay is Build 42 map/world initialization rather than a
+Workshop download or survivor-loop work. Keep a warm session alive while
+iterating where possible.
 
 ## Current limitations and open gates
 

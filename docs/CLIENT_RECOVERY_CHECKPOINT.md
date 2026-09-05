@@ -29,11 +29,12 @@ rendered. Diagnostics include `inObjectList=true`,
 characters are visible in the game. This closes the visual-spawn gate for
 the single-client local run.
 
-The local client needed 162 seconds for its cold Build 42 world load. The
-watchdog's stack was waiting in vanilla `IsoWorld.init` during
-`WorldStreamer.isBusy()`, not inside the Goblin actor constructor. The local
-profile has no Workshop items, so there was no Workshop download in this
-run.
+The latest local client needed 278 seconds for its cold Build 42 game load.
+The watchdog's stack was waiting in vanilla `IsoWorld.init` during
+`WorldStreamer.isBusy()` for about 224 seconds, not inside the Goblin actor
+constructor. Filesystem queues were empty and the local profile has no
+Workshop items, so there was no Workshop download in this run. Keep the
+client warm while iterating because a restart repeats this engine-level wait.
 
 ## Parallel-client probe
 

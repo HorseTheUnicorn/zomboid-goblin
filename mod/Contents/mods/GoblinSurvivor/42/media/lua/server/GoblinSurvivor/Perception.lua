@@ -1,6 +1,13 @@
 local Perception = {}
 local BaseManager = require("GoblinSurvivor/BaseManager")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
+local NPCRegistry
+
+local function legacyRegistry()
+    if NPCRegistry == nil then
+        NPCRegistry = require("GoblinSurvivor/NPCRegistry")
+    end
+    return NPCRegistry
+end
 
 local function text(value)
     return type(value) == "string" and string.lower(value) or ""
@@ -104,7 +111,7 @@ function Perception.resolveTarget(target, zombie)
         return resolved, resolved and "player target" or "player is not online"
     end
     if kind == "goblin" then
-        local resolved = position(NPCRegistry.findGoblin())
+        local resolved = position(legacyRegistry().findGoblin())
         return resolved, resolved and "Goblin target" or "Goblin is not present"
     end
     if kind == "home_base" or kind == "base" then

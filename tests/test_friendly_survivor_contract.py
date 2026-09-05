@@ -233,6 +233,15 @@ class FriendlySurvivorContractTests(unittest.TestCase):
         self.assertIn("broadcastIntervalMs = 500", network)
         self.assertIn("O(number of connected players)", source)
 
+    def test_client_survivor_pauses_physical_service_without_players(self) -> None:
+        server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        self.assertIn("local players = onlinePlayers()", server)
+        self.assertIn("if #players == 0 then", server)
+        self.assertIn("cleanupLegacyBodies()", server)
+        self.assertIn("savePersistentRoster(false)", server)
+        self.assertIn("return true", server)
+        self.assertIn("without a loaded player/world anchor", server)
+
 
 if __name__ == "__main__":
     unittest.main()

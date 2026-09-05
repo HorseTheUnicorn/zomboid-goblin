@@ -72,11 +72,12 @@ On 2026-09-05, local Build 42.20.4 produced:
   after the client disconnected is not evidence that population spawning is
   disabled.
 
-The measured cold client load was 162 seconds. The client log shows the
-largest interval inside vanilla `WorldStreamer.isBusy()` / `IsoWorld.init`,
-with the loading thread waiting and filesystem queues empty. `WorkshopItems=`
-is empty in the disposable profile, so that delay was not a Workshop
-download. See `LOCAL_TESTING.md` for the warm-session workflow.
+The latest measured cold client load was 278 seconds. The client log shows
+the largest interval—about 224 seconds—inside vanilla
+`WorldStreamer.isBusy()` / `IsoWorld.init`, with the loading thread waiting
+and filesystem queues empty. `WorkshopItems=` is empty in the disposable
+profile, so that delay was not a Workshop download. See `LOCAL_TESTING.md` for
+the warm-session workflow.
 
 ## Gates still open
 

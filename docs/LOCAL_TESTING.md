@@ -61,17 +61,22 @@ powershell -ExecutionPolicy Bypass -File .\tools\Stop-LocalPzServer.ps1
 
 ## Why cold starts are slow
 
-The latest measured run took 162 seconds to finish client world loading. The
-client log shows `WorldStreamer.isBusy()` waiting inside vanilla
-`IsoWorld.init`; the watchdog captured the game-loading thread in
-`TIMED_WAITING` while filesystem queues were empty. The actors were created
-after that load completed. This is primarily a cold Build 42 map/world-stream
-cost, not a Workshop download or a seven-actor loop.
+The latest measured run took 278 seconds for the client game-loading state to
+finish. The main interval was vanilla `WorldStreamer.isBusy()` inside
+`IsoWorld.init` from `10:04:38` to `10:08:22` (about 224 seconds); the
+watchdog captured the game-loading thread in `TIMED_WAITING` while all
+filesystem queues were empty. The server's login queue completed only after
+that world load, at `10:08:24`. The actors were created after world loading
+completed, and the local profile has an empty `WorkshopItems=` value, so this
+is primarily Build 42's cold map/world-stream initialization—not a Workshop
+download or the seven-actor Lua loop.
 
 Keep the same server/client session alive while iterating whenever possible.
 Use the single-actor roster for changes that do not need companion coverage.
 Do not interpret the watchdog's stall message as a deadlock by itself: the
-same run resumed and reported `game loading took 162 seconds`.
+same run resumed and reported `game loading took 278 seconds`. Keep the same
+client/server session alive while iterating whenever possible; restarting the
+client repeats this engine-level wait.
 
 ## In-world commands
 
