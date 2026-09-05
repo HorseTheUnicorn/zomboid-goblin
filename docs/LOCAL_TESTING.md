@@ -64,8 +64,8 @@ smoke test, or a smaller positive value to exercise a partial roster.
 
 The sync helper refuses to run while the local PZ client or dedicated server
 is running. This prevents a loaded Lua module from being replaced underneath
-the game. It replaces only the two exact `GoblinSurvivor` package targets and
-removes the known stale adapter file from those targets; it does not delete
+the game. It mirrors only the two exact `GoblinSurvivor` package targets and
+stale files left inside those package targets; it does not delete
 the PZ data directory or any save.
 
 Stop the local server before another sync:
