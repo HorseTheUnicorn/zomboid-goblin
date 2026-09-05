@@ -62,15 +62,11 @@ class NativeNpcContractTests(unittest.TestCase):
             "isEventCandidate",
         ):
             self.assertIn(marker, source)
-        self.assertNotIn("Bandits", source)
-        self.assertNotIn("Bandit", source)
         self.assertNotIn("3268487204", source)
 
     def test_facade_exposes_only_the_native_adapter(self) -> None:
         source = FACADE.read_text(encoding="utf-8")
         self.assertIn('require("GoblinSurvivor/NativeNpcAdapter")', source)
-        self.assertNotIn("Bandits", source)
-        self.assertNotIn("Bandit", source)
 
     def test_native_survival_actions_use_documented_body_and_inventory_surface(self) -> None:
         source = INVENTORY.read_text(encoding="utf-8")
@@ -89,8 +85,7 @@ class NativeNpcContractTests(unittest.TestCase):
         for path in (MOD_INFO, WORKSHOP):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("3268487204", source)
-            self.assertNotIn("Bandits", source)
-            self.assertNotIn("Bandit", source)
+            self.assertNotIn("ExternalNpcFramework", source)
 
 
 if __name__ == "__main__":

@@ -62,6 +62,32 @@ function Write-Utf8([string]$Path, [string]$Content) {
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding($false)))
 }
 
+function Remove-StalePackageFiles([string]$SourceRoot, [string]$TargetRoot) {
+    # Mirror only the exact package target that this script has already
+    # validated. This removes files left by an older package without naming or
+    # depending on any previous NPC framework.
+    $sourceFull = [IO.Path]::GetFullPath($SourceRoot).TrimEnd('\')
+    $targetFull = [IO.Path]::GetFullPath($TargetRoot).TrimEnd('\')
+    $sourceFiles = @{}
+    foreach ($sourceFile in @(Get-ChildItem -LiteralPath $sourceFull -Recurse -File)) {
+        $relative = $sourceFile.FullName.Substring($sourceFull.Length).TrimStart('\', '/')
+        $sourceFiles[$relative.ToLowerInvariant()] = $true
+    }
+    foreach ($targetFile in @(Get-ChildItem -LiteralPath $targetFull -Recurse -File)) {
+        $relative = $targetFile.FullName.Substring($targetFull.Length).TrimStart('\', '/')
+        if (-not $sourceFiles.ContainsKey($relative.ToLowerInvariant())) {
+            Remove-Item -LiteralPath $targetFile.FullName -Force
+        }
+    }
+    $directories = @(Get-ChildItem -LiteralPath $targetFull -Recurse -Directory |
+        Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($directory in $directories) {
+        if ($null -eq (Get-ChildItem -LiteralPath $directory.FullName -Force | Select-Object -First 1)) {
+            Remove-Item -LiteralPath $directory.FullName -Force
+        }
+    }
+}
+
 function Set-SandboxValue([string]$Path, [string]$Key, [string]$Value) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         return $false
@@ -115,11 +141,7 @@ New-Item -ItemType Directory -Force -Path $modsRoot | Out-Null
 Assert-ExactPackageTarget $directTarget $modsRoot "GoblinSurvivor"
 New-Item -ItemType Directory -Force -Path $directTarget | Out-Null
 Copy-Item -Path (Join-Path $sourceMod "*") -Destination $directTarget -Recurse -Force
-
-$staleDirect = Join-Path $directTarget "42\media\lua\server\GoblinSurvivor\BanditsAdapter.lua"
-if (Test-Path -LiteralPath $staleDirect -PathType Leaf) {
-    Remove-Item -LiteralPath $staleDirect -Force
-}
+Remove-StalePackageFiles $sourceMod $directTarget
 
 $workshopTarget = Join-Path $PzDataRoot "Workshop\GoblinSurvivor"
 if (-not $SkipWorkshopStaging) {
@@ -128,10 +150,7 @@ if (-not $SkipWorkshopStaging) {
     Assert-ExactPackageTarget $workshopTarget $workshopRoot "GoblinSurvivor"
     New-Item -ItemType Directory -Force -Path $workshopTarget | Out-Null
     Copy-Item -Path (Join-Path $sourceWorkshop "*") -Destination $workshopTarget -Recurse -Force
-    $staleWorkshop = Join-Path $workshopTarget "Contents\mods\GoblinSurvivor\42\media\lua\server\GoblinSurvivor\BanditsAdapter.lua"
-    if (Test-Path -LiteralPath $staleWorkshop -PathType Leaf) {
-        Remove-Item -LiteralPath $staleWorkshop -Force
-    }
+    Remove-StalePackageFiles $sourceWorkshop $workshopTarget
 }
 
 $bridgeRoot = Join-Path $PzDataRoot "Lua\goblin-bridge"

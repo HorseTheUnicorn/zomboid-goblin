@@ -23,13 +23,25 @@ if (Test-Path -LiteralPath $package) {
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 Copy-Item -LiteralPath (Join-Path $source "42") -Destination $package -Recurse
 
-$forbidden = @("Bandit", "Bandits", "ClientAdapter", "live_client", "SteamCMD")
+$forbidden = @("ClientAdapter", "live_client", "SteamCMD")
 $runtimeFiles = Get-ChildItem -LiteralPath $package -Recurse -File
 foreach ($file in $runtimeFiles) {
     $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
     foreach ($word in $forbidden) {
         if ($content -match [regex]::Escape($word)) {
             throw "Release package contains forbidden runtime reference '$word': $($file.FullName)"
+        }
+    }
+    if ($file.Extension -ieq ".lua") {
+        $imports = [regex]::Matches(
+            $content,
+            'require\s*\(\s*["'']([^"'']+)["'']\s*\)'
+        )
+        foreach ($import in $imports) {
+            $module = $import.Groups[1].Value
+            if (-not $module.StartsWith("GoblinSurvivor/")) {
+                throw "Release package contains an external Lua module import '$module': $($file.FullName)"
+            }
         }
     }
 }

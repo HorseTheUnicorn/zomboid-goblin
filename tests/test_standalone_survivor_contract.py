@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -95,20 +96,27 @@ class StandaloneSurvivorContractTests(unittest.TestCase):
         self.assertIn("setCombatTarget", source)
         self.assertIn("GoblinSurvivor/GSSurvivorPerception", source)
 
-    def test_runtime_package_has_no_bandits_dependency(self) -> None:
+    def test_runtime_package_has_only_internal_lua_dependencies(self) -> None:
         for path in MOD.rglob("*.lua"):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("require(\"Bandits", source, str(path))
-            self.assertNotIn("require(\"Bandit", source, str(path))
-            self.assertNotIn("Bandits2", source, str(path))
+            imports = re.findall(r'''require\s*\(\s*["']([^"']+)["']\s*\)''', source)
+            for module in imports:
+                self.assertTrue(
+                    module.startswith("GoblinSurvivor/"),
+                    f"runtime import escaped the GoblinSurvivor namespace: {path}: {module}",
+                )
         manifest = (MOD / "mod.info").read_text(encoding="utf-8")
-        self.assertNotIn("Bandits", manifest)
+        self.assertNotIn("WorkshopItem", manifest)
 
     def test_windows_workflow_scripts_exist(self) -> None:
         for filename in ("dev-install.ps1", "dev-logs.ps1", "dev-package.ps1", "deploy-03.ps1"):
             self.assertTrue((TOOLS / filename).exists(), filename)
         package = (TOOLS / "dev-package.ps1").read_text(encoding="utf-8")
         self.assertIn("Refusing to overwrite", package)
+        self.assertIn("external Lua module import", package)
+        self.assertIn('StartsWith("GoblinSurvivor/")', package)
+        sync = (TOOLS / "Sync-LocalPz.ps1").read_text(encoding="utf-8")
+        self.assertIn("Remove-StalePackageFiles", sync)
         deploy = (TOOLS / "deploy-03.ps1").read_text(encoding="utf-8")
         self.assertIn("ShouldProcess", deploy)
         self.assertIn("backups/GoblinSurvivor-", deploy)

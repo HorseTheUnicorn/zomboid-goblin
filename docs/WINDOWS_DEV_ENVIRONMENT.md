@@ -68,8 +68,8 @@ From the repository root:
 
 `dev-install.ps1` refuses to sync while the selected PZ client/server is
 running. The local configuration enables development mode and `/gss` test
-commands. The disposable profile is configured with no Workshop items, so the
-Bandits package is not needed for local standalone testing.
+commands. The disposable profile is configured with no Workshop items, so
+local testing uses only the standalone native survivor package.
 
 ## Local test commands
 

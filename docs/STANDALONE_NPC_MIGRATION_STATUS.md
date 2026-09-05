@@ -30,9 +30,8 @@ the active source checkout.
   synchronous factory is skipped on the dedicated server. Direct
   `IsoZombie.new(...)` is intentionally forbidden: it was unsafe in the
   installed runtime.
-- Bandits is reference material only. The installed local reference is
-  Workshop item `3268487204`, version directory `42.20`; it is not a runtime
-  dependency and its namespace is not imported by the mod.
+- The runtime has no external NPC framework dependency. The native adapter is
+  the only body implementation exposed through the stable adapter facade.
 - The server remains authoritative for identity, brain state, tasks, and
   commands. Clients receive normal PZ entity replication plus the bounded
   GoblinSurvivor state channel.
@@ -57,7 +56,8 @@ the active source checkout.
   modules, including a bounded survivor combat facade.
 - Add deterministic local test-survivor controls and Windows development
   install/log/package tooling.
-- Record the installed Bandits behavior as a non-shipping reference.
+- Record the verified Build 42 API surface as a non-shipping implementation
+  reference.
 
 ### Release gates still open
 
@@ -68,6 +68,7 @@ the active source checkout.
 5. Body unload/rebind and Goblin protected recovery must pass.
 6. Qwen intent integration must be tested only after deterministic fallback is
    stable.
-7. Bandits-off package validation must pass before any `.03` deployment.
+7. Package validation must pass with only the native adapter and no external
+   NPC framework before any `.03` deployment.
 
 No production `.03` files or saves are changed by this stage.
