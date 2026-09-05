@@ -1,9 +1,8 @@
 """Server-side Goblin NPC orchestration.
 
 The service owns decisions and durable memory. The dedicated PZ server owns
-the NPC, exact world resolution, movement, and persistence of the Bandits2
-body through GoblinSurvivor's adapter. No client or Steam lifecycle is part of
-this runtime.
+the NPC, exact world resolution, movement, and persistence of the native
+GoblinSurvivor body. No client or Steam lifecycle is part of this runtime.
 """
 
 from __future__ import annotations
@@ -124,6 +123,7 @@ class GoblinService:
         self._last_planning_signature: tuple[Any, ...] | None = None
         self._plan_authority_token: str | None = None
         self._plan_authorized = False
+        self._pending_chat_replies: list[tuple[dict[str, object], str]] = []
 
     def close(self) -> None:
         self.tracker.close()
@@ -198,6 +198,7 @@ class GoblinService:
         if isinstance(npcs, list):
             for npc in npcs:
                 self._register_npc(npc)
+        self.npc_driver.update_npc_ids(self.entity_registry.npcs.keys())
 
     @staticmethod
     def _chat_is_addressed(fields: Mapping[str, object]) -> bool:
@@ -382,13 +383,20 @@ class GoblinService:
             pass
 
     def _reply_to_chat(self, fields: Mapping[str, object], *, event_request_id: str) -> None:
-        if self.paused or self.current_body is None or not self.current_body.body_ready:
-            return
         text = fields.get("text")
         speaker = fields.get("speaker")
         if not isinstance(text, str) or not isinstance(speaker, str):
             return
         if "goblin" not in text.casefold() and not text.startswith("!goblin"):
+            return
+        if self.paused:
+            return
+        if self.current_body is None or not self.current_body.body_ready:
+            # Events can arrive before the first runtime heartbeat.  Keep the
+            # addressed message briefly instead of silently losing a player
+            # request during the normal join sequence.
+            self._pending_chat_replies.append((dict(fields), event_request_id))
+            self._pending_chat_replies = self._pending_chat_replies[-16:]
             return
         propose_speech = getattr(self.qwen, "propose_speech", None)
         if not callable(propose_speech):
@@ -421,6 +429,14 @@ class GoblinService:
             self.last_action = decision.action.as_dict()
             self.last_status = "npc_speech_published"
             self.last_detail = "addressed chat reply sent to the server-side NPC"
+
+    def _drain_pending_chat_replies(self) -> None:
+        if self.paused or self.current_body is None or not self.current_body.body_ready:
+            return
+        pending = self._pending_chat_replies
+        self._pending_chat_replies = []
+        for fields, request_id in pending:
+            self._reply_to_chat(fields, event_request_id=request_id)
 
     def _poll_events(self) -> None:
         now_ms = int(self.clock() * 1000)
@@ -495,7 +511,7 @@ class GoblinService:
             control_ready=bool(fields.get("control_ready", False)),
             npc_engine_ready=bool(fields.get("npc_engine_ready", False)),
             npc_id=(fields.get("npc_id") if isinstance(fields.get("npc_id"), str) else NPC_ID),
-            body_mode=(fields.get("body_mode") if fields.get("body_mode") in {"disabled", "sensor_only", "npc"} else "sensor_only"),
+            body_mode=(fields.get("body_mode") if fields.get("body_mode") in {"disabled", "sensor_only", "npc", "client_survivor"} else "sensor_only"),
         )
 
     def _sync_players(self, fields: Mapping[str, object]) -> None:
@@ -507,8 +523,8 @@ class GoblinService:
     def _validate_references(self, intent: Any) -> str | None:
         data = intent.data
         npc_id = data.get("npc_id", NPC_ID)
-        if npc_id != NPC_ID:
-            return "unknown NPC id"
+        if not isinstance(npc_id, str) or not self.entity_registry.known_npc(npc_id):
+            return "unknown managed survivor id"
         if intent.intent in PRIVILEGED_ACTIONS and not self._plan_authorized:
             return "privileged action requires an authorized in-game commander request"
         target = data.get("target")
@@ -518,7 +534,7 @@ class GoblinService:
                 return "player is not in the server-reported allowlist"
         if intent.intent == "ASSIGN_JOB":
             try:
-                self.jobs.assign(NPC_ID, str(data.get("job", "")))
+                self.jobs.assign(str(data.get("npc_id", NPC_ID)), str(data.get("job", "")))
             except ValueError as exc:
                 return str(exc)
         if intent.intent == "FORM_SQUAD":
@@ -532,8 +548,8 @@ class GoblinService:
                     created_at=int(self.clock()),
                 )
                 # Resolve high-level requests to actual server-reported NPC
-                # ids before the typed command reaches Lua.  Qwen may ask for
-                # a count; it never needs to know Bandits2 references.
+                # ids before the typed command reaches Lua. Qwen may ask for a
+                # count; it never needs to know native body references.
                 data["members"] = list(squad.members)
             except (KeyError, TypeError, ValueError) as exc:
                 return str(exc)
@@ -581,20 +597,21 @@ class GoblinService:
             self.last_detail = "waiting for the persistent server-side NPC contract"
             return ServiceResult(self.last_status, self.last_detail)
 
-        # Run deterministic reflexes before any model call.  An ongoing
-        # Bandits2 task continues locally; only an immediate reflex may
+        # Run deterministic reflexes before any model call. An ongoing native
+        # task continues locally; only an immediate reflex may
         # publish on an ordinary heartbeat.
         reflex_result = self._run_deterministic_fallback(
             body, "deterministic reflex check"
         )
         if reflex_result.status != "fallback_safe":
             return reflex_result
+        self._drain_pending_chat_replies()
         if self.qwen is None:
             return self._run_deterministic_fallback(body, "no Qwen adapter configured")
         now = float(self.clock())
         if not self._planning_due(now):
             self.last_status = "npc_steady"
-            self.last_detail = "Bandits2 task continues; no model planning trigger is pending"
+            self.last_detail = "native NPC task continues; no model planning trigger is pending"
             return ServiceResult(self.last_status, self.last_detail)
         try:
             intent = self.qwen.propose_intent(self._planning_context())

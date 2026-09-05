@@ -39,6 +39,18 @@ class BrokenQwen:
         raise QwenError("test model outage")
 
 
+class SpeechQwen:
+    def propose_speech(self, _context: object) -> str:
+        return "Goblin here."
+
+    def propose_intent(self, _context: object):
+        return IntentValidator().validate(
+            {"intent": "SAY", "mode": "PARTY", "text": "Standing by."}
+        )
+
+
+
+
 class PrivilegedQwen:
     def __init__(self) -> None:
         self.calls = 0
@@ -297,6 +309,50 @@ class NpcServiceTests(unittest.TestCase):
             self.assertEqual(result.status, "controller_rejected")
             self.assertIn("authorized", result.detail)
             self.assertEqual(list(service.store.iter_ready("commands")), [])
+        finally:
+            service.close()
+
+    def test_addressed_chat_waits_for_the_client_survivor_heartbeat(self) -> None:
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=SpeechQwen(),
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service._plan_pending = False
+            service._last_plan_at = 2_000.0
+            service.store.publish(
+                "events",
+                make_message(
+                    "event.chat", timestamp_ms=2_000_000,
+                    speaker="Alice", text="Goblin, are you there?",
+                ),
+                stem="early-chat",
+            )
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="client_survivor",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                ),
+            )
+            result = service.run_once()
+            self.assertIn(result.status, {"npc_command_published", "npc_speech_published"})
+            commands = [
+                service.store.read_ready(item)
+                for item in service.store.iter_ready("commands")
+            ]
+            self.assertTrue(
+                any(
+                    command.fields["action"] == "SAY"
+                    and command.fields["text"] == "Goblin here."
+                    for command in commands
+                )
+            )
+            self.assertEqual(service._pending_chat_replies, [])
         finally:
             service.close()
 

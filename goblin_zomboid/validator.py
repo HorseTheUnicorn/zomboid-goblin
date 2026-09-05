@@ -21,7 +21,7 @@ INTENTS = {
 MODE_ALLOWED = {
     "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
     "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE"},
-    "PARTY": INTENTS - {"ASSIGN_JOB", "SECURE_BASE", "PATROL", "GUARD"},
+    "PARTY": INTENTS - {"SECURE_BASE", "PATROL", "GUARD"},
     "HUNT": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "GUARD", "PATROL"},
 }
 TARGET_KINDS = {
@@ -153,7 +153,7 @@ def _id_list(value: Any, field: str) -> list[str]:
 
 def _member_request(value: Any, field: str) -> int | list[str]:
     # A commander can ask for a bounded number of additional NPCs without
-    # needing to know Bandits2 entity ids.  The deterministic squad manager
+    # needing to know native entity ids. The deterministic squad manager
     # resolves that count to actual available NPCs.
     if field == "requested_members" and isinstance(value, int) and not isinstance(value, bool):
         if not 1 <= value <= 15:

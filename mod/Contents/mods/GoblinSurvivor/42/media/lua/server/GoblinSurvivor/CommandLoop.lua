@@ -5,11 +5,12 @@ local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
 local ActionExecutor = require("GoblinSurvivor/ActionExecutor")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local Authority = require("GoblinSurvivor/Authority")
+local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 
 local CommandLoop = { seen = {}, seenOrder = {}, maxSeen = 2048 }
 
 local actions = {
-    NOOP = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
+    NOOP = true, DEBUG_KILL = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
     HOLD_POSITION = true, REGROUP = true, SEARCH = true, SCAVENGE = true,
     LOOT_AREA = true, RETREAT = true, FLEE = true, REST = true, GO_HOME = true,
     ATTACK = true, DEFEND_PLAYER = true, DEFEND_AREA = true, GUARD = true,
@@ -63,7 +64,12 @@ local function validAction(message)
     for key, _ in pairs(message) do
         if type(key) ~= "string" or not allowedKeys[string.lower(key)] then return false end
     end
-    if message.npc_id ~= Config.npcId or not actions[message.action] then return false end
+    if not actions[message.action] then return false end
+    if Config.bodyMode == "client_survivor" then
+        if not ClientSurvivorServer.isKnownNpcId(message.npc_id) then return false end
+    elseif message.npc_id ~= Config.npcId then
+        return false
+    end
     if type(message.priority) ~= "number" or math.floor(message.priority) ~= message.priority
         or message.priority < 0 or message.priority > 3 then return false end
     if message.reason ~= nil and not safeText(message.reason, 240) then return false end
@@ -129,8 +135,13 @@ local function process(stem)
         IPC.archive("commands", stem, "NPC action rejected")
         return
     end
-    local zombie = GoblinNPC.findGoblin()
-    local accepted, detail = ActionExecutor.execute(message, zombie)
+    local accepted, detail
+    if Config.bodyMode == "client_survivor" then
+        accepted, detail = ClientSurvivorServer.execute(message)
+    else
+        local zombie = GoblinNPC.findGoblin()
+        accepted, detail = ActionExecutor.execute(message, zombie)
+    end
     local status = accepted and "accepted" or "failed"
     IPC.writeResponse(message.request_id, status, detail)
     IPC.acknowledge(message.request_id, status)
@@ -139,7 +150,9 @@ end
 
 function CommandLoop.tick()
     if not IPC.isReady() or not Config.enabled then return end
-    GoblinNPC.ensure()
+    if Config.bodyMode ~= "client_survivor" then
+        GoblinNPC.ensure()
+    end
     Telemetry.writeExactState()
     local ready = IPC.listReady("commands")
     local processed = 0

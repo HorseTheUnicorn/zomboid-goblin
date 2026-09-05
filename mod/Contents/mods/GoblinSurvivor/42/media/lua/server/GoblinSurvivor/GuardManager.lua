@@ -87,17 +87,17 @@ function GuardManager.assign(npcId)
     return true, "guard assignment recorded"
 end
 
--- MVP base security: keep Goblin at the persisted base anchor using the same
--- verified Bandits2 movement task path used by FOLLOW/RETURN_TO_BASE.  More
--- specific posts and patrol routes can be layered on without changing the
--- body adapter boundary.
+-- MVP base security: keep Goblin at the persisted base anchor using the
+-- native movement task path used by FOLLOW/RETURN_TO_BASE. More specific
+-- posts and patrol routes can be layered on without changing the body
+-- adapter boundary.
 function GuardManager.secure(args, zombie)
     GuardManager.load()
     if type(args) ~= "table" or args.npc_id ~= Config.npcId then
         return false, "unknown guard NPC"
     end
     if zombie == nil or not NpcAdapter.isOwned(zombie) then
-        return false, "Goblin NPC is not a verified friendly Bandits2 body"
+        return false, "Goblin NPC is not a verified friendly native body"
     end
     local assigned, detail = GuardManager.assign(Config.npcId)
     if not assigned then return false, detail end

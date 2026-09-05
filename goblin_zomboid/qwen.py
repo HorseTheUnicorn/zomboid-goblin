@@ -41,8 +41,11 @@ class QwenClient:
     def _system_prompt() -> str:
         return (
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
-            "Goblin is the persistent server-side NPC goblin.primary; never refer to a Steam/PZ client "
-            "or create a character. Allowed intents include WAIT, SAY, MOVE_TO, FOLLOW, FOLLOW_GOBLIN, "
+            "Goblin is the persistent server-side coordinator with id goblin.primary. The runtime state "
+            "contains a bounded server-reported roster of managed human survivors; when directing a "
+            "companion, put its reported npc_id in the intent. Goblin is the big brain and may assign "
+            "the six companions to follow, loot, disassemble, build, guard, scout, haul, farm, or medic "
+            "work. Never refer to a Steam/PZ client or create a character. Allowed intents include WAIT, SAY, MOVE_TO, FOLLOW, FOLLOW_GOBLIN, "
             "HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, GO_HOME, JOIN_PARTY, "
             "LEAVE_PARTY, FORM_SQUAD, DISMISS_SQUAD, ASSIGN_JOB, SECURE_BASE, RETURN_TO_BASE, "
             "CLEAR_BUILDING, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, ENTER_VEHICLE, "

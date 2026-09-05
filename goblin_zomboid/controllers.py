@@ -11,6 +11,7 @@ from .validator import ValidatedIntent
 
 class Action(str, Enum):
     NOOP = "NOOP"
+    DEBUG_KILL = "DEBUG_KILL"
     SAY = "SAY"
     MOVE_TO = "MOVE_TO"
     FOLLOW = "FOLLOW"
@@ -77,7 +78,7 @@ class BodyState:
             raise ValueError("unknown threat level")
         if self.mode not in {"SAFE", "ROAM", "PARTY", "HUNT"}:
             raise ValueError("unknown body mode")
-        if self.body_mode not in {"disabled", "sensor_only", "npc"}:
+        if self.body_mode not in {"disabled", "sensor_only", "npc", "client_survivor"}:
             raise ValueError("unknown execution body mode")
         if not self.npc_id or len(self.npc_id) > 96:
             raise ValueError("invalid npc id")

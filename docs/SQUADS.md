@@ -14,7 +14,7 @@ dismiss a squad.
 
 Once formed, `SquadManager` reapplies the relationship every few seconds. In
 a human-led squad Goblin follows the authorized player and each additional
-managed companion follows Goblin through the verified Bandits2 target-task
-helper. If the player disconnects, the squad is sent to the persisted base
-when one exists. An NPC-led squad follows its managed NPC leader. The high-
-level registry persists membership; Bandits2 owns the live body movement.
+managed companion follows Goblin through the native `pathToCharacter` wrapper.
+If the player disconnects, the squad is sent to the persisted base when one
+exists. An NPC-led squad follows its managed native leader. The high-level
+registry persists membership; the native adapter owns live body movement.

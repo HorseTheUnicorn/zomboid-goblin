@@ -1,106 +1,47 @@
-# Bandits2 API notes
+# Bandits API notes
 
-Status: runtime dependency for the GoblinSurvivor NPC body and behavior.
-GoblinSurvivor does not copy Bandits2 source; it requires the installed
-Workshop package on the .03 server and on joining clients.
+## Current decision
 
-The live server is Build 42.20.4. The installed Workshop package is at
-steamapps/workshop/content/108600/3268487204/mods/Bandits/42.20 and reports
-id=Bandits2 in mod.info. The dependency is the public Workshop item
-[B42 Bandits NPC](https://steamcommunity.com/sharedfiles/filedetails/?id=3268487204):
+The current `GoblinSurvivor` release does **not** use Bandits or any other
+Workshop NPC framework. The project originally planned to wrap Bandits, but
+the implementation was changed to a self-contained native Build 42 engine at
+the operator's direction. `NativeNpcAdapter.lua` is now the only body adapter
+and `NpcAdapter.lua` is the only stable facade above it.
 
-- Workshop item ID: 3268487204
-- PZ mod ID: Bandits2
-- Role: networked NPC body, profile data, Companion program, and NPC behavior
+This file is retained as the migration record required by the original
+architecture plan. It prevents a future maintainer from treating an old
+Bandits package or guessed Bandits function name as a hidden dependency.
 
-## Observed B42.20 API surface
+## Removed dependency surface
 
-These names were read from the installed package on .03; they are not
-invented from the Workshop description:
+The current package has no Bandits Workshop ID, no `require("Bandits/..." )`
+call, and no Bandits-specific entity lookup, brain, task, persistence, or
+network synchronization code. A server configuration must therefore contain
+only `GoblinSurvivor` for this mod; it must not add a Bandits item merely to
+make GoblinSurvivor start.
 
-- BanditServer.Spawner.Individual(player, args) accepts a required args.bid,
-  optional args.x/y/z, and optional args.program. The wrapper creates one
-  networked body and applies the selected Bandits2 profile.
-- BanditCustom.Load(), Save(), ClanGet(cid), ClanCreate(cid), GetById(bid),
-  and Create(bid) manage the persistent clan/profile data used by the
-  adapter.
-- BanditBrain.Get(zombie) and Update(zombie, brain) read and publish the live
-  Bandits2 brain. Remove(zombie) is available for cleanup.
-- BanditUtils.GetCharacterID(character) provides the Bandits2 master ID.
-  GetMoveTask(endurance, x, y, z, walkType, dist, closeSlow) and
-  GetMoveTaskTarget(endurance, x, y, z, tid, isPlayer, walkType, dist)
-  return the framework's verified movement task shapes.
-- BanditCompatibility.AddZombiesInOutfit(...) is the body creation
-  implementation used by the Bandits2 spawner. GoblinSurvivor calls the public
-  spawner rather than this lower-level function.
-- Bandit.UpdateTask(zombie, task) and Bandit.ClearTasks(zombie) manage the
-  framework task queue.
-- The verified friendly program is Companion; the installed package also
-  contains ZPCompanion.lua and ZPCompanionGuard.lua.
-- The verified speech helper is `Bandit.Say(bandit, phrase, force)`, but it
-  accepts a Bandits `SoundTab` phrase key rather than arbitrary text. The
-  adapter therefore uses the Bandits2 body method `addLineChatElement` for
-  bounded Goblin/Qwen chat text; `ActionExecutor` never calls framework names
-  directly.
+## Native replacement contract
 
-## Friendly Goblin and managed-roster contract
+The native adapter currently owns these verified-at-runtime operations:
 
-BanditsAdapter.lua creates or restores one private clan plus one profile per
-stable GoblinSurvivor identity. The registry always requires the
-`goblin.primary` profile. `GoblinManagedNpcCount` optionally enables the first
-bounded entries in the mod's own friendly roster (`npc.sarah`, `npc.bob`,
-`npc.dave`, and so on); the default is three managed companions in addition to
-Goblin. The registry binds each profile independently and never claims a
-normal population zombie.
+- body creation through `createZombie` with a survivor descriptor, with the
+  bounded `addZombiesInOutfit` fallback;
+- stable ownership and identity through `getModData()` markers;
+- friendly/protected state and target clearing;
+- movement through the exposed `pathToLocationF`, `pathToLocation`, and
+  `pathToCharacter` methods;
+- semantic speech through the body's `addLineChatElement` method when exposed;
+- bounded combat against a live hostile zombie only; and
+- persistence/rebind and delayed replacement through `NPCRegistry`.
 
-The readable GoblinSurvivor IDs are deliberately not used as Bandits2 section
-keys. Bandits2's Build 42 loader accepts UUID-shaped profile and clan headers,
-and its save routine groups profiles by `general.modid`. The adapter therefore
-uses fixed UUIDs for the private clan and each built-in roster identity, writes
-`general.modid=LOCAL` for the server-owned profiles, and maps the framework IDs
-back to the readable IDs at the adapter boundary. This keeps the public
-telemetry/command vocabulary stable while making the Bandits2 profiles
-recoverable after a server restart. An arbitrary configured NPC ID is accepted
-only when it is already a valid UUID; the adapter fails closed instead of
-generating a non-recoverable runtime ID.
+Every Java/Lua call is runtime-gated and wrapped so a changed Build 42 surface
+fails closed to `sensor_only` or a rejected action. The adapter must never
+adopt a normal population zombie merely because it is nearby.
 
-The adapter reapplies the following state before any body is considered owned:
+## If Bandits is reconsidered later
 
-- clan spawn policy: friendly=true, companion=true, all hostile/group spawn
-  modes disabled, and automatic spawn chance set to zero;
-- brain policy: hostile=false, hostileP=false, loyal=true, permanent=true,
-  and program.name=Companion;
-- GoblinSurvivor markers in body mod-data: stable NPC ID, ownership,
-  friendly-engine name, role, and protection state. Only `goblin.primary` gets
-  the no-damage/immortal safety hooks; managed companions remain ordinary
-  survivable friendly bodies.
-
-Squad follow is implemented by GoblinSurvivor high-level code using the
-verified `GetMoveTaskTarget` Bandits2 helper: a human-led squad sends Goblin to
-the player and the other managed bodies to Goblin; an NPC-led squad sends its
-members to the managed leader. Bandits2 still owns the actual networked
-movement and Companion behavior.
-
-The adapter is the only runtime module that mentions Bandits2-specific names.
-NpcAdapter.lua is a stable facade for the registry, action executor,
-telemetry, and Python bridge. There is no vanilla fallback. If the exact API
-surface or friendly proof is unavailable, the registry stays in sensor_only
-and does not claim an ordinary hostile zombie.
-
-The first combat bridge is intentionally narrow. Python/Lua perception may
-nominate only a live non-player zombie within the fixed semantic radius.
-GoblinSurvivor restores that one validated engine target while retaining the
-Bandits2 friendly brain flags. A generic Bandits2 attack-task contract has not
-been assumed; inventory, vehicles, and building actions remain fail-closed
-until their exact contracts are verified in the live server.
-
-## Load-order requirement
-
-The dedicated server must advertise and load Bandits2 before GoblinSurvivor:
-
-    WorkshopItems=3268487204,...
-    Mods=Bandits2;GoblinSurvivor;...
-
-The order and version must be identical for the server and joining clients.
-Steam's server Workshop loadout is the intended client-download path. .76
-does not install or run a native Steam/PZ client.
+Do not add calls based on memory or a public description. First inspect the
+exact Workshop package and version installed on `.03`, record its actual Lua
+functions and hooks here, and implement a separate adapter behind the existing
+facade. Keep the native adapter available as the safe fallback until an
+in-world integration test proves the alternative body contract.

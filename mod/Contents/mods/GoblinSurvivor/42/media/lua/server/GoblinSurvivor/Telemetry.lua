@@ -8,8 +8,18 @@ local BaseManager = require("GoblinSurvivor/BaseManager")
 local GuardManager = require("GoblinSurvivor/GuardManager")
 local JobManager = require("GoblinSurvivor/JobManager")
 local SquadManager = require("GoblinSurvivor/SquadManager")
+local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 
 local Telemetry = {}
+
+local function clientActorMode()
+    return Config.bodyMode == "client_survivor"
+end
+
+local function runtimeNpcState()
+    if clientActorMode() then return ClientSurvivorServer.status() end
+    return GoblinNPC.getGoblinState()
+end
 
 local function nowMs()
     if type(getTimestampMs) == "function" then
@@ -47,12 +57,15 @@ end
 
 function Telemetry.writeHeartbeat()
     if not IPC.isReady() then return false end
-    local npc = GoblinNPC.getGoblinState()
+    local npc = runtimeNpcState()
     return IPC.publishRuntime("zomboid-heartbeat", {
         protocol = Config.protocol,
         request_id = "zomboid-heartbeat",
         timestamp_ms = nowMs(),
         type = "runtime.heartbeat",
+        mod_version = "0.5.0-dev",
+        survivor_engine_version = Config.survivorEngineVersion,
+        protocol_version = Config.protocol,
         status = "safe",
         body_mode = npc.body_mode,
         npc_id = npc.npc_id,
@@ -69,21 +82,28 @@ end
 
 function Telemetry.writeState()
     if not IPC.isReady() then return false end
-    local npc = GoblinNPC.getGoblinState()
-    local zombie = GoblinNPC.findGoblin()
+    local npc = runtimeNpcState()
+    local zombie = clientActorMode() and nil or GoblinNPC.findGoblin()
     local perception = Perception.coarseState(zombie)
-    local body = NpcAdapter.status(zombie)
+    local body = clientActorMode() and npc or NpcAdapter.status(zombie)
     return IPC.publishRuntime("zomboid-state", {
         protocol = Config.protocol,
         request_id = "zomboid-state",
         timestamp_ms = nowMs(),
         type = "runtime.state",
+        mod_version = "0.5.0-dev",
+        survivor_engine_version = Config.survivorEngineVersion,
+        protocol_version = Config.protocol,
         alive = npc.alive,
-        body_present = npc.alive,
+        body_present = npc.body_present == true,
         body_mode = npc.body_mode,
         npc_id = npc.npc_id,
         npc_alive = npc.alive,
         npc_active = npc.active,
+        authority = npc.authority,
+        movement_blocked = npc.movement_blocked,
+        navigation_status = npc.navigation_status,
+        route_remaining = npc.route_remaining,
         control_ready = npc.control_ready,
         npc_engine_ready = npc.npc_engine_ready,
         role = npc.role,
@@ -97,11 +117,24 @@ function Telemetry.writeState()
         fatigue = 0,
         panic = 0,
         injury = 0,
-        -- Goblin is a protected Bandits2 IsoZombie body. The framework does
-        -- not expose survivor hunger/thirst/inventory readiness through the
-        -- verified adapter, so these values are deliberately conservative
-        -- rather than fabricated as available supplies.
+        -- The client-survivor slice does not expose hunger/thirst/inventory
+        -- readiness through the snapshot yet. These values remain
+        -- deliberately conservative rather than fabricated.
         weapon_ready = body.weapon_ready == true,
+        firearm_type = body.firearm_type,
+        weapon_policy = body.weapon_policy,
+        god_mode = body.god_mode == true,
+        hostile_to_zombies = body.hostile_to_zombies == true,
+        body_generation = body.body_generation,
+        health = body.health,
+        combat_mode = body.combat_mode,
+        combat_status = body.combat_status,
+        combat_target_id = body.combat_target_id,
+        shots_fired = body.shots_fired,
+        zombies_killed = body.zombies_killed,
+        incoming_hits = body.incoming_hits,
+        last_kill_id = body.last_kill_id,
+        death_reason = body.death_reason,
         has_food = body.has_food == true,
         has_water = body.has_water == true,
         has_medical = body.has_medical == true,
@@ -111,12 +144,16 @@ function Telemetry.writeState()
         spawn_status = npc.spawn_status,
         spawn_pending = npc.spawn_pending,
         spawn_attempts = npc.spawn_attempts,
+        -- Diagnostic only: this is the current ordinary IsoZombie population
+        -- visible to the server. Goblin's human body is never counted here.
+        ordinary_zombie_count = clientActorMode()
+            and ClientSurvivorServer.ordinaryZombieCount() or nil,
         base = GuardManager.snapshot(),
         jobs = JobManager.snapshot(),
         squads = SquadManager.snapshot(),
         player_count = #perception.nearby_players,
         nearby_players = perception.nearby_players,
-        npcs = NPCRegistry.snapshot()
+         npcs = clientActorMode() and ClientSurvivorServer.statusAll() or NPCRegistry.snapshot()
     })
 end
 
@@ -127,11 +164,26 @@ function Telemetry.writeExactState()
     local entities = {}
     local base = BaseManager.snapshotExact()
     if base ~= nil then table.insert(entities, base) end
-    for _, entity in ipairs(NPCRegistry.snapshotExact()) do
-        if entity.npc_id == Config.npcId then
-            entity.kind = "goblin"
+    if clientActorMode() then
+        for _, state in ipairs(ClientSurvivorServer.snapshotAll()) do
+            table.insert(entities, {
+                entity_id = state.actor_id,
+                npc_id = state.actor_id,
+                kind = state.actor_id == Config.npcId and "goblin" or "survivor",
+                name = state.display_name,
+                role = state.role or Config.npcRole,
+                x = state.x,
+                y = state.y,
+                z = state.z
+            })
         end
-        table.insert(entities, entity)
+    else
+        for _, entity in ipairs(NPCRegistry.snapshotExact()) do
+            if entity.npc_id == Config.npcId then
+                entity.kind = "goblin"
+            end
+            table.insert(entities, entity)
+        end
     end
     if type(getOnlinePlayers) == "function" then
         local ok, players = pcall(getOnlinePlayers)

@@ -1,4 +1,4 @@
 name=GoblinSurvivor
 id=GoblinSurvivor
-description=Server-side persistent Goblin and friendly NPC roster built on the required Bandits2 Build 42 NPC framework; .76 has no native Steam/PZ client.
-version=0.4.0
+description=Server-authoritative Goblin actor with client-rendered Build 42 human survivor visuals; no external framework or native Steam/PZ client dependency.
+version=0.5.0-dev

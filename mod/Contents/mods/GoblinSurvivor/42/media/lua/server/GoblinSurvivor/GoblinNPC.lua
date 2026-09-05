@@ -3,6 +3,7 @@ local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 local Protection = require("GoblinSurvivor/Protection")
 local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local SquadManager = require("GoblinSurvivor/SquadManager")
+local GSSurvivor = require("GoblinSurvivor/GSSurvivor")
 
 local GoblinNPC = {}
 
@@ -49,7 +50,7 @@ function GoblinNPC.ensure()
     local zombie = NPCRegistry.findGoblin()
     if zombie ~= nil then
         Protection.apply(zombie)
-        NpcAdapter.tick(zombie, Config.npcId)
+        GSSurvivor.Update(zombie)
         NPCRegistry.ensureManaged()
         SquadManager.tick()
         return zombie, "present"
@@ -57,7 +58,7 @@ function GoblinNPC.ensure()
     local spawned, detail = NPCRegistry.spawnGoblin()
     if spawned ~= nil then
         Protection.apply(spawned)
-        NpcAdapter.tick(spawned, Config.npcId)
+        GSSurvivor.Update(spawned)
         NPCRegistry.ensureManaged()
         SquadManager.tick()
     end
@@ -73,12 +74,12 @@ end
 
 function GoblinNPC.onZombieUpdate(zombie)
     -- OnZombieUpdate runs close to the zombie AI update. Reasserting the
-    -- Bandits2 friendly policy here closes the window in which a normal
-    -- zombie could reacquire a player between slower command ticks.
+    -- native friendly policy here closes the window in which a normal
+    -- zombie target could be reacquired between slower command ticks.
     local entry, npcId = NPCRegistry.entryForBody(zombie)
     if zombie ~= nil and entry ~= nil and NpcAdapter.isOwned(zombie, npcId) then
         if npcId == Config.npcId then Protection.apply(zombie) end
-        NpcAdapter.tick(zombie, npcId)
+        GSSurvivor.Update(zombie)
     end
 end
 

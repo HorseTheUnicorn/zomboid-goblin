@@ -10,7 +10,8 @@ from collections.abc import Iterable
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 _FORMATIONS = {"line", "wedge", "column", "ring", "loose"}
 ALLOWED_JOBS = {
-    "wander", "guard", "patrol", "scout", "haul", "build", "farm", "loot", "medic", "quartermaster",
+    "wander", "guard", "patrol", "scout", "haul", "hauler", "build", "builder",
+    "farm", "farmer", "loot", "scavenge", "disassemble", "medic", "quartermaster",
 }
 
 

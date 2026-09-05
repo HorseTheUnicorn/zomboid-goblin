@@ -96,7 +96,7 @@ local function applySquadTasks(squad)
                 targetNpc = squad.leader
                 mode = "FOLLOW_GOBLIN"
             else
-                -- An NPC leader keeps its existing Bandits2 Companion task.
+                -- An NPC leader keeps its existing native task.
                 applied = applied + 1
             end
             if targetNpc ~= nil then
@@ -120,7 +120,7 @@ local function applySquadTasks(squad)
         end
     end
     if applied < 1 then return false, "no squad member accepted a follow task" end
-    return true, "squad follow tasks accepted by Bandits2 bodies"
+    return true, "squad follow tasks accepted by native bodies"
 end
 
 local function returnSquadToBase(squad)
@@ -281,8 +281,8 @@ function SquadManager.dismiss(args)
 end
 
 -- Re-apply persisted squad relationships without waiting for another Qwen
--- decision. Bandits2 owns the body movement; this manager only refreshes the
--- high-level target and returns a squad to base if its human leader leaves.
+-- decision. The native engine owns body movement; this manager only refreshes
+-- the high-level target and returns a squad to base if its human leader leaves.
 function SquadManager.tick()
     SquadManager.load()
     local now = os.time() * 1000

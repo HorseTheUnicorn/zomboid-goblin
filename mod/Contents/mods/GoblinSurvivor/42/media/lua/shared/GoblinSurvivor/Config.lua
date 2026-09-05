@@ -1,19 +1,26 @@
 local Config = {
     protocol = 1,
     enabled = false,
+    developmentMode = false,
+    debugSurvivors = false,
+    allowTestCommands = false,
+    verboseNpcLogging = false,
+    survivorEngineVersion = 1,
     bridgeRootOverride = "",
     npcId = "goblin.primary",
     npcName = "Goblin",
-    -- Companion is the verified friendly Bandits2 program used for Goblin.
-    -- The Bandits2 adapter ignores arbitrary program names and fails closed
-    -- to this known-safe program.
-    npcProgram = "Companion",
+    -- Kept as a protocol-compatible label for the agent command payload. The
+    -- native engine owns behavior and does not load an external program.
+    npcProgram = "GoblinSurvivorNative",
     npcRole = "companion",
-    -- These are additional managed friendly bodies created by our own mod
-    -- through the Bandits2 adapter. Set GoblinManagedNpcCount=0 to run only
-    -- Goblin, or raise it up to the bounded roster limit for followers and
-    -- base workers.
-    managedNpcCount = 3,
+    -- The verified local multiplayer path is a client-rendered IsoSurvivor.
+    -- Set GoblinBodyMode=native_zombie only for the legacy donor experiment.
+    bodyMode = "client_survivor",
+    -- These are additional managed friendly bodies created by our own native
+    -- engine. The default roster is six companions plus Goblin. Set
+    -- GoblinManagedNpcCount=0 to run only Goblin, or lower it for a smaller
+    -- local test roster.
+    managedNpcCount = 6,
     protected = true,
     gameBuildOverride = "",
     fileOptions = {},
@@ -31,8 +38,8 @@ local Config = {
     -- provisioned bridge config.
     commanders = {},
     -- Keep the first server-side body request out of the player's square.
-    -- This is a safety margin around the point passed to Bandits2's individual
-    -- spawner while its new networked body receives its friendly state.
+    -- This is a safety margin around the point passed to the native body
+    -- creator while its new networked body receives its friendly state.
     npcSpawnOffsetTiles = 16
 }
 
@@ -184,6 +191,18 @@ function Config.refresh()
 
     local optionEnabled = readOption("GoblinEnabled", false)
     Config.enabled = parseBoolean(optionEnabled, false)
+    Config.developmentMode = parseBoolean(
+        readOption("GoblinDevelopmentMode", false), false
+    )
+    Config.debugSurvivors = parseBoolean(
+        readOption("GoblinDebugSurvivors", false), false
+    )
+    Config.allowTestCommands = parseBoolean(
+        readOption("GoblinAllowTestCommands", false), false
+    )
+    Config.verboseNpcLogging = parseBoolean(
+        readOption("GoblinVerboseNPCLogging", false), false
+    )
     local root = readOption("GoblinBridgeRoot", "")
     if safeBridgeRoot(root) then
         Config.bridgeRootOverride = root
@@ -204,6 +223,10 @@ function Config.refresh()
     local npcProgram = readOption("GoblinNpcProgram", Config.npcProgram)
     if type(npcProgram) == "string" and #npcProgram >= 1 and #npcProgram <= 32 then
         Config.npcProgram = npcProgram
+    end
+    local bodyMode = readOption("GoblinBodyMode", Config.bodyMode)
+    if bodyMode == "client_survivor" or bodyMode == "native_zombie" then
+        Config.bodyMode = bodyMode
     end
     local build = readOption("GoblinGameBuild", Config.gameBuildOverride)
     if type(build) == "string"

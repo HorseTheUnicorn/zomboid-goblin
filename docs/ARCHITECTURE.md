@@ -2,10 +2,10 @@
 
 The system has three deliberately separate planes:
 
-1. PZ server plane (`.03`): GoblinSurvivor runs only on the dedicated server.
-   `NPCRegistry` owns the stable `goblin.primary` identity, `Protection`
-   maintains the protected profile, `ActionExecutor` resolves semantic actions,
-   and `NpcAdapter` owns the Bandits2-backed server-side body integration.
+1. PZ server plane (`.03`): GoblinSurvivor runs on the dedicated server.
+   `NPCRegistry` owns stable identities, `Protection` maintains the protected
+   Goblin policy, `ActionExecutor` resolves semantic actions, and
+   `NativeNpcAdapter` owns the server-side body and behavior engine.
 2. Agent plane (`.76`): Qwen receives `brain_view`, proposes strict JSON, and
    Python applies reflex, combat, entity, job, and squad gates before writing
    a `command.npc_action` bridge message.
@@ -20,9 +20,8 @@ server.
 
 The model loop is event-driven. A startup transition, meaningful server event,
 coarse state transition, or bounded planning interval can request a new Qwen
-intent. Ordinary heartbeats only refresh telemetry and run the deterministic
-reflex layer; an ongoing Bandits2 task is allowed to continue on the server
-without repeated model calls.
+intent. Ordinary heartbeats refresh telemetry and run deterministic reflexes;
+an ongoing native task continues on the server without repeated model calls.
 
 The data flow is:
 
@@ -30,21 +29,31 @@ The data flow is:
 PZ perception -> coarse state -> Qwen -> validated intent
     -> deterministic controller -> NpcBodyDriver
     -> command.npc_action -> Lua ActionExecutor
-    -> NpcAdapter -> friendly persistent GoblinSurvivor body
+    -> NpcAdapter -> friendly persistent native PZ body
 
 PZ exact telemetry ---------------------------------> TrackerStore -> map
 ```
 
-There is no native Steam/PZ gameplay client in this project. Human players
-connect normally to the dedicated server and are not required to install a
-Goblin control client.
+There is no native Steam/PZ gameplay client in `.76`. Human players connect
+normally to the dedicated server. The Windows PZ installation is a local
+development/test harness and is not part of Goblin's production runtime.
 
-The body adapter uses the exact Bandits2 B42.20 API observed on `.03`:
-`BanditServer.Spawner.Individual` for one body, `BanditCustom` for the
-stable profile, `BanditBrain` for the friendly policy, and Bandits2 movement
-tasks. `BanditsAdapter.lua` is the only module that knows those names. If
-the Bandits2 API or friendly contract cannot be proven, the mod stays in
-`sensor_only` and does not expose a normal hostile zombie as Goblin.
-Higher-level combat, inventory, vehicle, and building behaviors remain owned
-by this repository and are enabled only after their engine contracts are
-validated.
+The body engine is self-contained. It uses the native Build 42
+`createZombie(float, float, float, SurvivorDesc, int, IsoDirections)` path with
+a friendly survivor descriptor when that surface is available, and the
+native `addZombiesInOutfit` API as a bounded compatibility fallback. The body
+is marked immediately with GoblinSurvivor `getModData()` fields, and all later
+binding requires that marker or a short-lived spawn reservation. A normal
+population zombie is never claimed as Goblin.
+
+`NativeNpcAdapter.lua` owns the engine boundary: native pathing, follow tasks,
+validated hostile-zombie targeting, chat-line speech, friendly target
+clearing, primary-body protection, and native-body persistence. The registry
+rebinds marked bodies after a restart and creates a replacement only after a
+bounded cooldown. If the native spawn or ownership proof is unavailable, the
+mod stays in `sensor_only` and does not expose a normal zombie as Goblin.
+
+Higher-level inventory, vehicle, and building actions remain disabled until
+their exact Build 42 contracts are implemented and tested. The adapter does
+not pretend that a native body has a weapon, food, water, or medical supplies
+when those facts have not been verified.

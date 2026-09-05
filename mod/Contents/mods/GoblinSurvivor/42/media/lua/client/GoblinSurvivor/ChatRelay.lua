@@ -20,6 +20,13 @@ local function onAddMessage(message, tabId)
         or string.lower(speaker) ~= string.lower(localName) then return end
     if #text < 1 or #text > 240 then return end
     local lower = string.lower(text)
+    if string.sub(lower, 1, 4) == "/gss"
+        or string.sub(lower, 1, 4) == "!gss" then
+        if type(sendClientCommand) == "function" then
+            pcall(sendClientCommand, "GoblinSurvivor", "gss", { text = text })
+        end
+        return
+    end
     if string.find(lower, "goblin", 1, true) == nil
         and string.sub(lower, 1, 7) ~= "!goblin" then return end
     if type(sendClientCommand) ~= "function" then return end

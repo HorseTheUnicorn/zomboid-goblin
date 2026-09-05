@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from contextlib import closing
 import copy
+from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import sqlite3
 import threading
@@ -22,6 +24,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 import re
 
+from .config import parse_bool
 from .state import brain_view
 
 
@@ -30,6 +33,50 @@ def _json(value: Any, maximum: int = 64 * 1024) -> str:
     if len(encoded.encode("utf-8")) > maximum:
         raise ValueError("tracker payload is too large")
     return encoded
+
+
+@dataclass(frozen=True)
+class TrackerPrivacy:
+    """Public tracker policy; exact storage and cognition remain separate."""
+
+    enabled: bool = True
+    show_players: bool = True
+    show_player_names: bool = True
+    show_exact_positions: bool = True
+    show_npcs: bool = True
+    history_enabled: bool = True
+    mode: str = "exact"
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"exact", "approximate", "hidden"}:
+            raise ValueError("tracker privacy mode must be exact, approximate, or hidden")
+        if self.mode == "exact" and not self.show_exact_positions:
+            raise ValueError("exact tracker mode requires exact positions")
+        if self.mode != "exact" and self.show_exact_positions:
+            raise ValueError("non-exact tracker mode cannot expose exact positions")
+
+    @classmethod
+    def from_env(cls) -> "TrackerPrivacy":
+        mode = os.environ.get("GOBLIN_TRACKER_PRIVACY_MODE", "exact").strip().casefold()
+        if mode not in {"exact", "approximate", "hidden"}:
+            raise ValueError("GOBLIN_TRACKER_PRIVACY_MODE must be exact, approximate, or hidden")
+        return cls(
+            enabled=parse_bool(os.environ.get("GOBLIN_TRACKER_ENABLED"), default=True),
+            show_players=parse_bool(
+                os.environ.get("GOBLIN_TRACKER_SHOW_PLAYERS"), default=True
+            ),
+            show_player_names=parse_bool(
+                os.environ.get("GOBLIN_TRACKER_SHOW_PLAYER_NAMES"), default=True
+            ),
+            show_exact_positions=mode == "exact",
+            show_npcs=parse_bool(
+                os.environ.get("GOBLIN_TRACKER_SHOW_NPCS"), default=True
+            ),
+            history_enabled=parse_bool(
+                os.environ.get("GOBLIN_TRACKER_HISTORY_ENABLED"), default=True
+            ),
+            mode=mode,
+        )
 
 
 class TrackerStore:
@@ -139,7 +186,10 @@ class TrackerStore:
         return self.public_state_from(self.state())
 
     @staticmethod
-    def public_state_from(source: Mapping[str, Any]) -> dict[str, Any]:
+    def public_state_from(
+        source: Mapping[str, Any], privacy: TrackerPrivacy | None = None
+    ) -> dict[str, Any]:
+        privacy = privacy or TrackerPrivacy()
         allowed = {
             "npc_id", "npc_alive", "npc_active", "body_mode", "server_status",
             "player_count", "updated_at", "entities", "npcs", "squads", "base",
@@ -152,21 +202,36 @@ class TrackerStore:
             entities = result.get(entity_key)
             if not isinstance(entities, list):
                 continue
-            result[entity_key] = [
-                {
+            clean_entities = []
+            for entity in entities:
+                if not isinstance(entity, Mapping):
+                    continue
+                kind = str(entity.get("kind", "")).casefold()
+                is_player = kind == "player" or entity.get("online") is True
+                if is_player and not privacy.show_players:
+                    continue
+                if not is_player and not privacy.show_npcs:
+                    continue
+                keys = (
+                    "npc_id", "entity_id", "id", "kind", "name", "role",
+                    "base_job", "expedition_role", "squad_id", "home_base",
+                    "mode", "task", "target_player", "target_npc_id",
+                    "friendly", "protected", "body_present", "x", "y", "z",
+                    "online", "alive", "active",
+                )
+                clean = {
                     key: copy.deepcopy(entity[key])
-                    for key in (
-                        "npc_id", "entity_id", "id", "kind", "name", "role",
-                        "base_job", "expedition_role", "squad_id", "home_base",
-                        "mode", "task", "target_player", "target_npc_id",
-                        "friendly", "protected", "body_present", "x", "y", "z",
-                        "online", "alive", "active",
-                    )
+                    for key in keys
                     if key in entity
                 }
-                for entity in entities
-                if isinstance(entity, Mapping)
-            ]
+                if is_player and not privacy.show_player_names:
+                    for key in ("name", "entity_id", "id"):
+                        clean.pop(key, None)
+                if not privacy.show_exact_positions:
+                    for key in ("x", "y", "z"):
+                        clean.pop(key, None)
+                clean_entities.append(clean)
+            result[entity_key] = clean_entities
         return result
 
     def events(self, *, limit: int = 100) -> list[dict[str, Any]]:
@@ -233,6 +298,7 @@ class TrackerApp:
         stream_seconds: float = 300.0,
         static_dir: str | Path | None = None,
         map_root: str | Path | None = None,
+        privacy: TrackerPrivacy | None = None,
     ) -> None:
         if max_streams < 1:
             raise ValueError("max_streams must be positive")
@@ -240,6 +306,7 @@ class TrackerApp:
             raise ValueError("stream_seconds must be between 30 and 3600")
         self.store = store
         self.stream_seconds = stream_seconds
+        self.privacy = privacy or TrackerPrivacy()
         self.stream_slots = threading.BoundedSemaphore(max_streams)
         self.static_dir = Path(static_dir) if static_dir is not None else Path(__file__).resolve().parent.parent / "web"
         self.static_dir = self.static_dir.resolve()
@@ -312,13 +379,37 @@ class TrackerApp:
         if method != "GET":
             return 405, {"Allow": "GET"}, {"ok": False, "error": "read-only tracker"}
         if route in {"/api/health", "/healthz"}:
-            return 200, {}, {"ok": True, "service": "goblin-tracker"}
+            return 200, {}, {
+                "ok": self.privacy.enabled,
+                "service": "goblin-tracker",
+                "privacy_mode": self.privacy.mode,
+            }
+        if not self.privacy.enabled:
+            return 404, {}, {"ok": False, "error": "tracker disabled"}
         if route == "/api/state":
-            return 200, {"Cache-Control": "no-store"}, self.store.public_state()
+            return 200, {"Cache-Control": "no-store"}, self.store.public_state_from(
+                self.store.state(), self.privacy
+            )
         if route == "/api/events":
             return 200, {"Cache-Control": "no-store"}, {"events": self.store.events()}
         if route == "/api/history/goblin":
-            return 200, {"Cache-Control": "no-store"}, {"subject": "goblin.primary", "history": self.store.history()}
+            if not self.privacy.history_enabled:
+                return 200, {"Cache-Control": "no-store"}, {
+                    "subject": "goblin.primary", "history": [], "enabled": False
+                }
+            history = self.store.history()
+            return 200, {"Cache-Control": "no-store"}, {
+                "subject": "goblin.primary",
+                "history": [
+                    {
+                        **row,
+                        "state": TrackerStore.public_state_from(
+                            row["state"], self.privacy
+                        ),
+                    }
+                    for row in history
+                ],
+            }
         if route == "/api/map/manifest":
             if self.map_root is None or self.map_manifest is None:
                 return 404, {}, {"ok": False, "error": "map layer unavailable"}
@@ -384,7 +475,7 @@ class TrackerApp:
                         "snapshot",
                         {
                             "sequence": sequence,
-                            "state": app.store.public_state_from(state),
+                            "state": app.store.public_state_from(state, app.privacy),
                             "events": events,
                         },
                     )
@@ -403,7 +494,7 @@ class TrackerApp:
                             "update",
                             {
                                 "sequence": sequence,
-                                "state": app.store.public_state_from(next_state),
+                                "state": app.store.public_state_from(next_state, app.privacy),
                                 "events": next_events,
                             },
                         )

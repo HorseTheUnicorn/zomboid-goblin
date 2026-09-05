@@ -11,7 +11,7 @@ from .admin import AdminApp
 from .config import AgentConfig
 from .qwen import QwenClient
 from .service import GoblinService
-from .tracker import TrackerApp
+from .tracker import TrackerApp, TrackerPrivacy
 
 
 def main() -> int:
@@ -39,10 +39,12 @@ def main() -> int:
     server = app.server(admin_host, admin_port)
     tracker_host = os.environ.get("GOBLIN_TRACKER_BIND", "127.0.0.1")
     tracker_port = int(os.environ.get("GOBLIN_TRACKER_PORT", "8782"))
+    tracker_privacy = TrackerPrivacy.from_env()
     tracker_server = TrackerApp(
         service.tracker,
         static_dir=os.environ.get("GOBLIN_TRACKER_WEB_ROOT"),
         map_root=os.environ.get("GOBLIN_TRACKER_MAP_ROOT"),
+        privacy=tracker_privacy,
     ).server(tracker_host, tracker_port)
     stop_event = threading.Event()
 

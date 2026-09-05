@@ -31,16 +31,12 @@ local function fileExists(path)
     local serverFileExistsFn = rawget(_G, "serverFileExists")
     if type(serverFileExistsFn) == "function" then
         local ok, exists = pcall(serverFileExistsFn, path)
-        if ok then
-            return exists == true
-        end
+        if ok and exists == true then return true end
     end
     local fileExistsFn = rawget(_G, "fileExists")
     if type(fileExistsFn) == "function" then
         local ok, exists = pcall(fileExistsFn, path)
-        if ok then
-            return exists == true
-        end
+        if ok and exists == true then return true end
     end
     local readerFn = rawget(_G, "getFileReader")
     if type(readerFn) == "function" then
@@ -279,6 +275,8 @@ function IPC.readReady(channel, stem)
         return nil
     end
     local jsonPath = IPC.root .. "/" .. channel .. "/" .. messageStem .. ".json"
+    local readyPath = IPC.root .. "/" .. channel .. "/" .. messageStem .. ".ready"
+    if not pathExists(readyPath) then return nil end
     local encoded = readFile(jsonPath)
     if not encoded or #encoded > Config.maxMessageBytes then
         return nil
@@ -313,9 +311,10 @@ function IPC.listReady(channel)
             local donePath = IPC.root .. "/" .. channel .. "/" .. stem .. ".done"
             local processedPath = IPC.root .. "/" .. channel .. "/" .. stem .. ".processed.json"
             local encoded = readFile(jsonPath)
+            local ready = pathExists(readyPath)
             local done = readFile(donePath)
             local processed = readFile(processedPath)
-            if encoded ~= nil and #encoded > 0
+            if ready and encoded ~= nil and #encoded > 0
                 and (done == nil or #done == 0)
                 and (processed == nil or #processed == 0) then
                 table.insert(result, stem)
