@@ -87,7 +87,7 @@ Workshop staging package is
 - `.76` has no native PZ client, Steam GUI session, or gameplay SteamCMD tree.
 - The Windows local profile loads only `GoblinSurvivor` and uses a separate
   port/save from `.03`.
-- PZ writes `runtime.state` with `body_mode=npc`,
+- PZ writes `runtime.state` with `body_mode=client_survivor`,
   `npc_id=goblin.primary`, `control_ready=true`, and
   `npc_engine_ready=true` after a player is online.
 - PZ reports the managed friendly roster in `runtime.state.npcs`; exact body
@@ -99,6 +99,6 @@ Workshop staging package is
 - `/api/state` and `/api/history/goblin` work; POST control/move/spawn routes
   do not exist; `/` and `/api/map/manifest` serve the read-only tracker UI
   and map metadata.
-- If the native spawn or ownership proof is unavailable, Goblin remains in
-  `sensor_only`; the mod never substitutes a normal hostile zombie or falls
-  back to a native client.
+- If the Java human body, snapshot, or ownership proof is unavailable, Goblin
+  remains pending/sensor-only; the mod never substitutes a normal hostile
+  zombie or falls back to a native client.

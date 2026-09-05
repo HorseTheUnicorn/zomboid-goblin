@@ -367,6 +367,8 @@ public final class HumanSurvivor extends IsoLivingCharacter implements IHumanVis
 
     public String visualDiagnostics() {
         return "ticks=" + visualTicks + " renderCalls=" + renderCalls
+                + " inObjectList=" + (getCell() != null && getCell().getObjectList().contains(this))
+                + " pendingRemoval=" + (getCell() != null && getCell().getRemoveList().contains(this))
                 + " animPlayer=" + hasAnimationPlayer()
                 + " animState=" + getAnimationStateName()
                 + " walking=" + walking + " worn=" + getWornItems().size()

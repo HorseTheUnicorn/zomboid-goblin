@@ -38,6 +38,10 @@ public final class GoblinSurvivorStormMod implements ZomboidMod {
                             ServerSurvivorAuthority.class,
                             ServerSurvivorAuthority.class.getMethod("debugMarkDead",
                                     String.class, String.class), "markGoblinHumanDead");
+                    LuaManager.exposer.exposeGlobalClassFunction(LuaManager.env,
+                            ServerSurvivorAuthority.class,
+                            ServerSurvivorAuthority.class.getMethod("debugSpawnHostileZombie",
+                                    String.class), "spawnGoblinCombatFixture");
                 }
             } catch (NoSuchMethodException error) {
                 throw new IllegalStateException("Human survivor constructor contract changed", error);

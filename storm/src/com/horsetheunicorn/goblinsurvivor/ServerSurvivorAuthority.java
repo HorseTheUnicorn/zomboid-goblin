@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import se.krka.kahlua.vm.KahluaTable;
+import zombie.VirtualZombieManager;
 import zombie.characters.IsoZombie;
 import zombie.characters.SurvivorFactory;
 import zombie.inventory.InventoryItem;
@@ -11,6 +12,7 @@ import zombie.inventory.ItemContainer;
 import zombie.inventory.RecipeManager;
 import zombie.inventory.types.HandWeapon;
 import zombie.iso.IsoCell;
+import zombie.iso.IsoDirections;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoObject;
 import zombie.iso.IsoMovingObject;
@@ -46,6 +48,8 @@ public final class ServerSurvivorAuthority {
     private static final int BUILDER_SCAN_RADIUS = 4;
     private static final int BUILDER_MAX_STRUCTURES = 16;
     private static final String BUILDER_WALL_SPRITE = "carpentry_02_80";
+    private static final String DEBUG_COMBAT_MARKER = "goblin_debug_combat_fixture";
+    private static final String DEBUG_COMBAT_ACTOR = "goblin_debug_combat_actor";
 
     private static final Map<String, Entry> actors = new HashMap<>();
 
@@ -58,6 +62,7 @@ public final class ServerSurvivorAuthority {
         long nextSpawnAt;
         long respawnAt;
         List<GridRoute.Cell> route = List.of();
+        long nextRouteDiagnosticAt;
         int waypoint;
         int generation = 1;
         int spawnAttempts;
@@ -583,7 +588,7 @@ public final class ServerSurvivorAuthority {
                 }
                 if (now >= entry.nextRouteAt) {
                     final int floor = (int)Math.floor(body.getZ());
-                    entry.route = GridRoute.find(
+                    GridRoute.Result routeResult = GridRoute.search(
                             new GridRoute.Cell((int)Math.floor(body.getX()),
                                     (int)Math.floor(body.getY())),
                             new GridRoute.Cell(targetX, targetY),
@@ -594,6 +599,17 @@ public final class ServerSurvivorAuthority {
                                         && !from.testCollideAdjacent(body,
                                                 b.x() - a.x(), b.y() - a.y(), 0);
                             });
+                    entry.route = routeResult.path();
+                    if (entry.route.isEmpty() && now >= entry.nextRouteDiagnosticAt) {
+                        System.out.println("[GoblinSurvivorStorm] route actor="
+                                + body.getModData().rawget("goblin_actor_id")
+                                + " result=" + routeResult.status()
+                                + " expanded=" + routeResult.expanded()
+                                + " from=" + body.getX() + "," + body.getY()
+                                + " target=" + tx + "," + ty + "," + tz
+                                + " stop=" + stop);
+                        entry.nextRouteDiagnosticAt = now + 10_000_000_000L;
+                    }
                     entry.waypoint = 0;
                     entry.nextRouteAt = now + 500_000_000L;
                 }
@@ -603,10 +619,11 @@ public final class ServerSurvivorAuthority {
                             waypoint.y() + 0.5 - body.getY()) > 0.08) break;
                     entry.waypoint++;
                 }
-                if (entry.waypoint < entry.route.size()) {
-                    GridRoute.Cell waypoint = entry.route.get(entry.waypoint);
-                    dx = waypoint.x() + 0.5 - body.getX();
-                    dy = waypoint.y() + 0.5 - body.getY();
+                GridRoute.Point nextPoint = GridRoute.nextPoint(entry.route, entry.waypoint,
+                        body.getX(), body.getY(), body.getZ(), tx, ty, tz);
+                if (nextPoint != null) {
+                    dx = nextPoint.x() - body.getX();
+                    dy = nextPoint.y() - body.getY();
                     distance = Math.hypot(dx, dy);
                 } else {
                     blocked = true;
@@ -634,7 +651,7 @@ public final class ServerSurvivorAuthority {
                     body.setY(ny);
                     body.setCurrentSquare(to);
                     body.setMovingSquare(to);
-                } else if (!navigation.equals("no_route")) {
+                } else if (!navigation.equals("no_route") && !navigation.equals("separation")) {
                     navigation = "blocked_edge";
                     entry.nextRouteAt = Math.min(entry.nextRouteAt,
                             now + 100_000_000L);
@@ -755,6 +772,92 @@ public final class ServerSurvivorAuthority {
         }
         entry.nextShotAt = now + SHOT_INTERVAL_NANOS;
         body.ensureFirearm();
+    }
+
+    private static boolean hasMovingObject(IsoGridSquare square) {
+        if (square == null || square.getMovingObjects() == null) return true;
+        return !square.getMovingObjects().isEmpty();
+    }
+
+    private static IsoGridSquare debugCombatSquare(IsoCell cell, HumanSurvivor body) {
+        if (cell == null || body == null) return null;
+        int originX = (int)Math.floor(body.getX());
+        int originY = (int)Math.floor(body.getY());
+        int floor = (int)Math.floor(body.getZ());
+        // Use a deterministic ring inside the normal HUNT radius.  The
+        // fixture is an ordinary zombie, never a surrogate survivor body.
+        for (int radius = 6; radius <= 12; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) != radius) continue;
+                    IsoGridSquare square = cell.getGridSquare(originX + dx,
+                            originY + dy, floor);
+                    if (square == null || !square.isFree(false)
+                            || hasMovingObject(square)
+                            || violatesBodySeparation(null, square.getX() + 0.5f,
+                                    square.getY() + 0.5f, square.getZ())) continue;
+                    return square;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static IsoZombie existingDebugCombatFixture(IsoCell cell, String actorId) {
+        if (cell == null || actorId == null) return null;
+        for (IsoZombie zombie : cell.getZombieList()) {
+            KahluaTable data = zombie.getModData();
+            if (data == null || !Boolean.TRUE.equals(data.rawget(DEBUG_COMBAT_MARKER))) continue;
+            if (!actorId.equals(data.rawget(DEBUG_COMBAT_ACTOR))) continue;
+            if (liveHostile(zombie)) return zombie;
+            try { zombie.removeFromWorld(); } catch (Throwable ignored) { }
+        }
+        return null;
+    }
+
+    /**
+     * Spawn one ordinary, networked zombie near a human actor for a local
+     * combat test.  Lua additionally requires the disposable development
+     * flags and an exact test token before this method can be reached.
+     */
+    public static boolean debugSpawnHostileZombie(String actorId) {
+        if (!GameServer.server || actorId == null || actorId.isBlank()
+                || actorId.length() > 96) return false;
+        Entry entry = actors.get(actorId);
+        if (entry == null || entry.body == null || !entry.body.isAlive()) return false;
+        IsoCell cell = entry.body.getCell();
+        IsoZombie existing = existingDebugCombatFixture(cell, actorId);
+        if (existing != null) {
+            existing.setTarget(entry.body);
+            return true;
+        }
+        IsoGridSquare square = debugCombatSquare(cell, entry.body);
+        VirtualZombieManager manager = VirtualZombieManager.instance;
+        if (square == null || manager == null || manager.choices == null) return false;
+        IsoZombie zombie = null;
+        try {
+            manager.choices.clear();
+            manager.choices.add(square);
+            zombie = manager.createRealZombieAlways(IsoDirections.S, false);
+        } catch (Throwable error) {
+            entry.lastFireError = error.getClass().getSimpleName() + ": " + error.getMessage();
+        } finally {
+            try { manager.choices.clear(); } catch (Throwable ignored) { }
+        }
+        if (zombie == null) return false;
+        KahluaTable data = zombie.getModData();
+        if (data != null) {
+            data.rawset(DEBUG_COMBAT_MARKER, true);
+            data.rawset(DEBUG_COMBAT_ACTOR, actorId);
+        }
+        // Give the vanilla zombie a real hostile target while the custom
+        // survivor authority remains responsible for survivor health/combat.
+        zombie.setTarget(entry.body);
+        entry.combatStatus = "debug_fixture_spawned";
+        System.out.println("[GoblinSurvivorStorm] local combat fixture spawned: "
+                + actorId + " zombie=" + zombie.getID()
+                + " at=" + square.getX() + "," + square.getY() + "," + square.getZ());
+        return true;
     }
 
     /**

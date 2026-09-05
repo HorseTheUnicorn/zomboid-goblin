@@ -1,9 +1,8 @@
 # Local Windows PZ testing
 
-The repository checkout and the installed Windows Build 42 game are now the
-development loop. This avoids restarting `.03` for every Lua change. The
-local server has its own profile, save, bridge, and ports; it never connects
-to or edits the production server.
+Use the Windows Build 42 installation and the disposable `goblin-local`
+profile for development. This loop is separate from production `.03` and
+does not require a native PZ client on `.76`.
 
 ## Paths
 
@@ -18,39 +17,16 @@ profile:       goblin-local
 ports:         16271 (game/query), 16272 (UDP)
 ```
 
-The disposable profile disables UPnP because this loop is localhost-only;
-that avoids waiting on router discovery during each restart.
+The installed game is Build 42.20.4. The disposable profile uses
+`Mods=GoblinSurvivor`, an empty `WorkshopItems=`, `PauseEmpty=false`, and a
+separate multiplayer save. The empty Workshop list is intentional: local
+iteration uses the synchronized direct package and does not wait for a
+Workshop download.
 
-The synchronizer sets `PauseEmpty=false` for this local profile. That is
-intentional: the Java survivor authority, independent jobs, ordinary zombie
-population, and telemetry must continue advancing while no test client is
-connected. This setting is limited to `goblin-local` by the development
-workflow and is not a production deployment change.
+## Synchronize and launch
 
-The current local installation is Build 42.20.4, matching the server-side
-mod target. The direct package is used for local iteration; the Workshop copy
-is refreshed as a publication-ready staging folder and is not required for
-the local dedicated server.
-
-When a player is online, local-only development commands are enabled by the
-sync helper. Use the in-game chat relay with commands such as:
-
-```text
-/gss spawn test
-/gss list
-/gss inspect dev.test.001
-/gss follow dev.test.001 <your-player-name>
-/gss hold dev.test.001
-/gss attacktest dev.test.001
-```
-
-These commands are disabled unless both `GoblinDevelopmentMode=true` and
-`GoblinAllowTestCommands=true` are present in the disposable local profile.
-They are not a production administration interface.
-
-## Sync and start
-
-Run PowerShell from the project directory:
+Run PowerShell from the repository checkout. Stop the local server and client
+before synchronizing; PZ can keep loaded Lua and jar files in memory.
 
 ```powershell
 Set-Location 'C:\Users\tomgr\Documents\Codex\2026-09-01\new-chat\work\remote-stage1-tree\zomboid-goblin'
@@ -58,104 +34,128 @@ powershell -ExecutionPolicy Bypass -File .\tools\Sync-LocalPz.ps1
 powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzServer.ps1 -Storm
 ```
 
-The sync defaults to `GoblinManagedNpcCount=6`, creating Goblin plus six
-additional human companion bodies. Use `-ManagedNpcCount 0` for a Goblin-only
-smoke test, or a smaller positive value to exercise a partial roster.
-
-The sync helper refuses to run while the local PZ client or dedicated server
-is running. This prevents a loaded Lua module from being replaced underneath
-the game. It mirrors only the two exact `GoblinSurvivor` package targets and
-stale files left inside those package targets; it does not delete
-the PZ data directory or any save.
-
-Stop the local server before another sync:
+For the normal visible client:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\Stop-LocalPzServer.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 `
+    -Storm -Visible -ConnectAddress '127.0.0.1:16271'
 ```
 
-The local dedicated server and client are launched with `-nosteam` so the
-direct-connect test uses the same non-Steam transport on both sides. Start the
-client with the repository helper rather than a Steam-mode shortcut:
+The helper uses `-nosteam` and PZ's `+connect` launch property. The Storm
+client's diagnostic stdout/stderr is under `C:\Users\tomgr\Zomboid\Logs`;
+the dated `*DebugLog.txt` is the authoritative PZ log.
+
+The default roster is Goblin plus six companions. To reduce visual and
+authority work during a focused Goblin-only smoke test, synchronize with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\Sync-LocalPz.ps1 -ManagedNpcCount 0
 ```
 
-To open the normal direct-connect flow automatically for the disposable
-server, pass its address at launch:
-
-    powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 -ConnectAddress '127.0.0.1:16271'
-
-For a human visual check with the Storm client, add `-Storm -Visible` (the
-default Storm launch remains hidden/headless for log-driven smoke tests):
-
-    powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 -Storm -Visible -ConnectAddress '127.0.0.1:16271'
-
-If a Steam-mode client is already open, close it first or run:
+Do not run synchronization while the server/client are live. Stop them with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\Stop-LocalPzClient.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\Stop-LocalPzServer.ps1
 ```
 
-## In-world test
+## Why cold starts are slow
 
-After the local server is ready, start the Windows PZ client and join
-`127.0.0.1` on port `16271`. The client should have the synchronized direct
-GoblinSurvivor package. Because `WorkshopItems=` is empty in this disposable
-profile, there is no external Workshop dependency or download-order test in
-this loop.
+The latest measured run took 162 seconds to finish client world loading. The
+client log shows `WorldStreamer.isBusy()` waiting inside vanilla
+`IsoWorld.init`; the watchdog captured the game-loading thread in
+`TIMED_WAITING` while filesystem queues were empty. The actors were created
+after that load completed. This is primarily a cold Build 42 map/world-stream
+cost, not a Workshop download or a seven-actor loop.
 
-With one player online, the server initializes a logical actor near the player
-and sends the first `IsoSurvivor` snapshot. Check the server log:
+Keep the same server/client session alive while iterating whenever possible.
+Use the single-actor roster for changes that do not need companion coverage.
+Do not interpret the watchdog's stall message as a deadlock by itself: the
+same run resumed and reported `game loading took 162 seconds`.
 
-```powershell
-Get-ChildItem "$env:USERPROFILE\Zomboid\Logs" -Filter '*DebugLog-server.txt' |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1 |
-    Get-Content |
-    Select-String 'GoblinSurvivor|NativeNpcAdapter|adapter='
-```
+## In-world commands
 
-The expected server evidence is `body_mode=client_survivor`,
-`ClientSurvivorServer: client-survivor authority ready`, and no
-`GoblinSurvivorStorm` spawn line. The bridge should then contain runtime files
-such
-as:
+After joining, use PZ chat. The local profile enables these commands for the
+development loop:
 
 ```text
-C:\Users\tomgr\Zomboid\Lua\goblin-bridge\runtime\zomboid-heartbeat.json
-C:\Users\tomgr\Zomboid\Lua\goblin-bridge\runtime\zomboid-state.json
-C:\Users\tomgr\Zomboid\Lua\goblin-bridge\runtime\zomboid-exact-state.json
+/gss help
+/gss status
+/gss follow all
+/gss hold all
+/gss attack goblin
+/gss home all
+/gss squad all
+/gss dismiss
+/gss loot all
+/gss scavenge all
+/gss disassemble all
+/gss build Mike
+/gss guard Bob
 ```
 
-For a first pass, verify in this order:
+Selectors accept `all`, an NPC id such as `npc.mike`, or a display name such
+as `Mike` (case-insensitive). A job command changes server task metadata; a
+job is not validated until the corresponding body movement/work counter or
+world effect is observed. A bridge request with a fabricated authority token
+must remain rejected.
 
-1. The server loads without Lua errors and reports client-survivor authority.
-2. The client log reports `created real client-side IsoSurvivor actor`.
-3. The actor is human-rendered and no Goblin `IsoZombie` appears beside the
-   player.
-4. Follow snapshots move the client actor without a zombie packet or zombie
-   target.
-5. A movement or speech command remains rejected until the client-actor
-   action adapter is implemented; it must not silently fall back to a zombie.
-6. Restart only the local profile and confirm a fresh client actor is created
-   from a new snapshot.
+## Evidence to collect
 
-If local PZ logs expose a different native method shape than the documented
-Build 42 surface, record the exact method error and update the adapter plus
-the local contract test. Do not move the change to `.03` to diagnose it.
+Bridge state:
 
-## Manual bridge command
+```powershell
+Get-Content -Raw 'C:\Users\tomgr\Zomboid\Lua\goblin-bridge\runtime\zomboid-state.json'
+Get-Content -Raw 'C:\Users\tomgr\Zomboid\Lua\goblin-bridge\runtime\zomboid-exact-state.json'
+```
 
-The Python tests cover command publication. For an in-world command, use the
-existing agent/relay path or a test fixture that writes a valid
-`command.npc_action` message into the local bridge. Do not place credentials
-or authority tokens in a shell command. The server still validates every
-action and rejects movement messages that contain world coordinates.
+Server authority and body creation:
 
-## Return to production
+```powershell
+$log = Get-ChildItem 'C:\Users\tomgr\Zomboid\Logs' -Filter '*DebugLog-server.txt' |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+rg -n 'client-survivor authority ready|authoritative human body created|human survivor died|route actor=|local combat fixture' $log.FullName
+```
 
-Local success is necessary but not sufficient for a production rollout. Keep
-`.03` running as-is until the native package, Workshop decision, bounded
-backup, no-player window, and guarded restart have each been reviewed.
+Client construction/rendering:
+
+```powershell
+$log = Get-ChildItem 'C:\Users\tomgr\Zomboid\Logs' -Filter '*DebugLog.txt' |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+rg -n 'created Java human survivor actor|render state:|hair=Spike|firearm=Base.AssaultRifle2' $log.FullName
+```
+
+The expected visual evidence is a `HumanSurvivor` class, `isZombie=false`,
+and render diagnostics showing an active model/object-list membership. Do not
+use `body_present=true` in server telemetry as proof that the client rendered
+the actor.
+
+## Two-client test
+
+Stage a separate cache only after the first client is stopped if the goal is
+to re-run a clean single-client load; use `-AllowMultiple` only for the
+parallel test:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Stage-LocalPzClientCache.ps1 `
+    -TargetPzDataRoot 'C:\Users\tomgr\Zomboid\goblin-local-client-2'
+powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 `
+    -Storm -Visible -AllowMultiple `
+    -PzDataRoot 'C:\Users\tomgr\Zomboid\goblin-local-client-2' `
+    -CacheDir 'C:\Users\tomgr\Zomboid\goblin-local-client-2' `
+    -LogPrefix 'goblin-local-client-2' `
+    -ConnectAddress '127.0.0.1:16271'
+```
+
+The isolated cache prevents file/log collisions but does not create a new
+multiplayer username. Enter a distinct username in the second client's
+native login flow. A duplicate-username rejection is a failed probe, not a
+multiplayer synchronization result.
+
+## Release boundary
+
+Local success is necessary but not sufficient for Workshop publication or a
+production rollout. Keep `.03` unchanged until rebind, two-client,
+behavior-level jobs, combat, chat/Qwen, and package checks pass. Never put
+credentials or authority tokens in shell arguments, logs, chat, or tracker
+state.

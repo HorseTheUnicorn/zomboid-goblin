@@ -8,6 +8,7 @@ local Protocol = require("GoblinSurvivor/ClientSurvivorProtocol")
 
 local Client = {
     actors = {},
+    nextCreateAt = {},
     lastSequence = {},
     generations = {},
     lastSpeechSequence = {},
@@ -482,12 +483,15 @@ local function applyState(state)
     local id = state.actor_id
     local previousSequence = Client.lastSequence[id] or 0
     if state.sequence <= previousSequence then return true end
-    Client.lastSequence[id] = state.sequence
+    local pending = Client.states[id]
+    if pending ~= nil and state.sequence < pending.sequence then return true end
     Client.states[id] = state
     Client.lastState = state
 
     local actor = Client.actors[id]
     if state.alive == false or state.body_present == false then
+        Client.lastSequence[id] = state.sequence
+        Client.nextCreateAt[id] = nil
         if actor ~= nil then
             removeActor(id)
             log("removed absent client-side actor '" .. tostring(id) .. "'"
@@ -507,12 +511,16 @@ local function applyState(state)
             .. "' for body generation " .. tostring(generation))
     end
     if actor == nil then
+        local now = Protocol.nowMs()
+        if now < (Client.nextCreateAt[id] or 0) then return false end
+        Client.nextCreateAt[id] = now + 1000
         local created, detail = createActor(state)
         if created == nil then
             log("could not create " .. Protocol.entityClass .. ": " .. tostring(detail))
             return false
         end
         Client.actors[id] = created
+        Client.nextCreateAt[id] = nil
         actor = created
         local okZombie, isZombie = call(actor, "isZombie")
         log("created Java human survivor actor '" .. tostring(id)
@@ -520,6 +528,7 @@ local function applyState(state)
             .. " isZombie=" .. (okZombie and tostring(isZombie) or "unavailable"))
     end
 
+    Client.lastSequence[id] = state.sequence
     Client.generations[id] = generation
     equipRequestedFirearm(actor, state)
     if state.god_mode ~= false then call(actor, "ensureGodMode") end
@@ -612,6 +621,7 @@ if Events and Events.OnGameStart
     Events.OnGameStart.Add(function()
         for id, _ in pairs(Client.actors) do removeActor(id) end
         Client.actors = {}
+        Client.nextCreateAt = {}
         Client.lastSequence = {}
         Client.generations = {}
         Client.lastSpeechSequence = {}
@@ -636,7 +646,9 @@ if Events and Events.OnTick and type(Events.OnTick.Add) == "function" then
                 Client.nextRequestAt = now + 1000
             end
         end
-        if Client.lastState ~= nil then applyState(Client.lastState) end
+        -- Retry every pending roster member after transient creation failures.
+        -- Successfully applied sequences are ignored by applyState.
+        for _, state in pairs(Client.states) do applyState(state) end
         for id, actor in pairs(Client.actors) do
             local ok, detail = call(actor, "tickVisual")
             if not ok and not Client.visualFailureLogged then

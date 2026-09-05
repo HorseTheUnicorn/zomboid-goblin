@@ -10,7 +10,7 @@ local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 local CommandLoop = { seen = {}, seenOrder = {}, maxSeen = 2048 }
 
 local actions = {
-    NOOP = true, DEBUG_KILL = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
+    NOOP = true, DEBUG_KILL = true, DEBUG_SPAWN_ZOMBIE = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
     HOLD_POSITION = true, REGROUP = true, SEARCH = true, SCAVENGE = true,
     LOOT_AREA = true, RETREAT = true, FLEE = true, REST = true, GO_HOME = true,
     ATTACK = true, DEFEND_PLAYER = true, DEFEND_AREA = true, GUARD = true,

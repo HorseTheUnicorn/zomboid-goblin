@@ -1,59 +1,73 @@
 # Architecture
 
-The system has three deliberately separate planes:
+GoblinSurvivor has three cooperating planes and one authoritative gameplay
+boundary.
 
-1. PZ server plane (`.03`): GoblinSurvivor runs on the dedicated server.
-   `NPCRegistry` owns stable identities, `Protection` maintains the protected
-   Goblin policy, `ActionExecutor` resolves semantic actions, and
-   `NativeNpcAdapter` owns the server-side body and behavior engine.
-2. Agent plane (`.76`): Qwen receives `brain_view`, proposes strict JSON, and
-   Python applies reflex, combat, entity, job, and squad gates before writing
-   a `command.npc_action` bridge message.
-3. Tracker plane (`.76`): exact telemetry is retained by `TrackerStore` and
-   served through read-only map APIs. This plane is never used to construct
-   Qwen context.
+## Planes
 
-The filesystem bridge remains atomic: JSON is written and fsynced before its
-ready marker, request IDs are bounded by a ledger, stale/duplicate messages
-are archived or dead-lettered, and the PZ tick never waits for Qwen or the web
-server.
+1. The PZ server plane owns the managed roster, server-side Java human actors,
+   positions, tasks, combat, persistence, and safety policy.
+2. The ordinary PZ client plane receives the bounded snapshot and creates a
+   local `HumanSurvivor` visual actor for each roster member. A player client
+   does not become the authority for the actor.
+3. The `.76` agent plane owns Qwen, Python intent validation, durable memory,
+   the filesystem bridge, and read-only tracker telemetry. It has no native
+   PZ gameplay client.
 
-The model loop is event-driven. A startup transition, meaningful server event,
-coarse state transition, or bounded planning interval can request a new Qwen
-intent. Ordinary heartbeats refresh telemetry and run deterministic reflexes;
-an ongoing native task continues on the server without repeated model calls.
+The Windows PZ installation is a disposable development harness, not part of
+Goblin's production runtime.
 
-The data flow is:
+## Data flow
 
 ```text
-PZ perception -> coarse state -> Qwen -> validated intent
-    -> deterministic controller -> NpcBodyDriver
-    -> command.npc_action -> Lua ActionExecutor
-    -> NpcAdapter -> friendly persistent native PZ body
+PZ server perception/tasks
+    -> ServerSurvivorAuthority + ClientSurvivorServer
+    -> bounded runtime snapshot
+    -> each connected PZ client
+    -> local HumanSurvivor visual actor
 
-PZ exact telemetry ---------------------------------> TrackerStore -> map
+coarse PZ telemetry -> Python validation -> command.npc_action
+    -> server-side Lua validation -> Java authority
+
+exact telemetry -> TrackerStore -> read-only map/history views
 ```
 
-There is no native Steam/PZ gameplay client in `.76`. Human players connect
-normally to the dedicated server. The Windows PZ installation is a local
-development/test harness and is not part of Goblin's production runtime.
+The bridge is atomic and bounded. The PZ tick never waits for Qwen or the
+tracker, and the agent does not receive an unrestricted exact-coordinate body
+control API.
 
-The body engine is self-contained. It uses the native Build 42
-`createZombie(float, float, float, SurvivorDesc, int, IsoDirections)` path with
-a friendly survivor descriptor when that surface is available, and the
-native `addZombiesInOutfit` API as a bounded compatibility fallback. The body
-is marked immediately with GoblinSurvivor `getModData()` fields, and all later
-binding requires that marker or a short-lived spawn reservation. A normal
-population zombie is never claimed as Goblin.
+## Human actor lifecycle
 
-`NativeNpcAdapter.lua` owns the engine boundary: native pathing, follow tasks,
-validated hostile-zombie targeting, chat-line speech, friendly target
-clearing, primary-body protection, and native-body persistence. The registry
-rebinds marked bodies after a restart and creates a replacement only after a
-bounded cooldown. If the native spawn or ownership proof is unavailable, the
-mod stays in `sensor_only` and does not expose a normal zombie as Goblin.
+1. `ClientSurvivorServer.lua` ensures the logical roster exists after a usable
+   player position is available.
+2. `ServerSurvivorAuthority.java` creates or rebinds a
+   `HumanSurvivor`, assigns its stable id/generation/profile, and advances
+   authoritative movement and combat.
+3. The server publishes a sequence-numbered snapshot containing the bounded
+   profile and logical position.
+4. `ClientSurvivorActor.lua` creates the local Java human, registers it with
+   the cell object/model path, and reconciles newer snapshots.
+5. A generation change unregisters the old visual before creating the new one.
+   A failed client constructor stays pending and retries without requiring a
+   second server packet.
 
-Higher-level inventory, vehicle, and building actions remain disabled until
-their exact Build 42 contracts are implemented and tested. The adapter does
-not pretend that a native body has a weapon, food, water, or medical supplies
-when those facts have not been verified.
+The Java actor extends `IsoLivingCharacter` and implements `IHumanVisual`. It
+is neither an `IsoPlayer` nor an `IsoZombie`. Its vanilla update loop is
+disabled until a complete NPC lifecycle exists; `tickVisual()` advances only
+the safe model/animation path.
+
+## Authority and safety
+
+- The server is the sole position, task, generation, and combat authority.
+- Client position writes are not accepted.
+- Hostile zombie targets are validated locally and players/friendly actors
+  are excluded.
+- Goblin protection and the unlimited-ammo policy are reasserted on the
+  server actor.
+- Test-only fixture commands require development configuration and an exact
+  local token. A fabricated bridge grant is rejected.
+- No unrelated population zombie is adopted as a managed human body.
+
+The current local body mode is `client_survivor`. Do not re-enable a retired
+donor implementation or infer a visible client actor from server telemetry
+alone; use the client render diagnostics and direct user observation.

@@ -66,6 +66,7 @@ class FriendlySurvivorContractTests(unittest.TestCase):
 
     def test_client_survivor_roster_has_no_zombie_creation_path(self) -> None:
         server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        loop = (SERVER / "CommandLoop.lua").read_text(encoding="utf-8")
         client = (CLIENT / "ClientSurvivorActor.lua").read_text(encoding="utf-8")
         profiles = (SHARED / "Profiles.lua").read_text(encoding="utf-8")
         for symbol in (
@@ -201,6 +202,22 @@ class FriendlySurvivorContractTests(unittest.TestCase):
         self.assertIn("markGoblinHumanDead", server + storm)
         self.assertIn("debugMarkDead", authority + storm)
         self.assertIn("markSurvivorDead", authority)
+
+    def test_local_combat_fixture_is_explicitly_gated(self) -> None:
+        server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        loop = (SERVER / "CommandLoop.lua").read_text(encoding="utf-8")
+        storm = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/GoblinSurvivorStormMod.java").read_text(encoding="utf-8")
+        authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        controllers = (Path(__file__).resolve().parents[1] / "goblin_zomboid/controllers.py").read_text(encoding="utf-8")
+        npc = (Path(__file__).resolve().parents[1] / "goblin_zomboid/npc.py").read_text(encoding="utf-8")
+        self.assertIn('action == "DEBUG_SPAWN_ZOMBIE"', server)
+        self.assertIn("DEBUG_SPAWN_ZOMBIE = true", loop)
+        self.assertIn("Config.developmentMode", server)
+        self.assertIn('message.authority_token ~= "local-combat-test"', server)
+        self.assertIn("spawnGoblinCombatFixture", server + storm)
+        self.assertIn("createRealZombieAlways", authority)
+        self.assertIn("goblin_debug_combat_fixture", authority)
+        self.assertIn("DEBUG_SPAWN_ZOMBIE", controllers + npc)
 
     def test_god_mode_does_not_hide_hostile_contact_telemetry(self) -> None:
         authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")

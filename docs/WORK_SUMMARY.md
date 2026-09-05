@@ -1,45 +1,45 @@
 # Current work summary
 
-Goblin is designed as a persistent, server-side Project Zomboid NPC. `.03`
-owns the networked body and exact world actions; `.76` owns Qwen, the Python
-controller/relay, durable memory, and the read-only tracker. `.76` has no
-native PZ/Steam gameplay client.
+GoblinSurvivor is a standalone Build 42 human-survivor engine. The PZ server
+owns the managed roster and authoritative Java bodies. Connected player
+clients render local human actors from server snapshots. `.76` owns Qwen,
+Python intent validation, durable memory, the atomic bridge, and read-only
+tracker telemetry; it does not run a PZ gameplay client.
 
-The current source migration replaces the previous external body dependency
-with `NativeNpcAdapter.lua`. The adapter uses the documented Build 42 native
-`createZombie`/`SurvivorFactory` surface, applies a friendly survivor
-descriptor when available, and keeps a bounded `addZombiesInOutfit` fallback.
-It marks every body with GoblinSurvivor mod data, binds only marked bodies or
-short-lived spawn reservations, owns movement/speech/targeting, and never
-claims a normal population zombie.
+## Completed in the current checkpoint
 
-The Python side has a typed `NpcBodyDriver`, strict intent validation,
-deterministic safety/entity/squad/base-job gates, bounded SQLite telemetry,
-and the atomic filesystem bridge. The Lua side has bounded spawn/rebind
-behavior, protection hooks, separate coarse/exact telemetry, semantic target
-resolution, chat forwarding, native movement/combat, and settlement
-assignment persistence.
+- Replaced the retired body approach with `HumanSurvivor`, a real Java human
+  actor that is neither a player nor a zombie.
+- Added server-side Storm authority for identity, generation, movement,
+  ranged combat, firearm state, death, and bounded recreation.
+- Added client-side object/model registration, render diagnostics, per-actor
+  snapshot retry, generation replacement, and absence cleanup.
+- Kept Goblin's hair fixed to `Spike` and equipped the managed roster with
+  `Base.AssaultRifle2`.
+- Added guarded local hostile-zombie and death/recreation fixtures.
+- Updated local Windows launch/cache helpers and synchronized direct and
+  Workshop-staging package copies.
+- Confirmed local visibility by user observation and client diagnostics.
 
-The source changes are currently local and uncommitted in the Windows project.
-The local PZ installation has been identified as Build 42.20.4 at
-`C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid`. The new
-PowerShell harness synchronizes the direct mod package, Workshop staging
-package, bridge marker/config, and a separate `goblin-local` server profile
-under `C:\Users\tomgr\Zomboid`.
+## Latest local evidence
 
-Production `.03` remains untouched during this work. Its existing package,
-loadout, save, and service are not being restarted for local development.
-The next evidence needed is a local server boot followed by a local player
-joining: confirm native bootstrap, Goblin spawn, friendly filtering, native
-movement/speech, persistence, and bounded death recovery. Only after those
-checks pass should a separately approved production migration be considered.
+The local Build 42.20.4 run created Goblin plus six companions as
+`HumanSurvivor` objects with `isZombie=false`; render calls increased and the
+actors were visible. One hostile-zombie fixture was killed with one shot and
+no incoming hit. Goblin was recreated at generation 2 after a death fixture.
 
-Automatic client delivery still requires publishing the self-contained
-GoblinSurvivor package as a new unlisted Workshop item and then adding that
-new ID to a guarded production rollout. Until then, the direct Windows
-package is the authoritative test copy.
+The cold client load took 162 seconds. The wait was in vanilla world
+streaming (`WorldStreamer.isBusy()` / `IsoWorld.init`) with no Workshop items
+configured; the roster was created after world loading completed.
 
-Local checks cover strict bridge behavior, semantic coordinate separation,
-NPC command publication, deterministic squad/job policy, native adapter
-contract, and tracker read-only routes. A live local in-world test remains
-necessary before the native milestone is complete.
+## Open work
+
+Melee and combat animation, smooth/collision-aware movement, real job effects,
+guard/hauler/farmer/medic/scout behavior, companion and squad behavior,
+unload/rebind, reconnect, two distinct clients, `.76` chat/Qwen round-trip,
+and final package/release validation remain open. The repeatable June route
+failure must also be resolved or explicitly bounded.
+
+GitHub push is authorized for the development branch. Workshop publication
+and production `.03` installation remain blocked until local acceptance is
+complete.

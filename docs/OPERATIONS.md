@@ -31,12 +31,12 @@ multiplayer save. Stop it with `tools\Stop-LocalPzServer.ps1` before syncing
 files again. Read the local PZ server log and the bridge runtime files under
 `C:\Users\tomgr\Zomboid\Lua\goblin-bridge`.
 
-The native adapter fails closed. If the native spawn or friendly-body
-contract is unavailable, stop issuing commands and inspect the current Build
-42 server log. If Goblin is absent after a clean local restart, keep the
-server running with a player online long enough for the server-side spawn
-anchor to become available, then inspect the single bounded spawn diagnostic
-in the newest `*DebugLog-server.txt`.
+The Java human authority fails closed. If the human constructor, snapshot, or
+friendly-body contract is unavailable, stop issuing commands and inspect the
+current Build 42 server/client logs. If Goblin is absent after a clean local
+restart, keep the server running with a player online long enough for the
+server-side position to become available, then inspect the bounded spawn and
+rebind diagnostics in the newest `*DebugLog*.txt` files.
 
 Never place Steam, PZ server, VNC, Qwen admin, or bridge credentials in shell
 arguments, logs, chat, tracker state, or browser URLs.

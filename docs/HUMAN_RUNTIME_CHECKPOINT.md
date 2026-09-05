@@ -1,55 +1,72 @@
-# Human runtime checkpoint — 2026-09-04
+# Human runtime checkpoint — 2026-09-05
 
-Local B42.20.4 only. Production and publication gates remain closed.
+Local Build 42.20.4 only. Production and publication gates remain closed.
 
 ## Verified
 
-- Custom `HumanSurvivor extends IsoLivingCharacter implements IHumanVisual`
-  renders as a separate human beside the player. Neither IsoPlayer nor IsoZombie.
-- The B42 FBO renderer traverses `IsoCell.objectList`. Moving-square membership
-  alone does not render an actor. `registerVisualObject` registers that object;
-  overridden preupdate/update/postupdate avoid the unsafe vanilla NPC simulation.
-- `tickVisual` advances the animation/model/light path through `updateForServerGui`.
-- Live diagnostics show increasing render calls, an active model, three worn items,
-  and `hair=Spike`. Screenshot confirms clothed human body distinct from the player.
-- Goblin's profile forces `Spike` after overrides, preserving his fixed hairstyle.
-- User movement test: live snapshots moved Goblin out of the house; diagnostics
-  transitioned idle -> movement -> idle, and screenshot showed the separate
-  clothed human in a walking pose outdoors. Smoothness/collision not proven.
-- Storm Lua registration needs an explicit `LuaManager.env` argument and the
-  exposed `createGoblinHumanSurvivor` constructor. Register again after Lua resets.
+- The server-side Storm authority creates `HumanSurvivor` Java objects.
+- The client creates all seven roster visuals from snapshots. The latest log
+  identifies the class as
+  `com.horsetheunicorn.goblinsurvivor.HumanSurvivor` and reports
+  `isZombie=false`.
+- The client actor is in the cell object list and model manager, has a model,
+  sprite, legs, render permission, four worn items, and increasing render
+  calls. The user confirmed the characters are visible in-game.
+- Goblin's fixed appearance includes `hair=Spike`.
+- Snapshot movement was observed in the prior walk test. Goblin changes
+  position and the visual diagnostics switch between idle and walking poses.
+- `Base.AssaultRifle2` is equipped and ready on the managed human bodies.
+- The local hostile-zombie fixture produced one authoritative shot and one
+  kill with zero incoming hits.
+- A death/recreate fixture advanced Goblin from generation 1 to generation 2
+  while retaining the human body mode and firearm policy.
 
-## Current local launch
+## Rendering path
 
-Use `tools/Start-LocalPzClient.ps1 -Storm` after `tools/dev-install.ps1`.
-The launcher disables Storm launcher handoff for the direct disposable test.
-Client stdout/stderr: `%USERPROFILE%/Zomboid/Logs/goblin-local-client.*.log`.
-Storm internal exceptions: `%USERPROFILE%/Zomboid/Logs/storm/main.log`.
+`ClientSurvivorActor.lua` creates the Java body, calls the Java model
+registration bridge, places it in the current/moving square, and keeps the
+object in `IsoCell.objectList`. The Java actor's preupdate/update/postupdate
+methods are intentionally empty because the current authority supplies
+position and task state; `tickVisual()` advances only the safe animation and
+model path. Do not reintroduce the old vanilla NPC update loop or a zombie
+fallback.
 
-## Unverified / unfinished
+Useful live diagnostics are written by the client to the newest
+`*DebugLog.txt`:
 
-- Walking selection from snapshot displacement is verified during the user test.
-  Snapshot movement still teleports rather than interpolates.
-- Clothes are currently a fixed default outfit, not synchronized equipment.
-- Server now runs with `-Storm`. `ServerSurvivorAuthority` owns registered human
-  bodies and positions; Lua supplies movement intent and publishes snapshots.
-  Live server log confirmed authoritative body creation and client movement.
-  Native square collision checks and rejection of cross-floor teleports are
-  implemented but not gameplay-validated. Bounded same-floor A* now routes around
-  blocked edges (2048 expansions, 500ms replanning); in-game obstacle verification
-  is pending. Closed-door interaction and stairs remain unsupported.
-  Task decisions and metadata remain in Lua: full Java authority is NOT complete.
-- No validated combat, damage/death/recreate, collision/pathfinding, unload/rebind,
-  two-client synchronization, jobs, squads, companion behavior, or .76 chat round-trip.
-- Legacy Java donor code remains disabled. Never enable it as a fallback.
-- No GitHub/Workshop release or production install until the full original gates pass.
+```text
+created Java human survivor actor ... isZombie=false
+render state: sprite=true legs=true activeModel=true model=true ...
+inObjectList=true pendingRemoval=false ... hair=Spike ...
+```
+
+## Known live limitations
+
+- Movement is snapshot-driven and may step/teleport between authoritative
+  positions; smooth interpolation and collision feel are not complete.
+- Goblin routes successfully in the tested area. June has a repeatable
+  `UNREACHABLE` static route result and needs investigation.
+- The server's ordinary zombie population has been observed. The current
+  `ordinary_zombie_count=0` after disconnect reflects the current loaded area
+  and is not a global population assertion.
+- A second client has not yet been validated with a distinct username.
+- Jobs, melee, unload/rebind, reconnect, companions, squads, and full chat
+  round-trip remain open gates.
+
+## Cold-load evidence
+
+The 2026-09-05 client log reported `game loading took 162 seconds`. The
+watchdog captured the loading thread waiting in `IsoWorld.init` during
+`WorldStreamer.isBusy()` from approximately 08:42:50 to 08:44:58.
+The filesystem work queues were empty during the stall. The seven human
+actors were created after world loading completed, so the roster is not the
+primary cause of the cold-start delay.
 
 ## Checks
 
-Java build against installed game succeeded; all 48 Lua files compiled with PZ's
-compiler; 72 Python contract tests passed before the latest clothing/motion change.
-These source contracts do not prove gameplay. Repeat targeted checks as affected.
-
-`tools/TestGridRoute.java` executes six routing algorithm scenarios against the
-built mod jar (detour, checked cardinal edges, budget, sealed start, already
-arrived, stopping radius). All passed. This does not validate PZ collision APIs.
+- Python contract suite: 80 tests passed.
+- Java route executable: 17 scenarios passed.
+- Java Storm package built successfully against the installed game.
+- `git diff --check` passed, with only normal Windows line-ending warnings.
+- Source scan for the retired third-party NPC framework name is clean when
+  generated binaries, logs, databases, and `.git` are excluded.

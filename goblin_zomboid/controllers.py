@@ -12,6 +12,7 @@ from .validator import ValidatedIntent
 class Action(str, Enum):
     NOOP = "NOOP"
     DEBUG_KILL = "DEBUG_KILL"
+    DEBUG_SPAWN_ZOMBIE = "DEBUG_SPAWN_ZOMBIE"
     SAY = "SAY"
     MOVE_TO = "MOVE_TO"
     FOLLOW = "FOLLOW"

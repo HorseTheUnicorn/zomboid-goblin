@@ -1,74 +1,104 @@
-# Standalone B42 survivor-engine migration status
+# Standalone B42 survivor-engine status
 
-Updated: 2026-09-04
+Updated: 2026-09-05
 
-## Current checkpoint
+## Scope
 
-The pre-migration work is preserved on the local branch
-`checkpoint/pre-standalone-survivor-engine`. The working tree already contains
-the bridge, Python controller, tracker, website, persistence, native body
-adapter, and local Windows PZ launch scripts. The static contract suite passes
-with `python -m unittest discover -s tests -q`.
+This checkpoint tracks the standalone Build 42 human-survivor engine. The
+development branch is `checkpoint/pre-standalone-survivor-engine`; the
+production `.03` server, its save, and its package have not been changed by
+the local validation work.
 
-The authoritative development checkout is:
+The authoritative checkout is:
 
 ```text
 C:\Users\tomgr\Documents\Codex\2026-09-01\new-chat\work\remote-stage1-tree\zomboid-goblin
 ```
 
-The visible OneDrive `GoblinSurvivor` folder is an empty Git shell and is not
-the active source checkout.
+The visible OneDrive `GoblinSurvivor` folder is not this checkout.
+
+## Current architecture
+
+- `HumanSurvivor.java` is a real Build 42 human Java actor. It extends
+  `IsoLivingCharacter`, implements `IHumanVisual`, and is neither an
+  `IsoPlayer` nor an `IsoZombie`.
+- `ServerSurvivorAuthority.java` owns authoritative actor identity, position,
+  generation, firearm state, follow movement, hostile-zombie combat, death,
+  and bounded recreation on the server.
+- `ClientSurvivorActor.lua` creates a local human visual actor from the
+  server snapshot. It registers the actor in the FBO object/model path and
+  never uses a zombie as a visual fallback.
+- `ClientSurvivorServer.lua` owns the roster, tasks, jobs, persistence,
+  snapshots, in-game `/gss` commands, and bridge-facing validation.
+- Python and Qwen remain an intent/telemetry plane. They do not receive an
+  unrestricted body-control or exact-coordinate interface.
+
+The current body mode is `client_survivor`: the server owns the logical
+actor and each connected PZ client renders its own local human actor from the
+bounded snapshot. This is necessary because the installed multiplayer build
+does not provide a vanilla network packet for this custom human class.
 
 ## Verified decisions
 
-- The physical body is an engine-created, networked `IsoZombie` donor. Higher
-  layers identify it as a `SurvivorEntity` and never create a fake `IsoPlayer`.
-- Donor creation uses the verified Build 42 public factory surface already in
-  the adapter (`SurvivorFactory.CreateSurvivor` plus the non-blocking vanilla
-  population fallback). The installed B42 multiplayer server exposed the
-  documented `createZombie` signature but blocked its server thread, so the
-  synchronous factory is skipped on the dedicated server. Direct
-  `IsoZombie.new(...)` is intentionally forbidden: it was unsafe in the
-  installed runtime.
-- The runtime has no external NPC framework dependency. The native adapter is
-  the only body implementation exposed through the stable adapter facade.
-- The server remains authoritative for identity, brain state, tasks, and
-  commands. Clients receive normal PZ entity replication plus the bounded
-  GoblinSurvivor state channel.
-- Goblin uses the same survivor engine as companions. Protection and external
-  Qwen control are profile capabilities, not alternate body implementations.
+- No external NPC runtime is required or loaded.
+- `.76` must not run a native PZ/Steam gameplay client. Windows PZ is only the
+  local development harness.
+- No fake `IsoPlayer` and no zombie fallback are acceptable final bodies.
+- Goblin and the managed companions use `Base.AssaultRifle2`, an M14 clip,
+  `.308` ammunition, the bounded unlimited-ammo policy, and the server-side
+  protection policy.
+- Goblin's hair is forced to `Spike` after visual/profile setup.
+- Normal population zombies remain ordinary zombies. The local combat fixture
+  creates only a hostile test zombie and is guarded by development settings
+  plus an exact local-test token.
 
-## Migration stages
+## Verified local evidence
 
-### Completed before this stage
+On 2026-09-05, local Build 42.20.4 produced:
 
-- Native adapter boundary and friendly-body ownership markers.
-- Bridge/telemetry/tracker integration without a native PZ client on `.76`.
-- Bounded spawn retry and stale-body removal safeguards.
-- Local Windows Build 42 package synchronization and local UDP server scripts.
+- server authority ready and `body_mode=client_survivor`;
+- Goblin, Sarah, Bob, Dave, Ellen, Mike, and June created as
+  `com.horsetheunicorn.goblinsurvivor.HumanSurvivor` with `isZombie=false`;
+- client render diagnostics with `sprite=true`, `legs=true`,
+  `activeModel=true`, `model=true`, `doRender=true`, `inMovingList=true`,
+  `inObjectList=true`, `pendingRemoval=false`, and increasing render calls;
+- `hair=Spike`, `firearm=Base.AssaultRifle2`, and a ready firearm;
+- user confirmation that the characters are visible in the game;
+- deterministic ranged combat: one shot, one hostile zombie killed, and no
+  incoming hits in the fixture run;
+- death/recreation: Goblin generation advanced from 1 to 2 and the recreated
+  body re-equipped the rifle and returned to follow behavior;
+- ordinary population zombies observed during the live run. A zero count
+  after the client disconnected is not evidence that population spawning is
+  disabled.
 
-### This stage
+The measured cold client load was 162 seconds. The client log shows the
+largest interval inside vanilla `WorldStreamer.isBusy()` / `IsoWorld.init`,
+with the loading thread waiting and filesystem queues empty. `WorkshopItems=`
+is empty in the disposable profile, so that delay was not a Workshop
+download. See `LOCAL_TESTING.md` for the warm-session workflow.
 
-- Establish the standalone namespace and persistent survivor identity markers.
-- Add a single authoritative `Survivorize(entity, profile)` conversion path.
-- Separate task queues, actions, brain state, perception/cache, visuals,
-  survivor update orchestration, and zombie interaction into GoblinSurvivor
-  modules, including a bounded survivor combat facade.
-- Add deterministic local test-survivor controls and Windows development
-  install/log/package tooling.
-- Record the verified Build 42 API surface as a non-shipping implementation
-  reference.
+## Gates still open
 
-### Release gates still open
+1. Ranged combat is verified; melee combat and combat animation are not.
+2. Goblin follow works in the tested area, but June repeatedly reports an
+   `UNREACHABLE` route around a static obstacle and needs a real-world route
+   fix or a documented supported limitation.
+3. Jobs, especially Builder, need an in-game command test with a valid server
+   grant and a measurable work result. A bridge-only fake job request was
+   correctly rejected by authority validation.
+4. Guard, hauler, farmer, medic, scout, loot, and disassembly behavior need
+   behavior-level validation rather than status-only assertions.
+5. Save/restart, cell unload/rebind, disconnect/reconnect, and duplicate-body
+   cleanup need live tests.
+6. A second client has not passed: an isolated process reached the server but
+   reused the first client's username and was rejected. It must be repeated
+   with a distinct user identity.
+7. `.76` chat/Qwen round-trip, companion/squad commands, and the final
+   integration path remain to be tested end-to-end.
+8. GitHub publication is authorized but must include the final intended
+   checkpoint. Workshop publication and `.03` installation remain closed
+   until the local gates above pass.
 
-1. Human visuals must be confirmed in local single-player and local MP.
-2. Normal zombies must target survivors without losing valid player targets.
-3. Survivor melee combat must be implemented and tested.
-4. Local one- and two-client synchronization must pass.
-5. Body unload/rebind and Goblin protected recovery must pass.
-6. Qwen intent integration must be tested only after deterministic fallback is
-   stable.
-7. Package validation must pass with only the native adapter and no external
-   NPC framework before any `.03` deployment.
-
-No production `.03` files or saves are changed by this stage.
+No production restart or production configuration change is authorized by
+this checkpoint.

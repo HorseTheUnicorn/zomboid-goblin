@@ -1079,6 +1079,37 @@ function Server.execute(message)
         return true, "local survivor death test accepted"
     end
 
+    if action == "DEBUG_SPAWN_ZOMBIE" then
+        -- This is a deterministic local combat fixture, not a gameplay
+        -- spawn API. Keep it behind both disposable-development flags, an
+        -- exact reason, and the driver-only test token. It creates an
+        -- ordinary networked zombie near the custom human body; it never
+        -- replaces or masquerades as the survivor.
+        if not Config.developmentMode or not Config.allowTestCommands
+            or message.reason ~= "local-test"
+            or message.authority_token ~= "local-combat-test" then
+            return false, "local combat fixture is disabled"
+        end
+        local spawn = rawget(_G, "spawnGoblinCombatFixture")
+        if type(spawn) ~= "function" then
+            return false, "Storm combat-fixture hook is unavailable"
+        end
+        local ok, created = pcall(spawn, state.actor_id)
+        if not ok or created ~= true then
+            return false, "ordinary zombie combat fixture could not be spawned"
+        end
+        state.control_mode = "COMBAT"
+        state.combat_mode = "HUNT"
+        state.task = "ATTACK"
+        state.mode = "PARTY"
+        state.target_username = nil
+        state.follow_username = nil
+        state.target_actor_id = nil
+        state.destination = nil
+        state.arrival_task = nil
+        return true, "local ordinary zombie combat fixture spawned"
+    end
+
     if action == "HOLD_POSITION" or action == "REST" then
         if setHold(state, action, "PARTY", statePoint(state)) then
             return true, "client-survivor actor is holding position"

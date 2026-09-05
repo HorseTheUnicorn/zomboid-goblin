@@ -20,7 +20,14 @@ from .protocol import make_message, new_request_id
 
 NPC_ID = "goblin.primary"
 PRIVILEGED_ACTIONS = frozenset(
-    {"FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "BUILD"}
+    {
+        "FORM_SQUAD",
+        "DISMISS_SQUAD",
+        "ASSIGN_JOB",
+        "SECURE_BASE",
+        "BUILD",
+        "DEBUG_SPAWN_ZOMBIE",
+    }
 )
 
 

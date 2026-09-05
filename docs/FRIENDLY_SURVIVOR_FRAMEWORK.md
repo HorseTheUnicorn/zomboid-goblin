@@ -1,69 +1,43 @@
-# Friendly survivor framework
+# Friendly survivor runtime
 
-The initial native controller lives in:
-
-```text
-mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/FriendlySurvivor.lua
-```
-
-It creates a normal multiplayer `IsoZombie` through Build 42's public
-`createZombie(x, y, z, SurvivorDesc, outfit, direction)` factory. The Lua
-layer intentionally does not call an `IsoZombie` Java constructor: the factory
-is responsible for registering the body in the world and in the multiplayer
-simulation.
+The active friendly-survivor runtime is the standalone `HumanSurvivor` Java
+actor plus the thin Lua snapshot layer. It is not a converted zombie and it
+does not depend on another NPC package.
 
 ## Responsibilities
 
-`FriendlySurvivor.lua` owns four small responsibilities:
+`ServerSurvivorAuthority.java` owns the server-side human object, identity,
+position, task execution, firearm, hostile-zombie combat, protection, death,
+and recreation. `ClientSurvivorServer.lua` owns the bounded roster and task
+metadata. `ClientSurvivorActor.lua` creates and reconciles the local human
+visual on each connected client.
 
-1. mark the body with stable mod data (`goblin_friendly_survivor`, body class,
-   target class, and ownership);
-2. clear zombie target, aggro, eating, thumping, and attack-square state;
-3. scan the bounded `getOnlinePlayers()` collection on every server tick,
-   choose the nearest live player within 30 tiles, and request a path toward
-   that player; and
-4. publish a compact state snapshot without moving the body on the client.
+The actor is an `IsoLivingCharacter` implementing `IHumanVisual`. It is not
+an `IsoPlayer` and not an `IsoZombie`. Its vanilla needs and incomplete NPC
+update loop remain disabled while the server authority supplies movement and
+state.
 
-The controller uses `pathToLocationF` first and `pathToLocation` as a fallback.
-It never assigns the player to `IsoZombie:setTarget`, because that target is a
-combat target and would re-enable zombie attack behavior. The player object is
-used only as a read-only source of position and username.
+## Friendly policy
 
-## Behavior stripping boundary
+The server validates every target. Friendly actors and players cannot be
+selected as hostile combat targets. Normal population zombies remain outside
+the managed roster. Goblin protection and the fixed `Spike` hair profile are
+reapplied on recreation.
 
-The current public Build 42 Lua surface exposes reliable target/aggro/eating/
-thump controls, so those are cleared both when the body is created and on each
-update. Optional setters such as `setBite`, `setCantBite`,
-`setVoiceSoundName`, and `setBiteSoundName` are capability-gated; the code does
-not assume they exist. The controller also clears the public sound-attraction
-fields when the Java proxy permits those field writes.
+## Multiplayer behavior
 
-Build 42 does not expose a public per-instance setter for every zombie audio
-callback or a general Lua override for the Java `cantBite()` implementation.
-Therefore the framework suppresses the causes of those transitions and
-reasserts that policy, but it does not claim a complete Java audio override.
-A future explicit engine hook can be added inside this module without
-changing the registry or network contract.
+The server publishes a sequence-numbered snapshot. Each client creates a
+local `HumanSurvivor`, registers it in the cell object/model path, and
+reconciles its position. Client construction retries per roster member and a
+generation change removes the old visual before creating the replacement.
 
-## Multiplayer synchronization
+This is the current Build 42 multiplayer solution because the vanilla stream
+does not provide a network packet for this custom human class. The local
+single-client visual gate is passed. Two-client parity, reconnect, and unload
+/rebind still need live validation.
 
-The server is authoritative:
+## Limits
 
-* PZ's native world-entity stream replicates the `IsoZombie` position and
-  movement to connected clients.
-* `FriendlySurvivorNetwork.lua` broadcasts the mod-owned identity, mode,
-  target username, distance, and sequence through standard
-  `sendServerCommand` packets at most twice per second.
-* `FriendlySurvivorClient.lua` receives the packet with `OnServerCommand` and
-  keeps a read-only UI cache. It never applies a position or accepts a client
-  movement claim.
-* A client may request the latest snapshot through `sendClientCommand`; the
-  server replies only with the last read-only state.
-
-## Tick budget
-
-The controller is invoked from the server `OnTick` path. The nearest-player
-calculation is O(number of connected players) for the one managed body; it is
-not a world or zombie-list scan. Path requests are limited to once every 250
-ms, and custom state packets are limited to once every 500 ms. No network or
-LLM operation runs in the tick callback.
+Ranged combat is implemented and tested with `Base.AssaultRifle2`. Melee,
+smooth movement, full job effects, companion/squad behavior, and final
+chat/Qwen round-trip remain open gates.
