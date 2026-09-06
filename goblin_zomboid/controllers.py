@@ -11,6 +11,8 @@ from .validator import ValidatedIntent
 
 class Action(str, Enum):
     NOOP = "NOOP"
+    DEBUG_KILL = "DEBUG_KILL"
+    DEBUG_SPAWN_ZOMBIE = "DEBUG_SPAWN_ZOMBIE"
     SAY = "SAY"
     MOVE_TO = "MOVE_TO"
     FOLLOW = "FOLLOW"
@@ -22,6 +24,7 @@ class Action(str, Enum):
     JOIN_PARTY = "JOIN_PARTY"
     LEAVE_PARTY = "LEAVE_PARTY"
     ATTACK = "ATTACK"
+    MELEE_ATTACK = "MELEE_ATTACK"
     FLEE = "FLEE"
     EAT = "EAT"
     DRINK = "DRINK"
@@ -77,7 +80,7 @@ class BodyState:
             raise ValueError("unknown threat level")
         if self.mode not in {"SAFE", "ROAM", "PARTY", "HUNT"}:
             raise ValueError("unknown body mode")
-        if self.body_mode not in {"disabled", "sensor_only", "npc"}:
+        if self.body_mode not in {"disabled", "sensor_only", "npc", "client_survivor"}:
             raise ValueError("unknown execution body mode")
         if not self.npc_id or len(self.npc_id) > 96:
             raise ValueError("invalid npc id")
@@ -233,6 +236,7 @@ class TacticalController:
         "GO_HOME": Action.GO_HOME,
         "JOIN_PARTY": Action.JOIN_PARTY,
         "LEAVE_PARTY": Action.LEAVE_PARTY,
+        "MELEE_ATTACK": Action.MELEE_ATTACK,
         "HUNT_START": Action.NOOP,
         "HUNT_HINT": Action.SAY,
         "HUNT_RELOCATE": Action.MOVE_TO,

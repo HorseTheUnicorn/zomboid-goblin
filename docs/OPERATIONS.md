@@ -18,15 +18,25 @@ ss -lunp | grep -E '16261|16262'
 tail -n 200 /home/zomboid/Zomboid/Logs/*DebugLog-server.txt
 ```
 
-Bandits2 Workshop item `3268487204` is required in the active server loadout
-and must be available to joining clients. If the server reports that the
-Bandits2 spawn or friendly-body contract is unavailable, stop issuing commands
-and inspect the current Build 42 server log and Workshop cache. The adapter is
-designed to fail closed: it will not substitute a normal hostile zombie. If
-the Goblin is absent after a clean restart, keep the server running with a
-player online long enough for the server-side spawn anchor to become
-available, then inspect the single bounded spawn diagnostic in
-`*DebugLog-server.txt`.
+During development, use the disposable Windows profile first:
+
+```powershell
+Set-Location 'C:\Users\tomgr\Documents\Codex\2026-09-01\new-chat\work\remote-stage1-tree\zomboid-goblin'
+powershell -ExecutionPolicy Bypass -File .\tools\Sync-LocalPz.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzServer.ps1
+```
+
+The local server uses `goblin-local`, ports `16271/16272`, and a separate
+multiplayer save. Stop it with `tools\Stop-LocalPzServer.ps1` before syncing
+files again. Read the local PZ server log and the bridge runtime files under
+`C:\Users\tomgr\Zomboid\Lua\goblin-bridge`.
+
+The Java human authority fails closed. If the human constructor, snapshot, or
+friendly-body contract is unavailable, stop issuing commands and inspect the
+current Build 42 server/client logs. If Goblin is absent after a clean local
+restart, keep the server running with a player online long enough for the
+server-side position to become available, then inspect the bounded spawn and
+rebind diagnostics in the newest `*DebugLog*.txt` files.
 
 Never place Steam, PZ server, VNC, Qwen admin, or bridge credentials in shell
 arguments, logs, chat, tracker state, or browser URLs.

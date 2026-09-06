@@ -16,6 +16,24 @@ There are no public gameplay command, spawn, move, attack, or admin mutation
 routes. Put authentication and TLS at the existing site/reverse proxy when
 exposing the tracker beyond loopback.
 
+The public projection is controlled without a code change through the
+following environment settings:
+
+```text
+GOBLIN_TRACKER_ENABLED=true
+GOBLIN_TRACKER_PRIVACY_MODE=exact      # exact, approximate, or hidden
+GOBLIN_TRACKER_SHOW_PLAYERS=true
+GOBLIN_TRACKER_SHOW_PLAYER_NAMES=true
+GOBLIN_TRACKER_SHOW_EXACT_POSITIONS=true
+GOBLIN_TRACKER_SHOW_NPCS=true
+GOBLIN_TRACKER_HISTORY_ENABLED=true
+```
+
+`hidden` omits entity detail and `approximate` removes exact coordinates and
+identity fields from the public projection while retaining bounded status
+information. Exact coordinates remain available only to the private tracker
+store and the server-to-tracker bridge.
+
 ## Website and map layer
 
 `GET /` serves the small dependency-free tracker website. It consumes the

@@ -9,9 +9,10 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from typing import Any
 
-from .social import sanitize_speech
+from .social import FeralPersonality, sanitize_speech
 from .state import brain_view
-from .validator import IntentError, IntentValidator, ValidatedIntent
+from .capabilities import IMPLEMENTED_CAPABILITIES
+from .validator import IntentError, IntentValidator, ValidatedIntent, ValidatedPlan
 
 
 class QwenError(RuntimeError):
@@ -39,14 +40,26 @@ class QwenClient:
 
     @staticmethod
     def _system_prompt() -> str:
+        # ``propose_intent`` is retained for older autonomous-loop adapters,
+        # but it must describe the same implemented surface as the newer
+        # speech-plus-command plan envelope.  Do not teach the model legacy
+        # combat, hunt, vehicle, or debug verbs that the remote command
+        # authority intentionally does not advertise.
+        legacy_intents = (
+            "WAIT", "SAY", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
+            "REGROUP", "RETURN_TO_BASE", "DEFEND_PLAYER", "RETREAT",
+            "LOOT_AREA", "SCAVENGE", "FORM_SQUAD", "DISMISS_SQUAD",
+            "ASSIGN_JOB", "SECURE_BASE",
+        )
         return (
+            FeralPersonality.prompt_fragment() + " "
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
-            "Goblin is the persistent server-side NPC goblin.primary; never refer to a Steam/PZ client "
-            "or create a character. Allowed intents include WAIT, SAY, MOVE_TO, FOLLOW, FOLLOW_GOBLIN, "
-            "HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, GO_HOME, JOIN_PARTY, "
-            "LEAVE_PARTY, FORM_SQUAD, DISMISS_SQUAD, ASSIGN_JOB, SECURE_BASE, RETURN_TO_BASE, "
-            "CLEAR_BUILDING, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, ENTER_VEHICLE, "
-            "EXIT_VEHICLE, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
+            "Goblin is the persistent server-side coordinator with id goblin.primary. The runtime state "
+            "contains a bounded server-reported roster of managed human survivors; when directing a "
+            "companion, put its reported npc_id in the intent. Goblin is the big brain and may assign "
+            "the six companions to follow, loot, disassemble, build, guard, scout, haul, farm, or medic "
+            "work. Never refer to a Steam/PZ client or create a character. The implemented legacy intent "
+            f"surface is: {', '.join(legacy_intents)}. "
             "Allowed modes are SAFE, ROAM, PARTY, and HUNT. Use only coarse named targets such as a "
             "nearby building, area, player, home base, escape route, squad, vehicle, candidate, or "
             "current position. Never output coordinates, routes, cells, chunks, IDs for buildings, Lua, "
@@ -57,11 +70,93 @@ class QwenClient:
     @staticmethod
     def _speech_system_prompt() -> str:
         return (
-            "You are Goblin, a feral, observant, dry, occasionally warm survivor. Write one short in-game "
+            FeralPersonality.prompt_fragment() + " Write one short in-game "
             "reply to the supplied player message. Stay in character and never reveal hidden locations, "
             "coordinates, private admin information, credentials, code, or tools. Return exactly one JSON "
             "object with only the field text."
         )
+
+    @staticmethod
+    def _plan_system_prompt() -> str:
+        capabilities = ", ".join(IMPLEMENTED_CAPABILITIES)
+        return (
+            FeralPersonality.prompt_fragment() + " "
+            "Return exactly one JSON object and nothing else with this shape: "
+            "{\"say\":\"optional short reply\",\"commands\":[...]} . "
+            "The say field may be omitted when no reply is needed; commands must contain at most four "
+            "bounded high-level commands. Goblin is the persistent leader with logical id goblin.primary. "
+            "Each command must contain survivor_id and action, and survivor_id must be one of the reported "
+            "survivor ids or goblin.primary. The only currently implemented actions are: "
+            f"{capabilities}. Use target_id only as a stable logical id such as player.alice, "
+            "goblin.primary, or npc.0001; never use native object ids. FOLLOW_PLAYER and DEFEND_PLAYER "
+            "require a player target_id. Do not output coordinates, distances, routes, cells, chunks, "
+            "building ids, PZ/Lua/Java APIs, shell commands, code, credentials, or raw packets. "
+            "Java owns resolution, movement, combat, inventory, and persistence; you only choose the "
+            "semantic action. Keep say under 240 characters and every command field bounded. For a "
+            "SAY command use the command field text; never put say inside a command object. "
+            "Field rules: SAY requires text; FOLLOW_PLAYER and DEFEND_PLAYER require target_id beginning "
+            "with player.; FOLLOW_GOBLIN requires target_id goblin.primary; ASSIGN_JOB requires a short "
+            "job such as SCAVENGE, LOOT, GUARD, BUILDER, HAULER, FARMER, SCOUT, or MEDIC; FORM_SQUAD "
+            "requires leader plus members or requested_members. If no specialized work is needed, prefer "
+            "HOLD or FOLLOW_PLAYER with the exact logical ids from the roster."
+        )
+
+    @staticmethod
+    def _plan_repair_system_prompt() -> str:
+        """Return a stricter one-shot repair prompt for small local models."""
+
+        return (
+            QwenClient._plan_system_prompt()
+            + " A previous answer failed validation. Return a corrected envelope now. "
+            "Use at most four command objects total, never assign a job to goblin.primary, "
+            "include leader and requested_members or members for FORM_SQUAD, and omit any "
+            "action you cannot express with the exact fields above. If unsure, return one "
+            "short top-level say field and an empty commands array. Do not explain the repair."
+        )
+
+    @staticmethod
+    def _normalize_plan_compatibility(content: str) -> str:
+        """Repair one bounded, harmless shape drift seen in local Qwen output.
+
+        The plan validator deliberately stays strict.  Some instruction-tuned
+        models put a reply in ``commands[*].say`` even after being shown the
+        top-level ``say`` envelope.  Only a SAY command with no existing text
+        field is normalized; every other unknown field remains validator-fatal.
+        """
+
+        try:
+            raw = json.loads(content)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return content
+        if not isinstance(raw, dict) or not isinstance(raw.get("commands"), list):
+            return content
+        changed = False
+        commands: list[Any] = []
+        for command in raw["commands"]:
+            if (
+                isinstance(command, dict)
+                and isinstance(command.get("action"), str)
+                and command["action"].strip().upper() == "SAY"
+                and "say" in command
+                and "text" not in command
+            ):
+                command = dict(command)
+                command["text"] = command.pop("say")
+                changed = True
+            commands.append(command)
+        if not changed:
+            return content
+        normalized = dict(raw)
+        normalized["commands"] = commands
+        try:
+            return json.dumps(
+                normalized,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError, OverflowError):
+            return content
 
     def _request_json(self, system_prompt: str, payload: Mapping[str, Any], *, max_tokens: int) -> str:
         if not isinstance(payload, Mapping):
@@ -108,6 +203,30 @@ class QwenClient:
             return self.validator.validate_json(content)
         except (IntentError, ValueError) as exc:
             raise QwenError("Qwen response failed strict intent validation") from exc
+
+    def propose_plan(self, context: Mapping[str, Any]) -> ValidatedPlan:
+        if not isinstance(context, Mapping):
+            raise QwenError("plan context must be an object")
+        try:
+            safe_context = brain_view(context)
+            content = self._request_json(
+                self._plan_system_prompt(), brain_view(context), max_tokens=384
+            )
+            normalized = self._normalize_plan_compatibility(content)
+            try:
+                return self.validator.validate_plan_json(normalized)
+            except (IntentError, ValueError):
+                # The model is allowed one bounded shape repair.  The second
+                # response is still passed through the exact same validator;
+                # this is not a truncation or an implicit command rewrite.
+                repaired = self._request_json(
+                    self._plan_repair_system_prompt(), safe_context, max_tokens=256
+                )
+                return self.validator.validate_plan_json(
+                    self._normalize_plan_compatibility(repaired)
+                )
+        except (IntentError, ValueError) as exc:
+            raise QwenError("Qwen response failed strict plan validation") from exc
 
     def propose_speech(self, context: Mapping[str, Any]) -> str:
         if not isinstance(context, Mapping):

@@ -1,9 +1,6 @@
 version=1
+id=3797127671
 title=GoblinSurvivor
-description=Original server-side Goblin NPC bridge for Project Zomboid Build 42.
-description=
-description=Provides one protected persistent Goblin body plus a bounded roster of friendly managed NPC companions, movement and speech commands, squads, and read-only telemetry for a private multiplayer server. Requires Bandits2 Workshop item 3268487204 on the server and joining clients.
-description=
-description=GoblinSurvivor adds the Goblin identity, safety, friendly roster, squads, chat, Qwen bridge, and command policy on top of Bandits2's Companion NPC behavior. This item does not include a native Steam or Project Zomboid client.
+description=GoblinSurvivor 0.5.0-dev adds a protected persistent Goblin body, a bounded roster of friendly managed NPC companions, a standalone native Build 42 survivor engine, native movement and speech, squads, and read-only telemetry for a private Build 42 multiplayer server. It uses only native Project Zomboid APIs and does not include a Steam or Project Zomboid client.
 tags=Build 42;Multiplayer;NPC;Server
 visibility=unlisted

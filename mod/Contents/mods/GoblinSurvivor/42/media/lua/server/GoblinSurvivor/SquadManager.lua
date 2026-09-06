@@ -1,7 +1,5 @@
 local Config = require("GoblinSurvivor/Config")
 local Net = require("GoblinSurvivor/Net")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
-local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local BaseManager = require("GoblinSurvivor/BaseManager")
 
 local SquadManager = {
@@ -10,6 +8,17 @@ local SquadManager = {
     minimumBaseGuards = 1,
     loaded = false
 }
+
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            NPCRegistry = require("GoblinSurvivor/NPCRegistry"),
+            NpcAdapter = require("GoblinSurvivor/NpcAdapter")
+        }
+    end
+    return LegacyModules
+end
 
 local function persistentData()
     if type(ModData) ~= "table" or type(ModData.getOrCreate) ~= "function" then
@@ -36,10 +45,11 @@ end
 
 local function uniqueMembers(members)
     if type(members) ~= "table" or #members < 1 or #members > SquadManager.maxMembers then return nil end
+    local legacy = legacyModules()
     local result, seen = {}, {}
     for _, member in ipairs(members) do
         if not Net.safeId(member, 96) or seen[member] then return nil end
-        local entry = NPCRegistry.get(member)
+        local entry = legacy.NPCRegistry.get(member)
         if entry == nil or entry.active ~= true or entry.alive ~= true then
             return nil
         end
@@ -65,12 +75,13 @@ local function position(object)
 end
 
 local function applySquadTasks(squad)
+    local legacy = legacyModules()
     local leaderObject = nil
     local leaderIsPlayer = squad.leader_player ~= nil
     if leaderIsPlayer then
         leaderObject = onlinePlayer(squad.leader_player)
     else
-        leaderObject = NPCRegistry.body(squad.leader)
+        leaderObject = legacy.NPCRegistry.body(squad.leader)
     end
     local leaderPoint = position(leaderObject)
     if leaderPoint == nil then
@@ -79,7 +90,7 @@ local function applySquadTasks(squad)
 
     local applied = 0
     for index, member in ipairs(squad.members) do
-        local body = NPCRegistry.body(member)
+        local body = legacy.NPCRegistry.body(member)
         if body ~= nil then
             local targetPlayer = nil
             local targetNpc = nil
@@ -96,11 +107,11 @@ local function applySquadTasks(squad)
                 targetNpc = squad.leader
                 mode = "FOLLOW_GOBLIN"
             else
-                -- An NPC leader keeps its existing Bandits2 Companion task.
+                -- An NPC leader keeps its existing native task.
                 applied = applied + 1
             end
             if targetNpc ~= nil then
-                local targetBody = NPCRegistry.body(targetNpc)
+                local targetBody = legacy.NPCRegistry.body(targetNpc)
                 target = position(targetBody) or target
             end
             if member ~= squad.leader or leaderIsPlayer then
@@ -114,22 +125,23 @@ local function applySquadTasks(squad)
                     target_npc_id = targetNpc,
                     follow_distance = 2 + ((index - 1) % 3)
                 }
-                local ok = NpcAdapter.setTasks(body, { task }, member)
+                local ok = legacy.NpcAdapter.setTasks(body, { task }, member)
                 if ok then applied = applied + 1 end
             end
         end
     end
     if applied < 1 then return false, "no squad member accepted a follow task" end
-    return true, "squad follow tasks accepted by Bandits2 bodies"
+    return true, "squad follow tasks accepted by native bodies"
 end
 
 local function returnSquadToBase(squad)
+    local legacy = legacyModules()
     local point = BaseManager.point()
     for _, member in ipairs(squad.members) do
-        local body = NPCRegistry.body(member)
+        local body = legacy.NPCRegistry.body(member)
         if body ~= nil then
             if point ~= nil then
-                NpcAdapter.setTasks(body, {
+                legacy.NpcAdapter.setTasks(body, {
                     {
                         action = "GoTo",
                         mode = "RETURN_TO_BASE",
@@ -140,7 +152,7 @@ local function returnSquadToBase(squad)
                     }
                 }, member)
             else
-                NpcAdapter.clearTasks(body, member)
+                legacy.NpcAdapter.clearTasks(body, member)
             end
         end
     end
@@ -173,6 +185,12 @@ end
 
 function SquadManager.load()
     if SquadManager.loaded then return end
+    if Config.bodyMode == "client_survivor" then
+        -- Client-survivor squad state is owned by ClientSurvivorServer. Do not
+        -- load the legacy registry just to validate an unused old save.
+        SquadManager.loaded = true
+        return
+    end
     SquadManager.minimumBaseGuards = Config.minimumBaseGuards or 1
     local data = persistentData()
     local saved = data and data.squads or nil
@@ -212,7 +230,8 @@ function SquadManager.form(args, goblinBody)
         or not Net.safeId(args.leader, 96) then return false, "invalid squad identity" end
     local squadId = args.squad_id or "squad.primary"
     local leader = args.leader
-    local leaderNpc = NPCRegistry.get(leader)
+    local legacy = legacyModules()
+    local leaderNpc = legacy.NPCRegistry.get(leader)
     local leaderPlayer = onlinePlayer(leader)
     if leaderNpc == nil and leaderPlayer == nil then
         return false, "squad leader is not an online player or managed NPC"
@@ -220,9 +239,9 @@ function SquadManager.form(args, goblinBody)
     local members = uniqueMembers(args.members)
     if members == nil then return false, "invalid squad members" end
     if leaderPlayer ~= nil then
-        local goblin = NPCRegistry.get(Config.npcId)
+        local goblin = legacy.NPCRegistry.get(Config.npcId)
         if goblin == nil or goblin.active ~= true or goblin.alive ~= true
-            or goblinBody == nil or not NpcAdapter.isOwned(goblinBody, Config.npcId) then
+            or goblinBody == nil or not legacy.NpcAdapter.isOwned(goblinBody, Config.npcId) then
             return false, "Goblin is unavailable for the expedition"
         end
         local foundGoblin = false
@@ -249,7 +268,7 @@ function SquadManager.form(args, goblinBody)
     }
     local squad = SquadManager.squads[squadId]
     for _, member in ipairs(squad.members) do
-        local entry = NPCRegistry.get(member)
+        local entry = legacy.NPCRegistry.get(member)
         if entry ~= nil then entry.squad_id = squadId end
     end
     if not save() then
@@ -270,21 +289,23 @@ function SquadManager.dismiss(args)
     local squad = SquadManager.squads[squadId]
     if squad == nil then return false, "squad is unknown" end
     SquadManager.squads[squadId] = nil
+    local legacy = legacyModules()
     for _, member in ipairs(squad.members) do
-        local entry = NPCRegistry.get(member)
+        local entry = legacy.NPCRegistry.get(member)
         if entry ~= nil and entry.squad_id == squadId then entry.squad_id = nil end
-        local body = NPCRegistry.body(member)
-        if body ~= nil then NpcAdapter.clearTasks(body, member) end
+        local body = legacy.NPCRegistry.body(member)
+        if body ~= nil then legacy.NpcAdapter.clearTasks(body, member) end
     end
     save()
     return true, "squad dismissed"
 end
 
 -- Re-apply persisted squad relationships without waiting for another Qwen
--- decision. Bandits2 owns the body movement; this manager only refreshes the
--- high-level target and returns a squad to base if its human leader leaves.
+-- decision. The native engine owns body movement; this manager only refreshes
+-- the high-level target and returns a squad to base if its human leader leaves.
 function SquadManager.tick()
     SquadManager.load()
+    if Config.bodyMode == "client_survivor" then return end
     local now = os.time() * 1000
     for _, squad in pairs(SquadManager.squads) do
         if squad.lastAppliedAt == nil or now - squad.lastAppliedAt >= 5000 then

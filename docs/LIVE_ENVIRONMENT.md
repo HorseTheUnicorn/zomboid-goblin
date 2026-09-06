@@ -10,29 +10,19 @@ Role: Goblin AI host.
 - The native Project Zomboid client installation at
   `/home/goblin/pz-client/game` was removed at the user's request.
 - The Goblin-only SteamCMD tree, user Steam state, client test caches, and
-  native-client logs/screenshots were removed at the same time, with no backup.
-- No `ProjectZomboid`, `projectzomboid`, `steam`, or `steamwebhelper` process was
-  running after removal.
-- No native-client systemd unit was present in the inventory. The remaining
-  enabled services are the existing Goblin agent/relay, Qwen, bot, observatory,
-  payout signer, and VNC session services.
+  native-client logs/screenshots were removed at the same time, with no
+  backup.
+- No `ProjectZomboid`, `projectzomboid`, `steam`, or `steamwebhelper` process
+  was running after removal.
 - The separate `/home/goblin/pz-client/server` directory was retained. It is
   not a Goblin multiplayer client and was not used as a deletion target.
-- The system-wide `/usr/games/steam` executable remains installed because it
-  was not identified as a Goblin-only dependency.
 - The existing bridge relay uses the pre-provisioned local bridge mount and
   connects to `.03` over the key-only SSH relay configuration.
-- The agent and relay are running from the current deployed checkout
-  `/home/goblin/zomboid-goblin-58ff9a2`; this build includes
-  deterministic survival fallback, event-driven Qwen planning, persistent
-  settlement assignments, the bounded SSE tracker stream, the read-only B42
-  map UI, and the Bandits2-backed managed-friendly roster.
+- The `.76` agent/relay/tracker remains the production control plane. It does
+  not run a native PZ gameplay client.
 - The B42 tracker map cache is installed read-only at
-  `/home/goblin/share/pz-map/b42/muldraugh`; it contains 4,914 current
-  `biomemap` tiles from `.03` (20 MB on disk). The tracker UI is served from
-  the checkout's `web/` directory. Live checks returned HTTP 200 for `/` and
-  an in-bounds map tile, HTTP 404 for an out-of-bounds tile, and HTTP 405 for
-  a POST attempt.
+  `/home/goblin/share/pz-map/b42/muldraugh`; the tracker UI is served from the
+  deployed checkout.
 
 ## `.03` — `192.168.0.3` / Proxmox CT100
 
@@ -46,55 +36,47 @@ Role: Project Zomboid dedicated server.
 - The active multiplayer save is under
   `/home/zomboid/Zomboid/Saves/Multiplayer/servertest`.
 - The bridge endpoint is `/home/zomboid/Zomboid/Lua/goblin-bridge`.
-- The live server now has the Bandits2-backed GoblinSurvivor package from
-  revision `a9224db`; the package reports
-  `adapter=bandits2`, `friendly=true`, and `control_ready=true` during
-  bootstrap. The active package includes the managed-friendly roster.
-- The required Bandits2 cache is present at
-  `/home/zomboid/pzserver/steamapps/workshop/content/108600/3268487204`.
-  `servertest.ini` now includes Workshop item `3268487204` and loads
-  `Bandits2` before `GoblinSurvivor`; Bandits2 source is not copied into this
-  repository.
-- GoblinSurvivor is currently installed as the direct server package at
-  `/home/zomboid/Zomboid/mods/GoblinSurvivor/42`. The
-  previously used Workshop ID `3794624741` was checked against Steam and is
-  no longer available, so it is intentionally not included in
-  `WorkshopItems=`. A new unlisted publication must be created before the
-  server can deliver this own-mod package automatically to other clients.
-- The server was healthy during inventory: `zomboid-servertest.service` was
-  active, `ProjectZomboid64 -servername servertest` was running, and UDP ports
-  `16261` and `16262` were bound.
-- The server's existing save and other mod loadout were left in place. The
-  latest Bandits2 deployment used the bounded backup directory
-  `/home/zomboid/backups/goblin-managed-roster-58ff9a2-pre/`, containing the
-  live server configuration, save archive, and prior server-side
-  GoblinSurvivor package. The earlier Bandits2 deployment backup remains at
-  `/home/zomboid/backups/goblin-bandits-ecb40f4-pre/`.
+- Production has not been migrated to the new native NPC engine during this
+  local development pass. The existing production package/loadout and save
+  remain in place, and no production restart is part of local testing.
+- GoblinSurvivor remains installed at the direct server path
+  `/home/zomboid/Zomboid/mods/GoblinSurvivor/42` until the tested native
+  package is staged for a separately guarded rollout.
+- The previously used published Workshop item is unavailable, so it is not
+  advertised by the server. A new unlisted GoblinSurvivor publication is
+  required before automatic client delivery can be enabled.
+- Existing server backups remain outside `Zomboid/mods` under
+  `/home/zomboid/backups`.
 
-## Windows test client
+## Windows project and local PZ harness
 
-The native Windows client is the actual player/test client, not the `.76`
-agent host. Its direct GoblinSurvivor package is synchronized from revision
-`a9224db` at:
+The active Windows Git project is:
 
-- `C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`
+```text
+C:\Users\tomgr\Documents\Codex\2026-09-01\new-chat\work\remote-stage1-tree\zomboid-goblin
+```
 
-The outer Workshop upload package for the same revision is at:
+The local installation is:
 
-- `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor`
+```text
+PZ install: C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid
+PZ data:    C:\Users\tomgr\Zomboid
+Build:      42.20.4
+profile:    goblin-local
+ports:      16271/16272
+```
 
-The active paths are direct local syncs rather than a Steam Workshop delivery;
-the running client must be restarted before this revision can be exercised.
-The public Workshop publication still needs to be updated to this exact
-revision before other users can receive GoblinSurvivor automatically. Server
-package backups are retained under `/home/zomboid/backups`, outside the PZ mod
-search path.
+The sync helper installs the direct package at
+`C:\Users\tomgr\Zomboid\mods\GoblinSurvivor`, refreshes the Workshop
+staging copy at `C:\Users\tomgr\Zomboid\Workshop\GoblinSurvivor`, creates
+the local bridge at `C:\Users\tomgr\Zomboid\Lua\goblin-bridge`, and
+provisions a separate `goblin-local` server profile. The start helper runs
+only the local Java dedicated server. It never contacts `.03` and never
+changes the `.03` save.
 
 ## Operational boundary
 
-The `.76` client removal did not touch the `.03` save. The later Bandits2
-deployment changed only the server-side GoblinSurvivor package and the mod
-ordering/Workshop declaration in `servertest.ini`; it did not copy Bandits2
-source into the repository or alter the multiplayer save. Future server-side
-mod changes require a separate review and a small, timestamped safety backup
-outside `Zomboid/mods` before deployment.
+Local code and local PZ data are disposable test state. Do not copy a local
+save or bridge credentials into the repository. Future production changes
+require a separate review and a small, timestamped safety backup outside
+`Zomboid/mods` before deployment.

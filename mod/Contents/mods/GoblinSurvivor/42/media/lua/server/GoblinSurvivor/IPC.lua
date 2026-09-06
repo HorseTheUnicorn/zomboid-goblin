@@ -22,6 +22,17 @@ local channels = {
 local bridgeMarker = ".goblin-bridge-v1"
 local readyIndexName = ".ready-index.json"
 
+local commandAckStates = {
+    ACCEPTED = true, RUNNING = true, SUCCESS = true,
+    FAILED = true, REJECTED = true, TIMEOUT = true
+}
+
+local commandStatusAliases = {
+    accepted = "ACCEPTED", running = "RUNNING", busy = "RUNNING",
+    success = "SUCCESS", failed = "FAILED", rejected = "REJECTED",
+    timeout = "TIMEOUT"
+}
+
 local function fileExists(path)
     -- Build 42 exposes two similarly named helpers with different path
     -- roots.  On the dedicated server, serverFileExists is the authoritative
@@ -31,16 +42,12 @@ local function fileExists(path)
     local serverFileExistsFn = rawget(_G, "serverFileExists")
     if type(serverFileExistsFn) == "function" then
         local ok, exists = pcall(serverFileExistsFn, path)
-        if ok then
-            return exists == true
-        end
+        if ok and exists == true then return true end
     end
     local fileExistsFn = rawget(_G, "fileExists")
     if type(fileExistsFn) == "function" then
         local ok, exists = pcall(fileExistsFn, path)
-        if ok then
-            return exists == true
-        end
+        if ok and exists == true then return true end
     end
     local readerFn = rawget(_G, "getFileReader")
     if type(readerFn) == "function" then
@@ -90,6 +97,13 @@ end
 local function jsonDecode(value)
     local result = JSON.decode(value, Config.maxMessageBytes)
     return type(result) == "table" and result or nil
+end
+
+local function canonicalCommandStatus(status)
+    local raw = tostring(status or "")
+    local upper = string.upper(raw)
+    if commandAckStates[upper] then return upper end
+    return commandStatusAliases[string.lower(raw)]
 end
 
 local function pathExists(path)
@@ -150,6 +164,14 @@ local function readFile(path)
         return nil
     end
     return table.concat(lines, "\n")
+end
+
+local function processedMarkerPath(stem)
+    -- Build 42 reliably exposes the runtime channel to both the PZ Lua
+    -- reader and the host relay.  Source-side marker files next to a
+    -- host-created command can be opened but are not materialized by every
+    -- server build, so keep the durable replay fence in runtime instead.
+    return IPC.root .. "/runtime/processed_" .. stem .. ".json"
 end
 
 local function validateMessage(message, encoded)
@@ -279,6 +301,8 @@ function IPC.readReady(channel, stem)
         return nil
     end
     local jsonPath = IPC.root .. "/" .. channel .. "/" .. messageStem .. ".json"
+    local readyPath = IPC.root .. "/" .. channel .. "/" .. messageStem .. ".ready"
+    if not pathExists(readyPath) then return nil end
     local encoded = readFile(jsonPath)
     if not encoded or #encoded > Config.maxMessageBytes then
         return nil
@@ -311,11 +335,12 @@ function IPC.listReady(channel)
             local readyPath = IPC.root .. "/" .. channel .. "/" .. stem .. ".ready"
             local jsonPath = IPC.root .. "/" .. channel .. "/" .. stem .. ".json"
             local donePath = IPC.root .. "/" .. channel .. "/" .. stem .. ".done"
-            local processedPath = IPC.root .. "/" .. channel .. "/" .. stem .. ".processed.json"
+            local processedPath = processedMarkerPath(stem)
             local encoded = readFile(jsonPath)
+            local ready = pathExists(readyPath)
             local done = readFile(donePath)
             local processed = readFile(processedPath)
-            if encoded ~= nil and #encoded > 0
+            if ready and encoded ~= nil and #encoded > 0
                 and (done == nil or #done == 0)
                 and (processed == nil or #processed == 0) then
                 table.insert(result, stem)
@@ -351,11 +376,11 @@ local function archiveReady(channel, stem, destination, reason)
         return false
     end
     local copiedJson = writeFile(target .. "/" .. targetStem .. ".json", encoded)
-    local copiedReady = copiedJson
-        and writeFile(target .. "/" .. targetStem .. ".ready", "1")
-    if not copiedJson or not copiedReady then
-        return false
-    end
+    if not copiedJson then return false end
+    -- The archive JSON is the durable copy.  Some B42 builds refuse to
+    -- materialize a newly-created non-JSON marker even though they can read
+    -- the host-created command marker, so this notification is best-effort.
+    writeFile(target .. "/" .. targetStem .. ".ready", "1")
     local reasonValue = tostring(reason or "processed")
     if #reasonValue > 512 then
         reasonValue = string.sub(reasonValue, 1, 512)
@@ -368,11 +393,10 @@ local function archiveReady(channel, stem, destination, reason)
         writeFile(target .. "/" .. targetStem .. ".reason.json", encoded)
     end
     -- The PZ Lua API has no supported delete/rename operation.  A durable
-    -- processed JSON marker prevents replay after restart; the host relay may
-    -- later compact the original command files after collecting the archive
-    -- copy.  Build 42's writer materializes JSON files reliably, while the
-    -- legacy zero-byte .done marker is retained only as a best-effort aid for
-    -- older bridge readers.
+    -- processed JSON marker in runtime prevents replay after restart; the
+    -- host relay may later compact the original command files after
+    -- collecting the archive copy.  The legacy zero-byte .done marker is
+    -- retained only as a best-effort aid for older bridge readers.
     writeFile(source .. "/" .. safe .. ".done", tostring(os.time()))
     local processedMarker = jsonEncode({
         processed = true,
@@ -380,7 +404,7 @@ local function archiveReady(channel, stem, destination, reason)
         reason = reasonValue
     })
     if processedMarker then
-        writeFile(source .. "/" .. safe .. ".processed.json", processedMarker)
+        writeFile(processedMarkerPath(safe), processedMarker)
     end
     return true
 end
@@ -393,18 +417,37 @@ function IPC.deadletter(channel, stem, reason)
     return archiveReady(channel, stem, "deadletter", reason)
 end
 
-function IPC.acknowledge(requestId, status)
+function IPC.acknowledge(requestId, status, detail, terminal)
     local safe = safeStem(requestId)
     if not safe then
         return false
     end
-    return IPC.publish("acks", {
+    local canonical = canonicalCommandStatus(status)
+    if not canonical then return false end
+    local isTerminal = terminal == true
+    local ackStem = safe
+    local ackRequestId = safe
+    if not isTerminal then
+        IPC.sequence = IPC.sequence + 1
+        local suffix = "-ack-" .. tostring(os.time()) .. "-" .. tostring(IPC.sequence)
+        local prefixLength = 128 - #suffix
+        if prefixLength < 1 then return false end
+        ackStem = string.sub(safe, 1, prefixLength) .. suffix
+        ackRequestId = ackStem
+    end
+    local message = {
         protocol = Config.protocol,
-        request_id = safe,
+        request_id = ackRequestId,
         timestamp_ms = os.time() * 1000,
         type = "ack.command",
-        status = tostring(status or "accepted")
-    }, safe)
+        status = canonical,
+        command_id = safe,
+        terminal = isTerminal
+    }
+    if detail ~= nil then
+        message.detail = string.sub(tostring(detail), 1, 512)
+    end
+    return IPC.publish("acks", message, ackStem)
 end
 
 function IPC.writeResponse(requestId, status, detail)
@@ -412,12 +455,14 @@ function IPC.writeResponse(requestId, status, detail)
     if not safe then
         return false
     end
+    local canonical = canonicalCommandStatus(status)
+    if not canonical then return false end
     return IPC.publish("responses", {
         protocol = Config.protocol,
         request_id = safe,
         timestamp_ms = os.time() * 1000,
         type = "response.command",
-        status = tostring(status or "rejected"),
+        status = canonical,
         detail = string.sub(tostring(detail or ""), 1, 512)
     }, safe)
 end

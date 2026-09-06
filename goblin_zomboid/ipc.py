@@ -21,6 +21,7 @@ from .protocol import (
     decode_message,
     encode_message,
     make_message,
+    new_request_id,
 )
 
 CHANNELS = (
@@ -36,6 +37,40 @@ CHANNELS = (
 _DESTINATIONS = {"archive", "deadletter"}
 BRIDGE_MARKER = ".goblin-bridge-v1"
 READY_INDEX_NAME = ".ready-index.json"
+
+# Command acknowledgements are a small state machine rather than a boolean
+# "accepted" flag.  Lower-case names remain accepted on input so an older
+# local relay can be upgraded without dropping its in-flight messages; all
+# new acknowledgements are emitted with the canonical upper-case spelling.
+COMMAND_ACK_STATES = frozenset(
+    {"ACCEPTED", "RUNNING", "SUCCESS", "FAILED", "REJECTED", "TIMEOUT"}
+)
+_COMMAND_STATUS_ALIASES = {
+    "accepted": "ACCEPTED",
+    "running": "RUNNING",
+    "busy": "RUNNING",
+    "success": "SUCCESS",
+    "failed": "FAILED",
+    "rejected": "REJECTED",
+    "timeout": "TIMEOUT",
+}
+COMMAND_RESPONSE_STATES = COMMAND_ACK_STATES | frozenset(
+    _COMMAND_STATUS_ALIASES
+)
+
+
+def canonical_command_status(status: object) -> str:
+    """Normalize a command response/ack state or reject it."""
+
+    if not isinstance(status, str):
+        raise ValueError("command status must be text")
+    normalized = status.strip().upper()
+    if normalized in COMMAND_ACK_STATES:
+        return normalized
+    alias = _COMMAND_STATUS_ALIASES.get(status.strip().casefold())
+    if alias is not None:
+        return alias
+    raise ValueError("invalid command status")
 
 
 def _fsync_directory(directory: Path) -> None:
@@ -249,14 +284,41 @@ class BridgeStore:
     def deadletter(self, item: ReadyItem, reason: str) -> None:
         self._move(item, "deadletter", reason)
 
-    def acknowledge(self, request_id: str, *, status: str = "accepted") -> Path:
-        safe_stem = self._safe_stem(request_id)
+    def acknowledge(
+        self,
+        request_id: str,
+        *,
+        status: str = "ACCEPTED",
+        detail: str = "",
+        terminal: bool = True,
+    ) -> Path:
+        """Publish one immutable command lifecycle acknowledgement.
+
+        A terminal acknowledgement keeps the historic ``acks/<command>.json``
+        name.  Intermediate states use a fresh acknowledgement id and carry
+        the stable command id in ``command_id``; this prevents an update from
+        overwriting a file that a relay may already be reading.
+        """
+
+        command_id = self._safe_stem(request_id)
+        canonical = canonical_command_status(status)
+        if terminal:
+            ack_request_id = command_id
+        else:
+            ack_request_id = new_request_id("ack")
+        fields: dict[str, Any] = {
+            "status": canonical,
+            "command_id": command_id,
+            "terminal": bool(terminal),
+        }
+        if detail:
+            fields["detail"] = str(detail)[:512]
         message = make_message(
             "ack.command",
-            request_id=safe_stem,
-            status=status,
+            request_id=ack_request_id,
+            **fields,
         )
-        return self.publish("acks", message, stem=safe_stem)
+        return self.publish("acks", message, stem=ack_request_id)
 
     def write_response(
         self,
@@ -267,10 +329,13 @@ class BridgeStore:
         **fields: Any,
     ) -> Path:
         safe_stem = self._safe_stem(request_id)
+        # Responses are terminal observations in the current file protocol;
+        # running progress is carried by the immutable ack stream.
+        canonical = canonical_command_status(status)
         message = make_message(
             "response.command",
             request_id=safe_stem,
-            status=status,
+            status=canonical,
             detail=str(detail)[:512],
             **fields,
         )
@@ -354,6 +419,12 @@ class ConsumedResponse:
     message: Message
 
 
+@dataclass(frozen=True)
+class ConsumedAck:
+    item: ReadyItem
+    message: Message
+
+
 class CommandConsumer:
     """Reads only validated high-level command intents."""
 
@@ -411,14 +482,17 @@ class CommandConsumer:
         detail: str = "",
         **fields: Any,
     ) -> None:
-        if status not in {"accepted", "rejected", "failed"}:
-            raise ValueError("invalid command response status")
+        canonical = canonical_command_status(status)
+        if canonical == "RUNNING":
+            raise ValueError("running commands must be finalized by an ack update")
         request_id = command.message.request_id
         self.store.write_response(
             request_id, status=status, detail=detail, **fields
         )
-        self.store.acknowledge(request_id, status=status)
-        self.store.archive(command.item, f"finalized: {status}")
+        self.store.acknowledge(
+            request_id, status=canonical, detail=detail, terminal=True
+        )
+        self.store.archive(command.item, f"finalized: {canonical}")
 
 
 class EventConsumer:
@@ -513,8 +587,10 @@ class ResponseConsumer:
                     raise ProtocolError("unexpected response type")
                 status = message.fields.get("status")
                 detail = message.fields.get("detail", "")
-                if status not in {"accepted", "rejected", "busy", "failed"}:
-                    raise ProtocolError("invalid response status")
+                try:
+                    canonical_command_status(status)
+                except ValueError as exc:
+                    raise ProtocolError("invalid response status") from exc
                 if not isinstance(detail, str) or len(detail) > 512:
                     raise ProtocolError("invalid response detail")
                 if self.ledger.seen(message.request_id):
@@ -539,3 +615,72 @@ class ResponseConsumer:
         detail: str = "processed",
     ) -> None:
         self.store.archive(response.item, detail)
+
+
+class AckConsumer:
+    """Reads immutable command lifecycle acknowledgements exactly once."""
+
+    def __init__(
+        self,
+        store: BridgeStore,
+        ledger: RequestLedger,
+        *,
+        max_age_ms: int = 120_000,
+    ) -> None:
+        self.store = store
+        self.ledger = ledger
+        self.max_age_ms = max_age_ms
+
+    def poll(
+        self,
+        *,
+        limit: int = 32,
+        now: int | None = None,
+    ) -> list[ConsumedAck]:
+        if limit < 1:
+            return []
+        acknowledgements: list[ConsumedAck] = []
+        for item in self.store.iter_ready("acks"):
+            if len(acknowledgements) >= limit:
+                break
+            try:
+                message = self.store.read_ready(
+                    item, max_age_ms=self.max_age_ms, now=now
+                )
+                if message.type != "ack.command":
+                    raise ProtocolError("unexpected acknowledgement type")
+                try:
+                    canonical_command_status(message.fields.get("status"))
+                except ValueError as exc:
+                    raise ProtocolError("invalid acknowledgement status") from exc
+                command_id = message.fields.get("command_id", message.request_id)
+                if not isinstance(command_id, str) or REQUEST_ID_RE.fullmatch(command_id) is None:
+                    raise ProtocolError("invalid acknowledgement command id")
+                terminal = message.fields.get("terminal", False)
+                if not isinstance(terminal, bool):
+                    raise ProtocolError("invalid acknowledgement terminal flag")
+                detail = message.fields.get("detail", "")
+                if not isinstance(detail, str) or len(detail) > 512:
+                    raise ProtocolError("invalid acknowledgement detail")
+                if self.ledger.seen(message.request_id):
+                    self.store.archive(item, "duplicate acknowledgement request id")
+                    continue
+                self.ledger.remember(
+                    message.request_id, timestamp_ms=message.timestamp_ms
+                )
+            except (OSError, ProtocolError, ValueError) as exc:
+                try:
+                    self.store.deadletter(item, str(exc))
+                except OSError:
+                    pass
+                continue
+            acknowledgements.append(ConsumedAck(item, message))
+        return acknowledgements
+
+    def finalize(
+        self,
+        acknowledgement: ConsumedAck,
+        *,
+        detail: str = "acknowledgement consumed",
+    ) -> None:
+        self.store.archive(acknowledgement.item, detail)

@@ -67,7 +67,7 @@ function ActionExecutor.execute(message, zombie)
         return GuardManager.secure(message, zombie)
     end
     if action == "EAT" or action == "DRINK" or action == "BANDAGE" or action == "RELOAD" then
-        return InventoryManager.execute(message)
+        return InventoryManager.execute(message, zombie)
     end
     if action == "CLAIM_REWARD" then
         return InventoryManager.execute(message)

@@ -6,7 +6,9 @@ import tempfile
 import unittest
 
 from goblin_zomboid.ipc import (
+    AckConsumer,
     BridgeStore,
+    COMMAND_ACK_STATES,
     CommandConsumer,
     EventConsumer,
     RequestLedger,
@@ -213,6 +215,47 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(responses[0].message.fields["status"], "accepted")
         consumer.finalize(responses[0])
         self.assertTrue((self.temp_dir / "archive" / "intent-1.json").is_file())
+
+    def test_ack_lifecycle_is_immutable_and_linked_to_command(self) -> None:
+        self.store.acknowledge(
+            "command-1", status="accepted", detail="admitted", terminal=False
+        )
+        self.store.acknowledge(
+            "command-1", status="RUNNING", detail="moving", terminal=False
+        )
+        self.store.acknowledge(
+            "command-1", status="SUCCESS", detail="arrived", terminal=True
+        )
+
+        items = list(self.store.iter_ready("acks"))
+        self.assertEqual(len(items), 3)
+        messages = [self.store.read_ready(item) for item in items]
+        self.assertEqual(
+            {message.fields["status"] for message in messages},
+            {"ACCEPTED", "RUNNING", "SUCCESS"},
+        )
+        self.assertTrue(all(message.fields["command_id"] == "command-1" for message in messages))
+        self.assertTrue((self.temp_dir / "acks" / "command-1.json").is_file())
+        self.assertEqual(
+            len({message.request_id for message in messages}), 3,
+        )
+        self.assertEqual(COMMAND_ACK_STATES, {
+            "ACCEPTED", "RUNNING", "SUCCESS", "FAILED", "REJECTED", "TIMEOUT"
+        })
+
+        consumer = AckConsumer(
+            self.store,
+            RequestLedger(self.temp_dir / "ack-ledger.json"),
+        )
+        acknowledgements = consumer.poll()
+        self.assertEqual(len(acknowledgements), 3)
+        self.assertEqual(
+            {ack.message.fields["status"] for ack in acknowledgements},
+            {"ACCEPTED", "RUNNING", "SUCCESS"},
+        )
+        for acknowledgement in acknowledgements:
+            consumer.finalize(acknowledgement)
+        self.assertEqual(list(self.store.iter_ready("acks")), [])
 
 
 if __name__ == "__main__":

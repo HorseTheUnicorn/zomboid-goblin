@@ -1,21 +1,35 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local Net = require("GoblinSurvivor/Net")
-local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
-local ActionExecutor = require("GoblinSurvivor/ActionExecutor")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local Authority = require("GoblinSurvivor/Authority")
+local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 
-local CommandLoop = { seen = {}, seenOrder = {}, maxSeen = 2048 }
+local CommandLoop = {
+    seen = {}, seenOrder = {}, maxSeen = 2048,
+    pending = {}, pendingTimeoutMs = 120000
+}
+
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            GoblinNPC = require("GoblinSurvivor/GoblinNPC"),
+            ActionExecutor = require("GoblinSurvivor/ActionExecutor")
+        }
+    end
+    return LegacyModules
+end
 
 local actions = {
-    NOOP = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
+    NOOP = true, DEBUG_KILL = true, DEBUG_SPAWN_ZOMBIE = true, SAY = true, MOVE_TO = true, FOLLOW = true, FOLLOW_GOBLIN = true,
     HOLD_POSITION = true, REGROUP = true, SEARCH = true, SCAVENGE = true,
     LOOT_AREA = true, RETREAT = true, FLEE = true, REST = true, GO_HOME = true,
-    ATTACK = true, DEFEND_PLAYER = true, DEFEND_AREA = true, GUARD = true,
+    ATTACK = true, MELEE_ATTACK = true, DEFEND_PLAYER = true, DEFEND_AREA = true, GUARD = true,
     PATROL = true, RETURN_TO_BASE = true, CLEAR_BUILDING = true,
     JOIN_PARTY = true, LEAVE_PARTY = true, FORM_SQUAD = true, DISMISS_SQUAD = true,
-    ASSIGN_JOB = true, SECURE_BASE = true, ENTER_VEHICLE = true, EXIT_VEHICLE = true,
+    ASSIGN_JOB = true, SEARCH_PLAYERS = true, SET_MOVEMENT = true, SET_VEHICLE_RECOVERY = true,
+    SECURE_BASE = true, ENTER_VEHICLE = true, EXIT_VEHICLE = true,
     EAT = true, DRINK = true, BANDAGE = true, RELOAD = true, CLAIM_REWARD = true
 }
 
@@ -37,7 +51,8 @@ local allowedKeys = {
     npc_id = true, action = true, priority = true, reason = true,
     controller_action = true, target = true, item = true, text = true,
     leader = true, members = true, job = true, formation = true, squad_id = true,
-    authority_token = true
+    movement_mode = true, enabled = true,
+    authority_token = true, observe_only = true, source = true
 }
 
 local function safeText(value, maximum)
@@ -63,7 +78,12 @@ local function validAction(message)
     for key, _ in pairs(message) do
         if type(key) ~= "string" or not allowedKeys[string.lower(key)] then return false end
     end
-    if message.npc_id ~= Config.npcId or not actions[message.action] then return false end
+    if not actions[message.action] then return false end
+    if Config.bodyMode == "client_survivor" then
+        if not ClientSurvivorServer.isKnownNpcId(message.npc_id) then return false end
+    elseif message.npc_id ~= Config.npcId then
+        return false
+    end
     if type(message.priority) ~= "number" or math.floor(message.priority) ~= message.priority
         or message.priority < 0 or message.priority > 3 then return false end
     if message.reason ~= nil and not safeText(message.reason, 240) then return false end
@@ -88,6 +108,15 @@ local function validAction(message)
     if message.authority_token ~= nil and not safeId(message.authority_token) then
         return false
     end
+    if message.observe_only ~= nil and type(message.observe_only) ~= "boolean" then
+        return false
+    end
+    if message.enabled ~= nil and type(message.enabled) ~= "boolean" then
+        return false
+    end
+    if message.action == "SET_VEHICLE_RECOVERY" and message.enabled == nil then
+        return false
+    end
     if Authority.requires(message.action) and not Authority.consume(message) then
         return false
     end
@@ -105,6 +134,58 @@ local function remember(requestId)
     return true
 end
 
+local immediateActions = {
+    NOOP = true, SAY = true, HOLD = true, HOLD_POSITION = true,
+    REST = true, SET_MOVEMENT = true, SET_VEHICLE_RECOVERY = true,
+    FORM_SQUAD = true, DISMISS_SQUAD = true, ASSIGN_JOB = true
+}
+
+-- These orders are intentionally open-ended.  A survivor that is following
+-- a player, defending the party, or hunting hostile zombies must not receive
+-- a synthetic TIMEOUT merely because the bridge acknowledgement window is
+-- shorter than the gameplay task.  The semantic server status remains the
+-- source of truth; bounded movement/search orders still use the deadline
+-- below so a genuinely stuck order can report a terminal result.
+local persistentActions = {
+    FOLLOW = true,
+    FOLLOW_PLAYER = true,
+    FOLLOW_GOBLIN = true,
+    JOIN_PARTY = true,
+    DEFEND_PLAYER = true,
+    ATTACK = true,
+    MELEE_ATTACK = true,
+    SEARCH_PLAYERS = true
+}
+
+local function terminalResult(requestId, status, detail)
+    IPC.writeResponse(requestId, status, detail)
+    IPC.acknowledge(requestId, status, detail, true)
+end
+
+local function updatePending()
+    local now = os.time() * 1000
+    local statusFn = ClientSurvivorServer.commandStatus
+    for requestId, pending in pairs(CommandLoop.pending) do
+        local status, detail = "RUNNING", "survivor task remains active"
+        if type(statusFn) == "function" then
+            local ok, result, resultDetail = pcall(
+                statusFn, pending.actor_id, pending.action
+            )
+            if ok and type(result) == "string" then
+                status = result
+                detail = resultDetail or detail
+            end
+        end
+        if status == "SUCCESS" or status == "FAILED" then
+            terminalResult(requestId, status, detail)
+            CommandLoop.pending[requestId] = nil
+        elseif pending.deadline_ms ~= nil and now >= pending.deadline_ms then
+            terminalResult(requestId, "TIMEOUT", "survivor task exceeded its bounded execution window")
+            CommandLoop.pending[requestId] = nil
+        end
+    end
+end
+
 local function process(stem)
     local message = IPC.readReady("commands", stem)
     if not message then
@@ -120,27 +201,72 @@ local function process(stem)
         return
     end
     if not Config.enabled then
+        terminalResult(message.request_id, "REJECTED", "GoblinEnabled=false")
         IPC.deadletter("commands", stem, "GoblinEnabled=false")
         return
     end
+    -- Storm performs the second semantic admission check before Lua resolves
+    -- the command to a native body.  Keep the Lua validator below as the
+    -- final wire/schema gate and as the compatibility path when Storm is not
+    -- loaded in a legacy development profile.
+    local javaValidate = rawget(_G, "validateGoblinSurvivorCommand")
+    if type(javaValidate) == "function" then
+        local ok, valid = pcall(javaValidate, message)
+        if not ok or valid ~= true then
+            terminalResult(message.request_id, "REJECTED", "Storm rejected the semantic NPC command")
+            IPC.archive("commands", stem, "Storm semantic command rejection")
+            return
+        end
+    end
+    local normalize = rawget(_G, "normalizeGoblinAction")
+    if type(normalize) == "function" and type(message.action) == "string" then
+        local ok, normalized = pcall(normalize, message.action)
+        if ok and type(normalized) == "string" and #normalized > 0 then
+            message.action = normalized
+        end
+    end
     if not validAction(message) then
-        IPC.writeResponse(message.request_id, "rejected", "NPC action failed server-side validation")
-        IPC.acknowledge(message.request_id, "rejected")
+        terminalResult(message.request_id, "REJECTED", "NPC action failed server-side validation")
         IPC.archive("commands", stem, "NPC action rejected")
         return
     end
-    local zombie = GoblinNPC.findGoblin()
-    local accepted, detail = ActionExecutor.execute(message, zombie)
-    local status = accepted and "accepted" or "failed"
-    IPC.writeResponse(message.request_id, status, detail)
-    IPC.acknowledge(message.request_id, status)
-    IPC.archive("commands", stem, "NPC action finalized: " .. status)
+    IPC.acknowledge(
+        message.request_id, "ACCEPTED", "semantic command admitted", false
+    )
+    local accepted, detail
+    if Config.bodyMode == "client_survivor" then
+        accepted, detail = ClientSurvivorServer.execute(message)
+    else
+        local legacy = legacyModules()
+        local zombie = legacy.GoblinNPC.findGoblin()
+        accepted, detail = legacy.ActionExecutor.execute(message, zombie)
+    end
+    if not accepted then
+        terminalResult(message.request_id, "FAILED", detail)
+        IPC.archive("commands", stem, "NPC action finalized: FAILED")
+        return
+    end
+    if immediateActions[message.action] then
+        terminalResult(message.request_id, "SUCCESS", detail)
+    else
+        IPC.acknowledge(message.request_id, "RUNNING", detail, false)
+        CommandLoop.pending[message.request_id] = {
+            actor_id = message.npc_id,
+            action = message.action,
+            deadline_ms = persistentActions[message.action] == true
+                and nil or os.time() * 1000 + CommandLoop.pendingTimeoutMs
+        }
+    end
+    IPC.archive("commands", stem, "NPC action admitted: " .. tostring(message.action))
 end
 
 function CommandLoop.tick()
     if not IPC.isReady() or not Config.enabled then return end
-    GoblinNPC.ensure()
+    if Config.bodyMode ~= "client_survivor" then
+        legacyModules().GoblinNPC.ensure()
+    end
     Telemetry.writeExactState()
+    updatePending()
     local ready = IPC.listReady("commands")
     local processed = 0
     for _, stem in ipairs(ready) do

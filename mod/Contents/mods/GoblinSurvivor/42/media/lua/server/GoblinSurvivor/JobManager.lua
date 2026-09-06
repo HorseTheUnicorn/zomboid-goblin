@@ -1,12 +1,19 @@
 local Config = require("GoblinSurvivor/Config")
 local Net = require("GoblinSurvivor/Net")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
 
 local JobManager = { assignments = {}, loaded = false }
 local allowed = {
     wander = true, guard = true, patrol = true, scout = true, haul = true,
     build = true, farm = true, loot = true, medic = true, quartermaster = true
 }
+
+local NPCRegistry
+local function legacyRegistry()
+    if NPCRegistry == nil then
+        NPCRegistry = require("GoblinSurvivor/NPCRegistry")
+    end
+    return NPCRegistry
+end
 
 local function persistentData()
     if type(ModData) ~= "table" or type(ModData.getOrCreate) ~= "function" then
@@ -31,6 +38,13 @@ end
 
 function JobManager.load()
     if JobManager.loaded then return end
+    if Config.bodyMode == "client_survivor" then
+        -- Client-survivor job assignments are persisted by the current
+        -- roster server. Avoid loading the legacy registry for an empty
+        -- compatibility snapshot.
+        JobManager.loaded = true
+        return
+    end
     local data = persistentData()
     local saved = data and data.jobs or nil
     if type(saved) == "table" then
@@ -39,7 +53,7 @@ function JobManager.load()
                 and allowed[string.lower(job)] then
                 local normalized = string.lower(job)
                 JobManager.assignments[npcId] = normalized
-                local entry = NPCRegistry.get(npcId)
+                local entry = legacyRegistry().get(npcId)
                 if entry ~= nil then entry.role = normalized end
             end
         end
@@ -53,7 +67,7 @@ function JobManager.assign(args)
         or not Net.safeText(args.job, 32, false) or not allowed[string.lower(args.job)] then
         return false, "unsupported NPC job"
     end
-    local entry = NPCRegistry.get(Config.npcId)
+    local entry = legacyRegistry().get(Config.npcId)
     if entry == nil or entry.active ~= true or entry.alive ~= true then
         return false, "NPC is unavailable"
     end

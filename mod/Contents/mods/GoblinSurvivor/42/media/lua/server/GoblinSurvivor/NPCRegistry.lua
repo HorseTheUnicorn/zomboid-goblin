@@ -4,8 +4,9 @@ local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local NPCRegistry = {
     entries = {},
     loaded = false,
-    -- Bandits2 only allows one outstanding individual spawn request here. The
-    -- request is shared by the roster, while retry limits are per identity.
+    -- Keep one outstanding body request here. The native creator normally
+    -- returns synchronously, while this state also protects the event bridge
+    -- if a runtime emits its create callback during the Java call.
     spawnPending = false,
     pendingSpawn = nil,
     spawnTargetId = nil,
@@ -427,31 +428,39 @@ local function bindExisting()
         return nil, nil
     end
     NPCRegistry.lastBindScanAt = timestamp
-    local list = zombieList()
-    if list == nil then return nil, nil end
-    local count = type(list.size) == "function" and list:size() or #list
-    for index = 0, count - 1 do
-        local zombie = type(list.get) == "function" and list:get(index) or list[index + 1]
-        if zombie ~= nil then
-            for npcId, entry in pairs(NPCRegistry.entries) do
-                if entry.active == true and entry.zombie == nil
-                    and NpcAdapter.isCandidate(zombie, npcId) then
-                    local prepared = NpcAdapter.prepare(
-                        zombie, npcId, nil, entry.name, entry.role
-                    )
-                    if prepared and NpcAdapter.isOwned(zombie, npcId) then
-                        markBound(npcId, zombie, "friendly managed Bandits2 body bound")
-                        return zombie, npcId
-                    end
-                    if timestamp - NPCRegistry.lastBindWarningAt >= 30000 then
-                        log("found " .. npcId .. " profile candidate but friendly bind failed")
-                        NPCRegistry.lastBindWarningAt = timestamp
+    local function scan(list)
+        if list == nil then return nil, nil end
+        local count = type(list.size) == "function" and list:size() or #list
+        for index = 0, count - 1 do
+            local body = type(list.get) == "function"
+                and list:get(index) or list[index + 1]
+            if body ~= nil then
+                for npcId, entry in pairs(NPCRegistry.entries) do
+                    if entry.active == true and entry.zombie == nil
+                        and NpcAdapter.removeForeign(body, npcId) then
+                        log("removed a stale foreign-managed body for " .. npcId)
+                    elseif entry.active == true and entry.zombie == nil
+                        and NpcAdapter.isCandidate(body, npcId) then
+                        local prepared = NpcAdapter.prepare(
+                            body, npcId, nil, entry.name, entry.role
+                        )
+                        if prepared and NpcAdapter.isOwned(body, npcId) then
+                            markBound(npcId, body,
+                                "friendly managed native body bound")
+                            return body, npcId
+                        end
+                        if timestamp - NPCRegistry.lastBindWarningAt >= 30000 then
+                            log("found " .. npcId
+                                .. " profile candidate but friendly bind failed")
+                            NPCRegistry.lastBindWarningAt = timestamp
+                        end
                     end
                 end
             end
         end
+        return nil, nil
     end
-    return nil, nil
+    return scan(zombieList())
 end
 
 function NPCRegistry.find(npcId)
@@ -496,7 +505,33 @@ function NPCRegistry.findGoblin()
 end
 
 function NPCRegistry.onZombieCreate(zombie)
-    if zombie == nil or not NPCRegistry.spawnPending or NPCRegistry.pendingSpawn == nil then
+    if zombie == nil then return false end
+    NPCRegistry.load()
+
+    -- Storm creates the fully-registered networked body first and marks its
+    -- mod-data immediately afterward.  Its OnZombieCreate event therefore
+    -- can arrive after the normal pending-spawn window has been cleared (or
+    -- can be re-emitted by the bridge).  An explicit ownership marker is
+    -- safe to adopt without a proximity reservation; ordinary zombies do not
+    -- carry this marker and are never claimed here.
+    for candidateId, candidateEntry in pairs(NPCRegistry.entries) do
+        if candidateEntry.active == true and candidateEntry.zombie == nil
+            and NpcAdapter.isCandidate(zombie, candidateId) then
+            local prepared, detail = NpcAdapter.prepare(
+                zombie, candidateId, nil, candidateEntry.name, candidateEntry.role
+            )
+            if prepared and NpcAdapter.isOwned(zombie, candidateId) then
+                markBound(candidateId, zombie, "managed native body adopted from Storm")
+                return true, "managed native body adopted from Storm"
+            end
+            if detail ~= nil then
+                log("Storm body candidate for " .. candidateId
+                    .. " could not be adopted: " .. tostring(detail))
+            end
+        end
+    end
+
+    if not NPCRegistry.spawnPending or NPCRegistry.pendingSpawn == nil then
         return false
     end
     local point = position(zombie)
@@ -509,12 +544,12 @@ function NPCRegistry.onZombieCreate(zombie)
     local npcId = pending.npc_id
     local entry = NPCRegistry.entries[npcId]
     if entry == nil or entry.zombie ~= nil then return false, "managed NPC is already bound" end
-    -- Bandits2 may emit OnZombieCreate before its brain is populated. Never
-    -- claim a normal population zombie; the subsequent bounded scan handles
-    -- the completed profile instead.
+    -- Native creation may emit OnZombieCreate before mod-data is populated.
+    -- Never claim a normal population zombie; the adapter's short-lived
+    -- spawn reservation is the only event-time fallback.
     if not NpcAdapter.isCandidate(zombie, npcId)
         and not NpcAdapter.isEventCandidate(zombie, npcId) then
-        return false, "not a managed Bandits2 profile candidate"
+        return false, "not a managed native body candidate"
     end
     local prepared, detail = NpcAdapter.prepare(
         zombie, npcId, nil, entry.name, entry.role
@@ -523,8 +558,8 @@ function NPCRegistry.onZombieCreate(zombie)
         NpcAdapter.discard(zombie, npcId)
         return false, detail
     end
-    markBound(npcId, zombie, "managed body bound from OnZombieCreate")
-    return true, "managed body bound from OnZombieCreate"
+    markBound(npcId, zombie, "managed native body bound from OnZombieCreate")
+    return true, "managed native body bound from OnZombieCreate"
 end
 
 local function rosterOffset(npcId)

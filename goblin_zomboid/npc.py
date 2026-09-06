@@ -2,13 +2,14 @@
 
 The Python process never drives a Steam/PZ client. It emits one typed,
 high-level command for the dedicated server, where the Lua mod resolves the
-stable NPC id through the Bandits2-backed friendly NPC adapter. This module
+stable NPC id through the native friendly NPC adapter. This module
 intentionally contains no game coordinates and no Lua/script escape hatch.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Any
 
 from .body import DeterministicActionGate, DriverResult
@@ -19,7 +20,14 @@ from .protocol import make_message, new_request_id
 
 NPC_ID = "goblin.primary"
 PRIVILEGED_ACTIONS = frozenset(
-    {"FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "BUILD"}
+    {
+        "FORM_SQUAD",
+        "DISMISS_SQUAD",
+        "ASSIGN_JOB",
+        "SECURE_BASE",
+        "BUILD",
+        "DEBUG_SPAWN_ZOMBIE",
+    }
 )
 
 
@@ -62,6 +70,7 @@ class NpcBodyDriver:
             raise ValueError("invalid NPC id")
         self.store = store
         self.npc_id = npc_id
+        self.npc_ids: set[str] = {npc_id}
         self.control_ready = bool(control_ready)
         self.npc_engine_ready = bool(npc_engine_ready)
         self.gate = DeterministicActionGate()
@@ -74,13 +83,22 @@ class NpcBodyDriver:
         self.control_ready = bool(control_ready)
         self.npc_engine_ready = bool(npc_engine_ready)
 
+    def update_npc_ids(self, npc_ids: Iterable[str]) -> None:
+        """Refresh the server-reported managed roster allowlist."""
+        values = {
+            value for value in npc_ids
+            if isinstance(value, str) and value and len(value) <= 96
+        }
+        values.add(NPC_ID)
+        self.npc_ids = values
+
     def execute(
         self, action: SafeAction, *, authority_token: str | None = None
     ) -> DriverResult:
         admitted = self.gate.admit(action)
         if not admitted.accepted:
             return admitted
-        if action.npc_id != self.npc_id:
+        if action.npc_id not in self.npc_ids:
             return DriverResult(False, "rejected", "unknown NPC id")
         if action.action.value in PRIVILEGED_ACTIONS:
             if (
@@ -98,7 +116,11 @@ class NpcBodyDriver:
 
         request_id = new_request_id("npc")
         fields: dict[str, Any] = {
-            "npc_id": self.npc_id,
+            # The controller may direct any server-reported companion.  The
+            # driver-level npc_id remains the primary Goblin identity for
+            # compatibility, but the wire command must carry the selected
+            # action's target id.
+            "npc_id": action.npc_id,
             "action": action.action.value,
             "priority": action.priority,
             "reason": action.reason[:240],

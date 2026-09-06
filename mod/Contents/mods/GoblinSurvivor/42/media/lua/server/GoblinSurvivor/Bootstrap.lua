@@ -1,17 +1,51 @@
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
-local Persistence = require("GoblinSurvivor/Persistence")
-local GoblinNPC = require("GoblinSurvivor/GoblinNPC")
-local NPCRegistry = require("GoblinSurvivor/NPCRegistry")
-local NpcAdapter = require("GoblinSurvivor/NpcAdapter")
 local Telemetry = require("GoblinSurvivor/Telemetry")
 local CommandLoop = require("GoblinSurvivor/CommandLoop")
 local ChatBridge = require("GoblinSurvivor/ChatBridge")
+local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
+local PlayerCommands = require("GoblinSurvivor/PlayerCommands")
 
 local Bootstrap = {
     started = false,
     lastHeartbeat = 0
 }
+
+-- Keep the retired compatibility path out of the active client-survivor
+-- startup. Those modules are large and only make sense when an operator has
+-- explicitly selected the legacy body mode. Loading them lazily also keeps a
+-- client-survivor package from accidentally initializing their event hooks.
+local LegacyModules
+local function legacyModules()
+    if LegacyModules == nil then
+        LegacyModules = {
+            GoblinNPC = require("GoblinSurvivor/GoblinNPC"),
+            NPCRegistry = require("GoblinSurvivor/NPCRegistry"),
+            NpcAdapter = require("GoblinSurvivor/NpcAdapter"),
+            GSSurvivor = require("GoblinSurvivor/GSSurvivor"),
+            SurvivorInteraction = require("GoblinSurvivor/GSSurvivorZombieInteraction"),
+            DevCommands = require("GoblinSurvivor/GSSurvivorDevCommands"),
+            Persistence = require("GoblinSurvivor/Persistence")
+        }
+    end
+    return LegacyModules
+end
+
+local function runningOnServer()
+    -- Build 42 exposes these globals differently across the dedicated-server
+    -- and local-client Lua runtimes. Prefer an explicit client result so a
+    -- missing/changed isServer() global cannot make the client initialize the
+    -- shared IPC bridge or register server mutation hooks.
+    if type(isClient) == "function" then
+        local okClient, clientValue = pcall(isClient)
+        if okClient then return clientValue ~= true end
+    end
+    if type(isServer) == "function" then
+        local okServer, serverValue = pcall(isServer)
+        if okServer then return serverValue == true end
+    end
+    return true
+end
 
 local function monotonicSeconds()
     if type(getTimestampMs) == "function" then
@@ -32,6 +66,15 @@ local function tick()
     -- Command consumption and protection are server-local and remain
     -- independent of the slower telemetry heartbeat.
     CommandLoop.tick()
+    if Config.bodyMode == "client_survivor" then
+        ClientSurvivorServer.tick()
+    else
+        -- The legacy engine owns all IsoZombie-backed bodies. The current
+        -- client-survivor mode never enters this path.
+        local legacy = legacyModules()
+        legacy.GSSurvivor.UpdateAll()
+        legacy.SurvivorInteraction.update()
+    end
     if Bootstrap.lastHeartbeat == 0 or now - Bootstrap.lastHeartbeat >= Config.heartbeatSeconds then
         Telemetry.writeHeartbeat()
         Telemetry.writeState()
@@ -61,10 +104,34 @@ function Bootstrap.start()
     if not IPC.initialize() then
         return
     end
-    Persistence.load()
+    if Config.bodyMode ~= "client_survivor" then
+        legacyModules().Persistence.load()
+    end
     ChatBridge.start()
+    if Config.bodyMode == "client_survivor" then
+        ClientSurvivorServer.start()
+        PlayerCommands.start()
+    else
+        legacyModules().GSSurvivor.Start()
+    end
+    -- The legacy /gss spawn commands call GoblinNPC.spawnGoblin(), which is
+    -- intentionally IsoZombie-backed. Never register that test surface while
+    -- the client-rendered survivor is the active body mode; otherwise a local
+    -- operator command can reintroduce the zombie beside the spawn point.
+    if Config.bodyMode ~= "client_survivor" then
+        legacyModules().DevCommands.start()
+    end
     Bootstrap.started = true
-    local capabilities = NpcAdapter.capabilities()
+    local capabilities
+    if Config.bodyMode == "client_survivor" then
+        capabilities = {
+            selected_adapter = "client_survivor",
+            friendly = true,
+            control_ready = type(rawget(_G, "stepGoblinServerActor")) == "function"
+        }
+    else
+        capabilities = legacyModules().NpcAdapter.capabilities()
+    end
     print("[GoblinSurvivor] adapter=" .. tostring(capabilities.selected_adapter)
         .. " friendly=" .. tostring(capabilities.friendly)
         .. " control_ready=" .. tostring(capabilities.control_ready))
@@ -75,19 +142,41 @@ function Bootstrap.start()
     Bootstrap.lastHeartbeat = monotonicSeconds()
 end
 
+-- The local test client loads the mod package too, but Goblin's IPC, world
+-- mutation, and telemetry authority belong exclusively to the server. This
+-- guard prevents a client-side Bootstrap from racing the server or creating a
+-- second native body in the shared local bridge directory.
+if not runningOnServer() then
+    return Bootstrap
+end
+
 if Events and Events.OnZombieDead and type(Events.OnZombieDead.Add) == "function" then
     Events.OnZombieDead.Add(function(zombie)
-        GoblinNPC.onZombieDeath(zombie)
+        if Config.bodyMode == "client_survivor" then return end
+        local legacy = legacyModules()
+        legacy.GoblinNPC.onZombieDeath(zombie)
+        legacy.GSSurvivor.OnDeath(zombie)
     end)
 end
 if Events and Events.OnZombieCreate and type(Events.OnZombieCreate.Add) == "function" then
     Events.OnZombieCreate.Add(function(zombie)
-        NPCRegistry.onZombieCreate(zombie)
+        if Config.bodyMode == "client_survivor" then return end
+        legacyModules().NPCRegistry.onZombieCreate(zombie)
     end)
 end
 if Events and Events.OnZombieUpdate and type(Events.OnZombieUpdate.Add) == "function" then
     Events.OnZombieUpdate.Add(function(zombie)
-        GoblinNPC.onZombieUpdate(zombie)
+        if Config.bodyMode == "client_survivor" then return end
+        -- Storm may mark a fully-registered body after the engine's original
+        -- OnZombieCreate callback. Give the registry a cheap adoption pass on
+        -- the first update of that body.
+        local legacy = legacyModules()
+        legacy.NPCRegistry.onZombieCreate(zombie)
+        if legacy.GSSurvivor.IsManaged(zombie) then
+            legacy.GSSurvivor.Update(zombie)
+        else
+            legacy.SurvivorInteraction.onZombieUpdate(zombie)
+        end
     end)
 end
 

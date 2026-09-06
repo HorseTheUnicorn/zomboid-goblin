@@ -1,23 +1,20 @@
 # Zomboid Goblin
 
-Goblin is a persistent, server-side Project Zomboid NPC. The dedicated Build
-42 server owns a friendly Bandits2 body running Bandits2's `Companion`
-behavior; GoblinSurvivor adds Goblin identity, safety, chat, high-level
-commands, and persistence around that body. The Python service on `.76`
-supplies bounded decisions and a read-only tracker. No Steam/PZ client is
-installed or required on `.76`.
+Goblin is a persistent, server-side Project Zomboid NPC. GoblinSurvivor owns
+the native Build 42 body creation and behavior layer: identity, friendly
+filtering, navigation, bounded zombie combat, speech, persistence, and safe
+recovery. The Python service on `.76` supplies bounded decisions and a
+read-only tracker. No Steam/PZ client is installed or required on `.76`.
 
-This repository is the own Goblin mod built on top of Bandits2. Bandits2 is a
-required framework dependency, not a replacement for GoblinSurvivor and not a
-source tree copied into this project. GoblinSurvivor calls the verified
-Bandits2 server APIs to create and drive the networked body, then owns the
-Goblin-specific identity, friendly/protection policy, persistence, chat, and
-command rules.
+The mod uses the vanilla Build 42 `createZombie`/`SurvivorFactory` path when
+available and falls back to the vanilla `addZombiesInOutfit` API only when the
+descriptor path is unavailable. There is no external NPC framework or
+Workshop body-engine dependency.
 
 ## Runtime layout
 
-- `.03` (`192.168.0.3`): dedicated PZ server, existing save, Bandits2
-  Workshop item `3268487204`, and the server-side GoblinSurvivor package.
+- `.03` (`192.168.0.3`): dedicated PZ server, existing save, and the
+  server-side GoblinSurvivor package.
 - `.76` (`192.168.0.76`): local Qwen, Python agent/relay, memory, and tracker
   website/API. It has no Goblin gameplay client. The website is served by the
   same read-only tracker process and renders the current B42 map tiles copied
@@ -25,19 +22,18 @@ command rules.
 - `goblin.primary`: stable NPC identity. Death or unload is handled by the
   server-side registry and recovery loop.
 - `GoblinManagedNpcCount`: bounded optional roster size for our own friendly
-  companions. The default live setting is `3`; set it to `0` for Goblin-only
-  operation. Companions use Bandits2 bodies but are owned, named, persisted,
-  and squad-controlled by GoblinSurvivor.
+  companions. The default live setting is `6`; set it to `0` for Goblin-only
+  operation. Companions use the same native body engine but are owned, named,
+  persisted, and squad-controlled by GoblinSurvivor.
 
 The model sees `brain_view` only: named targets, coarse threat/distance
 signals, and bounded events. Exact coordinates are stored separately in the
 tracker telemetry path for the map and never enter Qwen context.
 
 The GoblinSurvivor package includes the small client relay needed for
-multiplayer conversation, while Bandits2 supplies the networked NPC body and
-behavior. Joining clients therefore need the same Workshop dependencies that
-the server advertises; Steam can download them as part of the server's
-`WorkshopItems=` loadout. The relay forwards only a local player's chat when
+multiplayer conversation. Joining clients need GoblinSurvivor only; Steam can
+download it as part of the server's `WorkshopItems=` loadout. The relay
+forwards only a local player's chat when
 the message mentions Goblin; the server verifies the sender, redacts
 coordinate-like text, and sends the event to Python/Qwen. Authorized chat
 requests also carry a one-use server-minted capability for squad/job/base
@@ -69,11 +65,13 @@ gameplay command, spawn, move, attack, chat, or admin mutation endpoint.
 Qwen emits one strict JSON intent. Python validates it, deterministic safety
 and entity/job/squad gates inspect it, and `NpcBodyDriver` writes a typed
 `command.npc_action` message. Lua validates the message again and resolves
-semantic targets locally before calling the Bandits2-backed friendly NPC
+semantic targets locally before calling the native GoblinSurvivor body
 adapter.
 Unsupported engine capabilities fail closed.
 
 See [docs/NPC_ARCHITECTURE.md](docs/NPC_ARCHITECTURE.md),
-[docs/BANDITS_API_NOTES.md](docs/BANDITS_API_NOTES.md), and
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the current design and live
+[docs/NATIVE_NPC_ENGINE.md](docs/NATIVE_NPC_ENGINE.md), and
+[docs/FRIENDLY_SURVIVOR_FRAMEWORK.md](docs/FRIENDLY_SURVIVOR_FRAMEWORK.md), and
+[docs/LOCAL_TESTING.md](docs/LOCAL_TESTING.md) for the Windows development
+loop, and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the current live
 operator workflow.

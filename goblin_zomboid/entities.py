@@ -6,11 +6,14 @@ from dataclasses import dataclass, field
 import re
 from collections.abc import Iterable
 
+from .identities import player_entity_id
+
 
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 _FORMATIONS = {"line", "wedge", "column", "ring", "loose"}
 ALLOWED_JOBS = {
-    "wander", "guard", "patrol", "scout", "haul", "build", "farm", "loot", "medic", "quartermaster",
+    "wander", "guard", "patrol", "scout", "haul", "hauler", "build", "builder",
+    "farm", "farmer", "loot", "scavenge", "disassemble", "medic", "quartermaster",
 }
 
 
@@ -52,6 +55,7 @@ class EntityRegistry:
     def __init__(self, *, npc_ids: Iterable[str] = (), player_ids: Iterable[str] = ()) -> None:
         self.npcs: dict[str, ManagedEntity] = {}
         self.players: set[str] = set()
+        self.player_names: dict[str, str] = {}
         for entity_id in npc_ids:
             self.register_npc(entity_id)
         for player_id in player_ids:
@@ -64,16 +68,27 @@ class EntityRegistry:
         self.npcs[entity_id] = entity
         return entity
 
-    def register_player(self, player_id: str) -> None:
-        if not valid_entity_id(player_id):
+    def register_player(self, player_id: str, *, name: str | None = None) -> str:
+        logical_id = player_entity_id(player_id)
+        if logical_id is None or not valid_entity_id(logical_id):
             raise ValueError("invalid player id")
-        self.players.add(player_id)
+        self.players.add(logical_id)
+        if isinstance(name, str) and name:
+            self.player_names[logical_id] = name[:96]
+        elif not player_id.casefold().startswith("player."):
+            self.player_names.setdefault(logical_id, player_id[:96])
+        return logical_id
 
     def known_npc(self, entity_id: str) -> bool:
         return entity_id in self.npcs
 
     def known_player(self, player_id: str) -> bool:
-        return player_id in self.players
+        logical_id = player_entity_id(player_id)
+        return logical_id in self.players if logical_id is not None else False
+
+    def native_player_name(self, player_id: str) -> str | None:
+        logical_id = player_entity_id(player_id)
+        return self.player_names.get(logical_id) if logical_id is not None else None
 
 
 class SquadManager:

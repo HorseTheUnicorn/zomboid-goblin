@@ -95,7 +95,7 @@ function BaseManager.canDepart(count)
         and BaseManager.assignedGuards - count >= BaseManager.minimumGuards
 end
 
-function BaseManager.setFromPlayer(player)
+function BaseManager.setFromPlayer(player, requestedName)
     BaseManager.load()
     if not Config.isAuthorizedPlayer(player) then
         return false, "only an authorized commander or server administrator may set the base"
@@ -103,8 +103,13 @@ function BaseManager.setFromPlayer(player)
     local point = pointOf(player)
     if point == nil then return false, "issuing player has no valid world position" end
     BaseManager.anchor = point
+    if type(requestedName) == "string" then
+        local name = string.gsub(requestedName, "[^A-Za-z0-9_%-]", "")
+        if #name >= 1 and #name <= 64 then BaseManager.name = name end
+    end
     if save() then
-        return true, "home base set from the authorized player's current position"
+        return true, "home base '" .. BaseManager.name
+            .. "' set from the authorized player's current position"
     end
     return false, "base position could not be persisted"
 end

@@ -82,6 +82,27 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(result.accepted)
         self.assertEqual(result.action.action, Action.DRINK)
 
+    def test_melee_intent_reaches_the_typed_action_boundary(self) -> None:
+        intent = IntentValidator().validate(
+            {
+                "intent": "MELEE_ATTACK",
+                "mode": "HUNT",
+                "target": {"kind": "nearby_threat", "name": "nearby hostile zombie"},
+            }
+        )
+        result = SafetyController().decide(
+            intent,
+            BodyState(
+                body_present=True,
+                weapon_ready=True,
+                mode="HUNT",
+                control_ready=True,
+                npc_engine_ready=True,
+            ),
+        )
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.action.action, Action.MELEE_ATTACK)
+
     def test_bodyless_movement_is_blocked(self) -> None:
         intent = IntentValidator().validate(
             {

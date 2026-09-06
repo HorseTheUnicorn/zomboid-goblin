@@ -238,7 +238,7 @@
     if (goblin && safeNumber(goblin.x) !== null && safeNumber(goblin.y) !== null) {
       ui.mapCoordinates.textContent = `x ${Math.round(goblin.x)} · y ${Math.round(goblin.y)}${safeNumber(goblin.z) !== null ? ` · z ${Math.round(goblin.z)}` : ""}`;
     } else ui.mapCoordinates.textContent = "Goblin position not reported";
-    ui.goblinNote.textContent = alive ? "Bandits2 body is present; GoblinSurvivor policy controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
+    ui.goblinNote.textContent = alive ? "Native PZ body is present; GoblinSurvivor controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
   }
 
   function renderRoster() {
@@ -278,7 +278,7 @@
       heading.append(name, stateLabel);
       const meta = document.createElement("div"); meta.className = "roster-meta";
       const details = [entry.role, entry.mode || entry.task, entry.squad_id ? `squad ${entry.squad_id}` : null].filter(Boolean);
-      meta.textContent = details.join(" · ") || "managed Bandits2 body";
+      meta.textContent = details.join(" · ") || "managed native body";
       row.append(heading, meta); ui.rosterList.append(row);
     }
   }

@@ -12,7 +12,7 @@ from goblin_zomboid.entities import EntityRegistry, JobManager, SquadManager
 from goblin_zomboid.ipc import BridgeStore
 from goblin_zomboid.npc import NpcBodyDriver
 from goblin_zomboid.protocol import decode_message
-from goblin_zomboid.tracker import TrackerApp, TrackerStore
+from goblin_zomboid.tracker import TrackerApp, TrackerPrivacy, TrackerStore
 from goblin_zomboid.validator import IntentValidator
 
 
@@ -49,6 +49,17 @@ class NpcBoundaryTests(unittest.TestCase):
             ).status,
             "sensor_only",
         )
+
+    def test_driver_publishes_the_selected_managed_companion_id(self) -> None:
+        driver = NpcBodyDriver(self.store, control_ready=True, npc_engine_ready=True)
+        driver.update_npc_ids(("goblin.primary", "npc.sarah"))
+        result = driver.execute(
+            SafeAction(Action.NOOP, 1, "Sarah check in", npc_id="npc.sarah")
+        )
+        self.assertTrue(result.accepted)
+        item = next(self.store.iter_ready("commands"))
+        message = self.store.read_ready(item)
+        self.assertEqual(message.fields["npc_id"], "npc.sarah")
 
     def test_privileged_driver_action_requires_and_carries_authority_grant(self) -> None:
         driver = NpcBodyDriver(
@@ -145,6 +156,32 @@ class EntityAndTrackerTests(unittest.TestCase):
         self.assertNotIn("secret", public["npcs"][0])
         self.assertEqual(public["npcs"][0]["x"], 100)
         self.assertEqual(TrackerApp(tracker).handle("POST", "/api/state")[0], 405)
+        tracker.close()
+
+    def test_tracker_privacy_can_hide_players_npcs_names_and_positions(self) -> None:
+        tracker = TrackerStore(self.directory / "privacy.sqlite3")
+        tracker.record_state(
+            {
+                "npc_id": "goblin.primary",
+                "entities": [
+                    {"kind": "player", "name": "Alice", "id": "player-1", "x": 1, "y": 2},
+                    {"kind": "npc", "npc_id": "goblin.primary", "x": 3, "y": 4},
+                ],
+            }
+        )
+        privacy = TrackerPrivacy(
+            show_players=True,
+            show_player_names=False,
+            show_exact_positions=False,
+            show_npcs=True,
+            mode="approximate",
+        )
+        public = TrackerApp(tracker, privacy=privacy).handle("GET", "/api/state")[2]
+        self.assertEqual(len(public["entities"]), 2)
+        self.assertNotIn("name", public["entities"][0])
+        self.assertNotIn("id", public["entities"][0])
+        self.assertNotIn("x", public["entities"][0])
+        self.assertNotIn("x", public["entities"][1])
         tracker.close()
 
     def test_tracker_stream_sends_initial_snapshot_and_live_update(self) -> None:
