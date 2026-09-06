@@ -25,6 +25,40 @@ local function clientActorMode()
     return Config.bodyMode == "client_survivor"
 end
 
+local function buildAgentPerception(npc, body, perception, roster, base)
+    local builder = rawget(_G, "buildGoblinAgentPerception")
+    if type(builder) ~= "function" then return nil end
+    -- This input is intentionally assembled from coarse state and roster
+    -- snapshots.  Do not pass publicState(), exact tracker entities, or any
+    -- position-bearing table to the model-facing Storm DTO.
+    local input = {
+        actor_id = npc.npc_id or Config.npcId,
+        display_name = body.name or npc.name or Config.npcName,
+        alive = npc.alive == true,
+        body_present = npc.body_present == true,
+        control_ready = npc.control_ready == true,
+        npc_engine_ready = npc.npc_engine_ready == true,
+        mode = body.mode,
+        task = body.task,
+        job = body.job,
+        combat_status = body.combat_status,
+        work_status = body.work_status,
+        expedition_phase = body.expedition_phase,
+        firearm_type = body.firearm_type,
+        weapon_ready = body.weapon_ready == true,
+        running = body.running == true,
+        health = body.health,
+        threat_level = perception.threat_level,
+        ordinary_zombie_count = clientActorMode()
+            and ClientSurvivorServer.ordinaryZombieCount() or nil,
+        nearby_players = perception.nearby_players,
+        npcs = roster,
+        base = base
+    }
+    local ok, value = pcall(builder, input)
+    return ok and type(value) == "table" and value or nil
+end
+
 local function runtimeNpcState()
     if clientActorMode() then return ClientSurvivorServer.status() end
     return legacyModules().GoblinNPC.getGoblinState()
@@ -103,6 +137,11 @@ function Telemetry.writeState()
     if legacy ~= nil then body = legacy.NpcAdapter.status(zombie) end
     local roster = ClientSurvivorServer.statusAll()
     if legacy ~= nil then roster = legacy.NPCRegistry.snapshot() end
+    local base = GuardManager.snapshot()
+    local jobs = JobManager.snapshot()
+    local squads = SquadManager.snapshot()
+    local agentPerception = buildAgentPerception(npc, body, perception, roster, base)
+    local capabilities = agentPerception ~= nil and agentPerception.capabilities or nil
     return IPC.publishRuntime("zomboid-state", {
         protocol = Config.protocol,
         request_id = "zomboid-state",
@@ -165,9 +204,11 @@ function Telemetry.writeState()
         -- visible to the server. Goblin's human body is never counted here.
         ordinary_zombie_count = clientActorMode()
             and ClientSurvivorServer.ordinaryZombieCount() or nil,
-        base = GuardManager.snapshot(),
-        jobs = JobManager.snapshot(),
-        squads = SquadManager.snapshot(),
+        base = base,
+        jobs = jobs,
+        squads = squads,
+        agent_perception = agentPerception,
+        capabilities = capabilities,
         player_count = #perception.nearby_players,
         nearby_players = perception.nearby_players,
          npcs = roster
@@ -211,7 +252,8 @@ function Telemetry.writeExactState()
                 local playerPoint = position(player)
                 local username = player and type(player.getUsername) == "function" and player:getUsername() or ""
                 if playerPoint ~= nil and type(username) == "string" and #username > 0 and #username <= 96 then
-                    playerPoint.entity_id = username
+                    playerPoint.entity_id = "player." .. string.lower(username)
+                    playerPoint.name = username
                     playerPoint.kind = "player"
                     table.insert(entities, playerPoint)
                 end

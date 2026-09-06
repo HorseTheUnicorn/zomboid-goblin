@@ -24,6 +24,7 @@ class Action(str, Enum):
     JOIN_PARTY = "JOIN_PARTY"
     LEAVE_PARTY = "LEAVE_PARTY"
     ATTACK = "ATTACK"
+    MELEE_ATTACK = "MELEE_ATTACK"
     FLEE = "FLEE"
     EAT = "EAT"
     DRINK = "DRINK"
@@ -235,6 +236,7 @@ class TacticalController:
         "GO_HOME": Action.GO_HOME,
         "JOIN_PARTY": Action.JOIN_PARTY,
         "LEAVE_PARTY": Action.LEAVE_PARTY,
+        "MELEE_ATTACK": Action.MELEE_ATTACK,
         "HUNT_START": Action.NOOP,
         "HUNT_HINT": Action.SAY,
         "HUNT_RELOCATE": Action.MOVE_TO,

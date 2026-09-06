@@ -8,6 +8,7 @@ local Config = require("GoblinSurvivor/Config")
 local Profiles = require("GoblinSurvivor/Profiles")
 local Protocol = require("GoblinSurvivor/ClientSurvivorProtocol")
 local BaseManager = require("GoblinSurvivor/BaseManager")
+local ExpeditionManager = require("GoblinSurvivor/ExpeditionManager")
 
 local Server = {
     started = false,
@@ -28,18 +29,14 @@ local Server = {
 }
 
 local PERSISTENCE_NAME = "GoblinSurvivorClientSurvivor"
-local PERSISTENCE_VERSION = 3
+local PERSISTENCE_VERSION = 4
 local PERSIST_INTERVAL_MS = 5000
-local DEFAULT_JOB_BY_ROLE = {
-    medic = "MEDIC",
-    guard = "GUARD",
-    hauler = "HAULER",
-    farmer = "FARMER",
-    builder = "BUILDER",
-    scout = "SCOUT",
-    mechanic = "DISASSEMBLE",
-    companion = "SCAVENGE"
-}
+-- All companions scavenge by default. Role labels remain useful for
+-- appearance, status, and explicit player orders, but a fresh roster must
+-- not leave a guard, builder, or medic standing idle while the player is
+-- waiting for supplies. `/gss guard`, `/gss build`, `/gss fortify`, and the
+-- other job commands are the deliberate opt-in for specialized work.
+local DEFAULT_COMPANION_JOB = "SCAVENGE"
 local WORK_OFFSETS = {
     -- Stations are deliberately several tiles apart.  The server authority
     -- also enforces MIN_BODY_SEPARATION, so close role offsets would make
@@ -134,10 +131,18 @@ end
 local function findPlayer(username)
     if type(username) ~= "string" or username == "" then return nil end
     local wanted = string.lower(username)
+    local wantedName = wanted
+    if string.sub(wanted, 1, 7) == "player." then
+        wantedName = string.sub(wanted, 8)
+    end
     for _, player in ipairs(onlinePlayers()) do
         local name = playerName(player)
-        if name ~= nil and string.lower(name) == wanted then
-            return player
+        if name ~= nil then
+            local normalized = string.lower(name)
+            if normalized == wanted or normalized == wantedName
+                or ("player." .. normalized) == wanted then
+                return player
+            end
         end
     end
     return nil
@@ -180,14 +185,29 @@ local function profileEnvelope(npcId)
     }
 end
 
-local function defaultJob(profile)
-    local role = type(profile) == "table" and string.upper(tostring(profile.role or "")) or ""
-    return DEFAULT_JOB_BY_ROLE[string.lower(role)] or "SCAVENGE"
+local function defaultJob(_profile)
+    return DEFAULT_COMPANION_JOB
+end
+
+local function movementMode(value)
+    local mode = string.upper(tostring(value or "AUTO"))
+    if mode ~= "AUTO" and mode ~= "WALK" and mode ~= "RUN" then
+        return "AUTO"
+    end
+    return mode
+end
+
+local function builderWaitingForChat(state)
+    return state ~= nil
+        and string.upper(tostring(state.job or "")) == "BUILDER"
+        and state.builder_commanded ~= true
 end
 
 local function workOrigin(state)
     local base = BaseManager.point()
     if base ~= nil then return base end
+    local player = position(firstPlayer())
+    if player ~= nil then return player end
     if state == nil or type(state.home_x) ~= "number"
         or type(state.home_y) ~= "number" or type(state.home_z) ~= "number" then
         return nil
@@ -195,10 +215,47 @@ local function workOrigin(state)
     return { x = state.home_x, y = state.home_y, z = state.home_z }
 end
 
+-- The Java authority needs the exact base anchor as a combat-protection
+-- input.  Keep it separate from home_x/home_y/home_z, which are per-survivor
+-- formation/home coordinates and must not be mistaken for the shared base.
+local function publishProtectionAnchor(state)
+    if state == nil then return end
+    local base = BaseManager.point()
+    if base == nil then
+        state.protection_base_x = nil
+        state.protection_base_y = nil
+        state.protection_base_z = nil
+        return
+    end
+    state.protection_base_x = base.x
+    state.protection_base_y = base.y
+    state.protection_base_z = base.z
+end
+
 local function workPointFor(state, job)
     local origin = workOrigin(state)
     if origin == nil then return nil end
     local normalized = string.upper(tostring(job or state.job or "SCAVENGE"))
+    -- Construction is a deliberate player order.  When a base is anchored,
+    -- fortification belongs there; otherwise the builder's current square is
+    -- the safe fallback.  Do not send a chat-authorized build job to a fixed
+    -- role offset that may be behind a wall or on an unreachable floor.  The
+    -- Java worker places the next free wooden wall around this station.
+    -- With an anchored base this is the builder's current group location. An
+    -- uncommanded builder never reaches this branch because
+    -- builderWaitingForChat clears its destination first.
+    if normalized == "BUILDER" and state.builder_commanded == true
+        and type(state.x) == "number" and type(state.y) == "number"
+        and type(state.z) == "number" then
+        local base = BaseManager.point()
+        if base ~= nil then return base end
+        return { x = state.x, y = state.y, z = state.z }
+    end
+    -- Expedition jobs use a durable outbound/return route.  Guard duty uses
+    -- the shared base anchor rather than a role offset; the remaining legacy
+    -- work offsets are retained for non-expedition utility jobs.
+    local expeditionPoint = ExpeditionManager.destinationFor(state, normalized, origin)
+    if expeditionPoint ~= nil then return expeditionPoint end
     local offset = WORK_OFFSETS[normalized] or WORK_OFFSETS.SCAVENGE
     return {
         x = origin.x + offset.x,
@@ -226,19 +283,50 @@ local function initialPosition(player, rosterIndex)
     }
 end
 
+-- The semantic roster must still be able to advance while the last player is
+-- offline, including after a dedicated-server restart.  Never trust a saved
+-- coordinate blindly: it is only a fallback for logical state and the Java
+-- authority will resolve a usable physical square when a player reconnects.
+local function persistedPoint(record, prefix)
+    if type(record) ~= "table" then return nil end
+    local x = record[prefix .. "_x"]
+    local y = record[prefix .. "_y"]
+    local z = record[prefix .. "_z"]
+    if type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number"
+        or x ~= x or y ~= y or z ~= z
+        or x == math.huge or x == -math.huge
+        or y == math.huge or y == -math.huge
+        or z == math.huge or z == -math.huge then
+        return nil
+    end
+    return { x = x, y = y, z = z }
+end
+
 local function ensureState(player)
     if Server.rosterInitialized and Server.state ~= nil then return Server.state end
     player = player or firstPlayer()
-    local point = initialPosition(player, 1)
-    if point == nil then return nil end
-    Server.sequence = Server.sequence + 1
-    local username = playerName(player)
     local data = persistentData()
     local savedRoster = data ~= nil and type(data.roster) == "table" and data.roster or {}
     local savedLayoutVersion = data ~= nil and tonumber(data.version) or 0
+    local point = initialPosition(player, 1)
+    if point == nil then
+        local savedPrimary = savedRoster[Config.npcId]
+        point = persistedPoint(savedPrimary, "position")
+            or persistedPoint(savedPrimary, "home")
+            or BaseManager.point()
+    end
+    if point == nil then return nil end
+    Server.sequence = Server.sequence + 1
+    local username = playerName(player)
     local primary = nil
     for rosterIndex, npcId in ipairs(rosterIds()) do
         local actorPoint = initialPosition(player, rosterIndex)
+        if actorPoint == nil then
+            local savedActor = savedRoster[npcId]
+            actorPoint = persistedPoint(savedActor, "position")
+                or persistedPoint(savedActor, "home")
+                or point
+        end
         if actorPoint == nil then return nil end
         local profile = profileFor(npcId)
         local isGoblin = npcId == Config.npcId
@@ -252,6 +340,8 @@ local function ensureState(player)
             y = actorPoint.y,
             z = actorPoint.z,
             display_name = profile.displayName,
+            leader_id = Config.npcId,
+            command_role = isGoblin and "LEADER" or "COMPANION",
             role = profile.role,
             survivor_type = profile.type,
             profile = profileEnvelope(npcId),
@@ -268,9 +358,51 @@ local function ensureState(player)
             control_mode = isGoblin and "FOLLOW" or "JOB",
             combat_mode = "HUNT",
             job = job,
+            -- A builder role is only a capability label. Construction is
+            -- armed by the explicit in-game /gss build command; it is never
+            -- enabled by the default roster or a bridge assignment.
+            builder_commanded = false,
             work_status = isGoblin and "coordinating" or "assigned",
             work_count = 0,
             last_work_item = nil,
+            guard_patrol_index = 0,
+            guard_post = nil,
+            guard_post_x = nil,
+            guard_post_y = nil,
+            guard_post_z = nil,
+            guard_status = nil,
+            scout_threat_count = 0,
+            scout_last_report = nil,
+            farm_plot_count = 0,
+            farm_last_action = nil,
+            medic_status = nil,
+            medic_last_target = nil,
+            expedition_phase = isGoblin and "FOLLOW" or "OUTBOUND",
+            expedition_round = 0,
+            expedition_target = nil,
+            offline_cargo = {},
+            offline_work_ms = 0,
+            offline_last_ms = 0,
+            cargo_count = 0,
+            cargo_types = 0,
+            -- Dave's HAULER role automatically recovers one usable car per
+            -- expedition. Other workers can opt into the same server-owned
+            -- vehicle state machine with /gss cars; the flag is persisted.
+            vehicle_recovery_enabled = job == "HAULER"
+                or string.lower(tostring(profile.role or "")) == "hauler",
+            vehicle_status = "idle",
+            vehicle_error = nil,
+            vehicle_recoveries = 0,
+            vehicle_id = nil,
+            vehicle_engine_running = false,
+            vehicle_target_x = nil,
+            vehicle_target_y = nil,
+            vehicle_target_z = nil,
+            auto_expedition = false,
+            return_to_follow = false,
+            delivery_status = nil,
+            movement_mode = "AUTO",
+            running = false,
             manual_control = false,
             god_mode = true,
             alive = false,
@@ -285,15 +417,24 @@ local function ensureState(player)
             combat_status = "waiting_authority",
             server_timestamp_ms = Protocol.nowMs()
         }
+        ExpeditionManager.prepare(actorState)
         if not isGoblin then actorState.destination = workPointFor(actorState, job) end
         restoreRecord(actorState, savedRoster[npcId], player, savedLayoutVersion)
         Server.states[npcId] = actorState
+        if builderWaitingForChat(actorState) then
+            actorState.destination = nil
+            actorState.work_status = "waiting_for_build_command"
+        end
         if npcId == Config.npcId then primary = actorState end
     end
     Server.state = primary
     Server.rosterInitialized = primary ~= nil
     Server.persistenceLoaded = true
     if not Server.rosterInitialized then return nil end
+    -- Persist the initial roster even when the server was started without a
+    -- player.  This makes the offline expedition ledger survive a cold boot
+    -- instead of waiting for a later chat command to dirty the save.
+    Server.persistDirty = true
     log("authoritative client-survivor actor initialized at "
         .. tostring(primary.x) .. "," .. tostring(primary.y) .. "," .. tostring(primary.z)
         .. " (" .. tostring(#rosterIds()) .. " actor(s))")
@@ -320,6 +461,7 @@ end
 local function publicState(state)
     state = state or Server.state
     if state == nil or state.authority ~= "java_human" then return nil end
+    local offlineCount, offlineTypes = ExpeditionManager.cargoSummary(state)
     return {
         protocol = state.protocol,
         actor_id = state.actor_id,
@@ -340,11 +482,49 @@ local function publicState(state)
         task = state.task,
         target_username = state.target_username,
         target_actor_id = state.target_actor_id,
+        leader_id = Config.npcId,
+        command_role = state.actor_id == Config.npcId and "LEADER" or "COMPANION",
+        protection_base_x = state.protection_base_x,
+        protection_base_y = state.protection_base_y,
+        protection_base_z = state.protection_base_z,
         control_mode = state.control_mode,
         job = state.job,
         work_status = state.work_status,
+        builder_commanded = state.builder_commanded == true,
         work_count = state.work_count or 0,
         last_work_item = state.last_work_item,
+        guard_patrol_index = state.guard_patrol_index or 0,
+        guard_post = state.guard_post,
+        guard_post_x = state.guard_post_x,
+        guard_post_y = state.guard_post_y,
+        guard_post_z = state.guard_post_z,
+        guard_status = state.guard_status,
+        scout_threat_count = state.scout_threat_count or 0,
+        scout_last_report = state.scout_last_report,
+        farm_plot_count = state.farm_plot_count or 0,
+        farm_last_action = state.farm_last_action,
+        medic_status = state.medic_status,
+        medic_last_target = state.medic_last_target,
+        expedition_phase = state.expedition_phase,
+        expedition_round = state.expedition_round or 0,
+        cargo_count = state.cargo_count or 0,
+        cargo_types = state.cargo_types or 0,
+        offline_cargo_count = offlineCount,
+        offline_cargo_types = offlineTypes,
+        vehicle_recovery_enabled = state.vehicle_recovery_enabled == true,
+        vehicle_status = state.vehicle_status,
+        vehicle_error = state.vehicle_error,
+        vehicle_recoveries = state.vehicle_recoveries or 0,
+        vehicle_id = state.vehicle_id,
+        vehicle_engine_running = state.vehicle_engine_running == true,
+        vehicle_target_x = state.vehicle_target_x,
+        vehicle_target_y = state.vehicle_target_y,
+        vehicle_target_z = state.vehicle_target_z,
+        auto_expedition = state.auto_expedition == true,
+        return_to_follow = state.return_to_follow == true,
+        delivery_status = state.delivery_status,
+        movement_mode = movementMode(state.movement_mode),
+        running = state.running == true,
         alive = state.alive == true,
         body_present = state.body_present == true,
         body_generation = state.body_generation or 0,
@@ -352,6 +532,11 @@ local function publicState(state)
         weapon_ready = state.weapon_ready == true,
         firearm_type = state.firearm_type,
         weapon_policy = state.weapon_policy,
+        melee_weapon_type = state.melee_weapon_type,
+        melee_weapon_ready = state.melee_weapon_ready == true,
+        melee_attacks = state.melee_attacks or 0,
+        melee_kills = state.melee_kills or 0,
+        last_melee_error = state.last_melee_error,
         god_mode = state.god_mode == true,
         combat_mode = state.combat_mode,
         combat_status = state.combat_status,
@@ -362,6 +547,10 @@ local function publicState(state)
         last_kill_id = state.last_kill_id,
         death_reason = state.death_reason,
         last_fire_error = state.last_fire_error,
+        group_distance = state.group_distance,
+        protection_player_radius = state.protection_player_radius,
+        protection_base_radius = state.protection_base_radius,
+        group_leash_radius = state.group_leash_radius,
         spawn_status = state.spawn_status,
         spawn_pending = state.spawn_pending == true,
         spawn_attempts = state.spawn_attempts or 0,
@@ -457,9 +646,75 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
     state.target_username = savedText(record.target_username, 96)
     state.follow_username = savedText(record.follow_username, 96)
     state.manual_control = record.manual_control == true
+    -- Construction authorization is deliberately session-local. A saved
+    -- builder assignment must wait for a new explicit in-game chat command
+    -- after restart instead of resuming wall placement on its own.
+    state.builder_commanded = false
     state.work_status = savedText(record.work_status, 64) or state.work_status
     state.work_count = math.max(0, math.floor(savedNumber(record.work_count) or state.work_count or 0))
     state.last_work_item = savedText(record.last_work_item, 96)
+    state.guard_patrol_index = math.max(0, math.floor(
+        savedNumber(record.guard_patrol_index) or state.guard_patrol_index or 0
+    )) % 4
+    state.guard_post = savedPoint(record, "guard_post")
+    if state.guard_post ~= nil then
+        state.guard_post_x = state.guard_post.x
+        state.guard_post_y = state.guard_post.y
+        state.guard_post_z = state.guard_post.z
+    else
+        state.guard_post_x = nil
+        state.guard_post_y = nil
+        state.guard_post_z = nil
+    end
+    state.guard_status = savedText(record.guard_status, 64)
+    state.scout_threat_count = math.max(0, math.floor(
+        savedNumber(record.scout_threat_count) or state.scout_threat_count or 0
+    ))
+    state.scout_last_report = savedText(record.scout_last_report, 96)
+    state.farm_plot_count = math.max(0, math.floor(
+        savedNumber(record.farm_plot_count) or state.farm_plot_count or 0
+    ))
+    state.farm_last_action = savedText(record.farm_last_action, 96)
+    state.medic_status = savedText(record.medic_status, 64)
+    state.medic_last_target = savedText(record.medic_last_target, 96)
+    state.expedition_phase = savedText(record.expedition_phase, 32)
+        or state.expedition_phase
+    state.expedition_round = math.max(0, math.floor(
+        savedNumber(record.expedition_round) or state.expedition_round or 0
+    ))
+    state.expedition_target = savedPoint(record, "expedition")
+    state.offline_cargo = ExpeditionManager.importCargo(record.offline_cargo)
+    ExpeditionManager.mergeCargo(state, record.carried_cargo)
+    state.offline_work_ms = math.max(0, math.floor(
+        savedNumber(record.offline_work_ms) or state.offline_work_ms or 0
+    ))
+    state.offline_last_ms = savedNumber(record.offline_last_ms)
+        or state.offline_last_ms or 0
+    state.cargo_count = math.max(0, math.floor(
+        savedNumber(record.cargo_count) or state.cargo_count or 0
+    ))
+    state.cargo_types = math.max(0, math.floor(
+        savedNumber(record.cargo_types) or state.cargo_types or 0
+    ))
+    state.vehicle_recovery_enabled = record.vehicle_recovery_enabled == true
+        or (record.vehicle_recovery_enabled == nil
+            and (state.job == "HAULER"
+                or string.lower(tostring(state.role or "")) == "hauler"))
+    state.vehicle_status = "idle"
+    state.vehicle_error = nil
+    state.vehicle_recoveries = math.max(0, math.floor(
+        savedNumber(record.vehicle_recoveries) or state.vehicle_recoveries or 0
+    ))
+    state.vehicle_id = nil
+    state.vehicle_engine_running = false
+    state.vehicle_target_x = nil
+    state.vehicle_target_y = nil
+    state.vehicle_target_z = nil
+    state.auto_expedition = record.auto_expedition == true
+    state.return_to_follow = record.return_to_follow == true
+    state.movement_mode = movementMode(record.movement_mode or state.movement_mode)
+    state.running = false
+    ExpeditionManager.prepare(state)
     -- A saved follow target is useful only when it is still online. On a
     -- server restart, bind the roster back to the first online player instead
     -- of leaving every actor permanently holding on a stale username.
@@ -477,15 +732,31 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
     if state.actor_id ~= Config.npcId and state.manual_control ~= true then
         state.control_mode = "JOB"
         state.mode = "WORK"
-        state.job = state.job or defaultJob({ role = state.role })
+        -- A non-manual saved role is a default roster assignment, not a
+        -- player order. Reapply the automatic scavenging policy on every
+        -- restart so older saves with GUARD/BUILDER/etc. migrate cleanly.
+        state.job = defaultJob({ role = state.role })
         state.task = "JOB_" .. state.job
         state.target_username = nil
         state.follow_username = nil
         state.target_actor_id = nil
         state.arrival_task = nil
         state.combat_mode = "HUNT"
+        state.guard_patrol_index = 0
+        state.guard_post = nil
+        state.guard_post_x = nil
+        state.guard_post_y = nil
+        state.guard_post_z = nil
+        state.guard_status = nil
+        local loadedCargo = ExpeditionManager.cargoSummary(state)
+        state.expedition_target = nil
+        state.expedition_phase = loadedCargo > 0 and "RETURNING" or "OUTBOUND"
         state.destination = workPointFor(state, state.job)
         state.work_status = "assigned"
+    end
+    if builderWaitingForChat(state) then
+        state.destination = nil
+        state.work_status = "waiting_for_build_command"
     end
 end
 
@@ -499,7 +770,12 @@ local function savePersistentRoster(force)
     if data == nil then return false end
     data.version = PERSISTENCE_VERSION
     data.roster = {}
+    local captureCargo = rawget(_G, "persistGoblinActorCargo")
     for _, state in ipairs(orderedStates()) do
+        if type(captureCargo) == "function" then
+            pcall(captureCargo, state)
+        end
+        ExpeditionManager.prepare(state)
         local record = {
             actor_id = state.actor_id,
             body_generation = state.body_generation or 0,
@@ -515,7 +791,28 @@ local function savePersistentRoster(force)
             manual_control = state.manual_control == true,
             work_status = state.work_status,
             work_count = state.work_count or 0,
-            last_work_item = state.last_work_item
+            last_work_item = state.last_work_item,
+            guard_patrol_index = state.guard_patrol_index or 0,
+            guard_status = state.guard_status,
+            scout_threat_count = state.scout_threat_count or 0,
+            scout_last_report = state.scout_last_report,
+            farm_plot_count = state.farm_plot_count or 0,
+            farm_last_action = state.farm_last_action,
+            medic_status = state.medic_status,
+            medic_last_target = state.medic_last_target,
+            expedition_phase = state.expedition_phase,
+            expedition_round = state.expedition_round or 0,
+            offline_cargo = ExpeditionManager.exportCargo(state),
+            carried_cargo = ExpeditionManager.exportCargo(state.carried_cargo),
+            offline_work_ms = state.offline_work_ms or 0,
+            offline_last_ms = state.offline_last_ms or 0,
+            cargo_count = state.cargo_count or 0,
+            cargo_types = state.cargo_types or 0,
+            vehicle_recovery_enabled = state.vehicle_recovery_enabled == true,
+            vehicle_recoveries = state.vehicle_recoveries or 0,
+            auto_expedition = state.auto_expedition == true,
+            return_to_follow = state.return_to_follow == true,
+            movement_mode = movementMode(state.movement_mode)
         }
         setSavedPoint(record, "position", state)
         setSavedPoint(record, "home", {
@@ -525,6 +822,10 @@ local function savePersistentRoster(force)
             x = state.hold_x, y = state.hold_y, z = state.hold_z
         })
         setSavedPoint(record, "destination", state.destination)
+        setSavedPoint(record, "expedition", state.expedition_target)
+        setSavedPoint(record, "guard_post", state.guard_post or {
+            x = state.guard_post_x, y = state.guard_post_y, z = state.guard_post_z
+        })
         data.roster[state.actor_id] = record
     end
     if type(ModData.transmit) == "function" then
@@ -592,6 +893,22 @@ local function setHold(state, task, mode, point)
     state.target_actor_id = nil
     state.destination = nil
     state.arrival_task = nil
+    state.builder_commanded = false
+    state.job = nil
+    state.expedition_phase = "FOLLOW"
+    state.expedition_target = nil
+    state.auto_expedition = false
+    state.return_to_follow = false
+    state.vehicle_recovery_enabled = false
+    state.vehicle_status = "cancelled"
+    state.vehicle_error = nil
+    state.vehicle_id = nil
+    state.vehicle_engine_running = false
+    state.vehicle_target_x = nil
+    state.vehicle_target_y = nil
+    state.vehicle_target_z = nil
+    state.movement_mode = "AUTO"
+    state.running = false
     state.combat_mode = "HUNT"
     state.manual_control = true
     state.work_status = "paused"
@@ -611,6 +928,17 @@ local function setDestination(state, task, mode, point, arrivalTask)
     state.target_actor_id = nil
     state.destination = { x = point.x, y = point.y, z = point.z }
     state.arrival_task = arrivalTask
+    state.builder_commanded = false
+    state.vehicle_recovery_enabled = false
+    state.vehicle_status = "cancelled"
+    state.vehicle_error = nil
+    state.vehicle_id = nil
+    state.vehicle_engine_running = false
+    state.vehicle_target_x = nil
+    state.vehicle_target_y = nil
+    state.vehicle_target_z = nil
+    state.movement_mode = "AUTO"
+    state.running = false
     state.combat_mode = "HUNT"
     state.manual_control = true
     state.work_status = "moving"
@@ -628,6 +956,22 @@ local function setFollow(state, task, player)
     state.target_actor_id = nil
     state.destination = nil
     state.arrival_task = nil
+    state.builder_commanded = false
+    state.job = nil
+    state.expedition_phase = "FOLLOW"
+    state.expedition_target = nil
+    state.auto_expedition = false
+    state.return_to_follow = false
+    state.vehicle_recovery_enabled = false
+    state.vehicle_status = "cancelled"
+    state.vehicle_error = nil
+    state.vehicle_id = nil
+    state.vehicle_engine_running = false
+    state.vehicle_target_x = nil
+    state.vehicle_target_y = nil
+    state.vehicle_target_z = nil
+    state.movement_mode = "AUTO"
+    state.running = false
     state.combat_mode = "HUNT"
     state.manual_control = true
     state.work_status = "following"
@@ -644,6 +988,22 @@ local function setFollowActor(state, task, targetState)
     state.target_actor_id = targetState.actor_id
     state.destination = nil
     state.arrival_task = nil
+    state.builder_commanded = false
+    state.job = nil
+    state.expedition_phase = "FOLLOW"
+    state.expedition_target = nil
+    state.auto_expedition = false
+    state.return_to_follow = false
+    state.vehicle_recovery_enabled = false
+    state.vehicle_status = "cancelled"
+    state.vehicle_error = nil
+    state.vehicle_id = nil
+    state.vehicle_engine_running = false
+    state.vehicle_target_x = nil
+    state.vehicle_target_y = nil
+    state.vehicle_target_z = nil
+    state.movement_mode = "AUTO"
+    state.running = false
     state.combat_mode = "HUNT"
     state.manual_control = true
     state.work_status = "squad_follow"
@@ -682,8 +1042,13 @@ local function updateTask(state)
     elseif state.control_mode == "MOVE" then
         target = state.destination
     elseif state.control_mode == "JOB" then
-        state.destination = state.destination or workPointFor(state, state.job)
-        target = state.destination
+        if builderWaitingForChat(state) then
+            state.destination = nil
+            state.work_status = "waiting_for_build_command"
+        else
+            state.destination = state.destination or workPointFor(state, state.job)
+            target = state.destination
+        end
     end
     if target ~= nil then
         local moved = moveToward(state, target,
@@ -822,6 +1187,10 @@ end
 function Server.status()
     local ready = Server.state ~= nil and Server.state.authority == "java_human"
     local present = ready and Server.state.body_present == true
+    local offlineCount, offlineTypes = 0, 0
+    if Server.state ~= nil then
+        offlineCount, offlineTypes = ExpeditionManager.cargoSummary(Server.state)
+    end
     return {
         npc_id = Config.npcId,
         name = Config.npcName,
@@ -842,14 +1211,40 @@ function Server.status()
         target_npc_id = ready and Server.state.target_actor_id or nil,
         control_mode = ready and Server.state.control_mode or "WAITING",
         job = ready and Server.state.job or nil,
+        builder_commanded = ready and Server.state.builder_commanded == true or false,
         work_status = ready and Server.state.work_status or "waiting_authority",
         work_count = ready and Server.state.work_count or 0,
         last_work_item = ready and Server.state.last_work_item or nil,
+        guard_patrol_index = ready and Server.state.guard_patrol_index or 0,
+        guard_post = ready and Server.state.guard_post or nil,
+        guard_status = ready and Server.state.guard_status or nil,
+        scout_threat_count = ready and Server.state.scout_threat_count or 0,
+        scout_last_report = ready and Server.state.scout_last_report or nil,
+        farm_plot_count = ready and Server.state.farm_plot_count or 0,
+        farm_last_action = ready and Server.state.farm_last_action or nil,
+        medic_status = ready and Server.state.medic_status or nil,
+        medic_last_target = ready and Server.state.medic_last_target or nil,
+        expedition_phase = ready and Server.state.expedition_phase or "WAITING",
+        expedition_round = ready and Server.state.expedition_round or 0,
+        cargo_count = ready and Server.state.cargo_count or 0,
+        cargo_types = ready and Server.state.cargo_types or 0,
+        offline_cargo_count = offlineCount,
+        offline_cargo_types = offlineTypes,
+        auto_expedition = ready and Server.state.auto_expedition == true or false,
+        return_to_follow = ready and Server.state.return_to_follow == true or false,
+        delivery_status = ready and Server.state.delivery_status or nil,
+        movement_mode = ready and movementMode(Server.state.movement_mode) or "AUTO",
+        running = ready and Server.state.running == true or false,
         body_generation = ready and Server.state.body_generation or 0,
         health = ready and Server.state.health or 0,
         weapon_ready = ready and Server.state.weapon_ready == true,
         firearm_type = ready and Server.state.firearm_type or "Base.AssaultRifle2",
         weapon_policy = ready and Server.state.weapon_policy or "unlimited_ammo",
+        melee_weapon_type = ready and Server.state.melee_weapon_type or nil,
+        melee_weapon_ready = ready and Server.state.melee_weapon_ready == true,
+        melee_attacks = ready and Server.state.melee_attacks or 0,
+        melee_kills = ready and Server.state.melee_kills or 0,
+        last_melee_error = ready and Server.state.last_melee_error or nil,
         god_mode = ready and Server.state.god_mode == true or true,
         hostile_to_zombies = ready and Server.state.hostile_to_zombies == true or true,
         combat_mode = ready and Server.state.combat_mode or "DEFEND",
@@ -872,6 +1267,7 @@ end
 function Server.statusAll()
     local result = {}
     for _, state in ipairs(orderedStates()) do
+        local offlineCount, offlineTypes = ExpeditionManager.cargoSummary(state)
         table.insert(result, {
             npc_id = state.actor_id,
             name = state.display_name,
@@ -886,11 +1282,34 @@ function Server.statusAll()
             task = state.task,
             target_player = state.target_username,
             target_npc_id = state.target_actor_id,
+            leader_id = Config.npcId,
+            command_role = state.actor_id == Config.npcId and "LEADER" or "COMPANION",
             control_mode = state.control_mode,
             job = state.job,
+            builder_commanded = state.builder_commanded == true,
             work_status = state.work_status,
             work_count = state.work_count or 0,
             last_work_item = state.last_work_item,
+            guard_patrol_index = state.guard_patrol_index or 0,
+            guard_post = state.guard_post,
+            guard_status = state.guard_status,
+            scout_threat_count = state.scout_threat_count or 0,
+            scout_last_report = state.scout_last_report,
+            farm_plot_count = state.farm_plot_count or 0,
+            farm_last_action = state.farm_last_action,
+            medic_status = state.medic_status,
+            medic_last_target = state.medic_last_target,
+            expedition_phase = state.expedition_phase,
+            expedition_round = state.expedition_round or 0,
+            cargo_count = state.cargo_count or 0,
+            cargo_types = state.cargo_types or 0,
+            offline_cargo_count = offlineCount,
+            offline_cargo_types = offlineTypes,
+            auto_expedition = state.auto_expedition == true,
+            return_to_follow = state.return_to_follow == true,
+            delivery_status = state.delivery_status,
+            movement_mode = movementMode(state.movement_mode),
+            running = state.running == true,
             friendly = true,
             protected = state.actor_id == Config.npcId and Config.protected == true,
             needs_disabled = state.actor_id == Config.npcId,
@@ -901,6 +1320,11 @@ function Server.statusAll()
                 or "Base.AssaultRifle2",
             weapon_policy = state.weapon_policy
                 or "unlimited_ammo",
+            melee_weapon_type = state.melee_weapon_type,
+            melee_weapon_ready = state.melee_weapon_ready == true,
+            melee_attacks = state.melee_attacks or 0,
+            melee_kills = state.melee_kills or 0,
+            last_melee_error = state.last_melee_error,
             god_mode = state.god_mode == true,
             hostile_to_zombies = state.hostile_to_zombies == true,
             combat_mode = state.combat_mode,
@@ -958,14 +1382,21 @@ function Server.tick()
     -- connected player resumes physical servicing from the saved state.
     if #players == 0 then
         cleanupLegacyBodies()
+        local now = Protocol.nowMs()
+        local changed = ExpeditionManager.tickOffline(orderedStates(), now)
+        if changed then markPersistentDirty() end
         savePersistentRoster(false)
-        Server.lastTickAt = Protocol.nowMs()
+        Server.lastTickAt = now
         return true
     end
     -- Only Goblin's automatic FOLLOW target is rebound when a player returns.
     -- A deliberate manual command remains in force. This does not invent a
     -- fake player or use a zombie fallback.
     local goblin = Server.states[Config.npcId]
+    local now = Protocol.nowMs()
+    if goblin ~= nil and ExpeditionManager.updateGoblinIdle(goblin, player, now) then
+        markPersistentDirty()
+    end
     if goblin ~= nil and goblin.manual_control ~= true
         and goblin.control_mode == "HOLD" then
         setFollow(goblin, "FOLLOW", player)
@@ -977,20 +1408,39 @@ function Server.tick()
     -- point.
     cleanupLegacyBodies()
     for _, actorState in ipairs(orderedStates()) do
+        ExpeditionManager.prepare(actorState)
+        publishProtectionAnchor(actorState)
         if actorState.control_mode == "JOB" then
             local destination = workPointFor(actorState, actorState.job)
             local previous = actorState.destination
-            if destination ~= nil and (previous == nil
+            if not builderWaitingForChat(actorState)
+                and destination ~= nil and (previous == nil
                 or math.abs(previous.x - destination.x) > 0.1
                 or math.abs(previous.y - destination.y) > 0.1
                 or math.abs(previous.z - destination.z) > 0.1) then
                 actorState.destination = destination
                 markPersistentDirty()
+            elseif builderWaitingForChat(actorState) and previous ~= nil then
+                actorState.destination = nil
+                actorState.work_status = "waiting_for_build_command"
+                markPersistentDirty()
             end
         end
+        local beforeWorkCount = actorState.work_count or 0
+        local beforeCargoCount = actorState.cargo_count or 0
+        local beforePhase = actorState.expedition_phase
+        local beforeWorkStatus = actorState.work_status
         updateTask(actorState)
+        -- Java owns physical pickup/delivery and reports the result through
+        -- the shared state table. Capture those changes in ModData on the
+        -- normal persistence cadence so a cell unload cannot lose a haul.
+        if beforeWorkCount ~= (actorState.work_count or 0)
+            or beforeCargoCount ~= (actorState.cargo_count or 0)
+            or beforePhase ~= actorState.expedition_phase
+            or beforeWorkStatus ~= actorState.work_status then
+            markPersistentDirty()
+        end
     end
-    local now = Protocol.nowMs()
     if #players > 0 and type(sendServerCommand) == "function"
         and now - Server.lastBroadcastAt >= Server.broadcastIntervalMs then
         Server.sequence = Server.sequence + 1
@@ -1015,7 +1465,14 @@ function Server.execute(message)
     if type(message) ~= "table" or Server.state == nil then
         return false, "client-survivor actor is waiting for a connected player"
     end
-    local action = message.action
+    local actionAliases = {
+        FOLLOW_PLAYER = "FOLLOW",
+        HOLD = "HOLD_POSITION",
+        RETURN_HOME = "RETURN_TO_BASE",
+        SCAVENGE_AREA = "SCAVENGE"
+    }
+    local action = actionAliases[message.action] or message.action
+    message.action = action
     local state = Server.states[message.npc_id]
     if state == nil then
         return false, "client-survivor actor is not in the configured roster"
@@ -1034,7 +1491,9 @@ function Server.execute(message)
             protocol = Protocol.version,
             actor_id = state.actor_id,
             speech_sequence = Server.speechSequence,
-            text = message.text
+            text = message.text,
+            author = state.display_name,
+            channel = "general"
         }
         local ok = pcall(sendServerCommand, Protocol.module,
             Protocol.speechCommand, speech)
@@ -1061,6 +1520,27 @@ function Server.execute(message)
         state.destination = nil
         state.arrival_task = nil
         return true, "Goblin attack mode enabled; Java authority is scanning for hostile zombies"
+    end
+
+    if action == "MELEE_ATTACK" then
+        local kind = targetInfo(message)
+        if kind ~= "nearby_threat" then
+            return false, "MELEE_ATTACK requires the nearby_threat semantic target"
+        end
+        -- This is an explicit close-combat order. Java selects the live
+        -- ordinary zombie, closes only within its bounded melee radius, and
+        -- owns the hit/death result; the wire message never carries a zombie
+        -- object id or coordinates.
+        state.control_mode = "COMBAT"
+        state.combat_mode = "MELEE"
+        state.task = "MELEE_ATTACK"
+        state.mode = "PARTY"
+        state.target_username = nil
+        state.follow_username = nil
+        state.target_actor_id = nil
+        state.destination = nil
+        state.arrival_task = nil
+        return true, "Goblin melee mode enabled; Java authority is scanning for hostile zombies"
     end
 
     if action == "NOOP" then
@@ -1102,17 +1582,43 @@ function Server.execute(message)
             or message.authority_token ~= "local-combat-test" then
             return false, "local combat fixture is disabled"
         end
-        local spawn = rawget(_G, "spawnGoblinCombatFixture")
+        local spawnName = message.observe_only == true
+            and "spawnGoblinCombatObservation" or "spawnGoblinCombatFixture"
+        local spawn = rawget(_G, spawnName)
         if type(spawn) ~= "function" then
-            return false, "Storm combat-fixture hook is unavailable"
+            return false, "Storm combat-fixture hook is unavailable: " .. spawnName
         end
         local ok, created = pcall(spawn, state.actor_id)
         if not ok or created ~= true then
             return false, "ordinary zombie combat fixture could not be spawned"
         end
+        -- The observation form is for validating real networked zombie
+        -- creation/rendering independently from the combat loop. It leaves
+        -- the fixture alive so a tester can see it before issuing ATTACK or
+        -- MELEE_ATTACK as a separate command.
+        if message.observe_only == true then
+            state.control_mode = "HOLD"
+            state.combat_mode = "OFF"
+            state.task = "HOLD"
+            state.mode = "PARTY"
+            state.target_username = nil
+            state.follow_username = nil
+            state.target_actor_id = nil
+            state.destination = nil
+            state.arrival_task = nil
+            state.manual_control = true
+            return true, "local ordinary zombie observation fixture spawned"
+        end
         state.control_mode = "COMBAT"
-        state.combat_mode = "HUNT"
-        state.task = "ATTACK"
+        -- A melee fixture is prepared by setting MELEE first and spawning the
+        -- ordinary zombie second. Preserve that explicit mode so the normal
+        -- server tick cannot fire the rifle between the two local test
+        -- commands. A fixture requested from any other state keeps the
+        -- historical ATTACK/HUNT setup.
+        if state.combat_mode ~= "MELEE" and state.task ~= "MELEE_ATTACK" then
+            state.combat_mode = "HUNT"
+            state.task = "ATTACK"
+        end
         state.mode = "PARTY"
         state.target_username = nil
         state.follow_username = nil
@@ -1224,12 +1730,51 @@ function Server.execute(message)
         return true, "client-survivor squad dismissed; " .. tostring(released) .. " actor(s) released"
     end
 
+    if action == "SET_MOVEMENT" then
+        local requested = movementMode(message.movement_mode)
+        if type(message.movement_mode) ~= "string"
+            or string.upper(message.movement_mode) ~= requested then
+            return false, "movement mode must be AUTO, WALK, or RUN"
+        end
+        state.movement_mode = requested
+        state.running = false
+        state.manual_control = true
+        state.work_status = requested == "RUN"
+            and "running_on_command" or requested == "WALK"
+            and "walking_on_command" or state.work_status
+        return true, "client-survivor movement mode set to " .. requested
+    end
+
+    if action == "SET_VEHICLE_RECOVERY" then
+        if type(message.enabled) ~= "boolean" then
+            return false, "vehicle recovery requires a boolean enabled flag"
+        end
+        state.vehicle_recovery_enabled = message.enabled
+        state.vehicle_status = message.enabled and "armed" or "disabled"
+        state.vehicle_error = nil
+        state.manual_control = true
+        return true, message.enabled
+            and "client-survivor vehicle recovery enabled"
+            or "client-survivor vehicle recovery disabled"
+    end
+
     if action == "ASSIGN_JOB" then
+        if state.actor_id == Config.npcId then
+            return false, "Goblin is the permanent survivor leader and cannot take a worker job"
+        end
         local job = type(message.job) == "string" and string.upper(message.job) or ""
         if not ALLOWED_WORK_JOBS[job] then
             return false, "unsupported client-survivor job"
         end
         state.job = job
+        state.vehicle_recovery_enabled = job == "HAULER"
+        state.vehicle_status = "idle"
+        state.vehicle_error = nil
+        state.vehicle_id = nil
+        state.vehicle_engine_running = false
+        state.vehicle_target_x = nil
+        state.vehicle_target_y = nil
+        state.vehicle_target_z = nil
         state.task = "JOB_" .. job
         state.mode = "WORK"
         state.control_mode = "JOB"
@@ -1237,10 +1782,17 @@ function Server.execute(message)
         state.follow_username = nil
         state.target_actor_id = nil
         state.arrival_task = nil
-        state.destination = workPointFor(state, job)
+        state.builder_commanded = job == "BUILDER"
+            and message.source == "in_game_chat"
+        ExpeditionManager.resetAssignment(state, job)
+        state.destination = state.builder_commanded
+            and workPointFor(state, job)
+            or ((ExpeditionManager.isExpeditionJob(job) or job == "GUARD")
+                and workPointFor(state, job) or nil)
         state.combat_mode = "HUNT"
         state.manual_control = true
-        state.work_status = "assigned"
+        state.work_status = job == "BUILDER" and not state.builder_commanded
+            and "waiting_for_build_command" or "assigned"
         return true, "client-survivor actor assigned job " .. job
     end
 
@@ -1261,6 +1813,33 @@ function Server.execute(message)
     -- client-side human controller is implemented.
     return false, "action " .. tostring(action)
         .. " is not implemented by the client-survivor adapter"
+end
+
+-- The bridge keeps lifecycle acknowledgements separate from the native task
+-- state.  This helper is intentionally semantic: it reports whether the
+-- server-side state has reached a deterministic terminal condition without
+-- exposing a native object, route, or coordinate to the .76 agent.
+function Server.commandStatus(actorId, action)
+    local state = type(actorId) == "string" and Server.states[actorId] or nil
+    if state == nil then return "FAILED", "managed survivor is unavailable" end
+    local normalized = string.upper(tostring(action or ""))
+    if normalized == "FOLLOW_PLAYER" or normalized == "FOLLOW"
+        or normalized == "FOLLOW_GOBLIN" or normalized == "ATTACK"
+        or normalized == "MELEE_ATTACK" then
+        return "RUNNING", "survivor task remains active"
+    end
+    if normalized == "REGROUP" or normalized == "LOOT_AREA"
+        or normalized == "SCAVENGE" or normalized == "SCAVENGE_AREA"
+        or normalized == "MOVE_TO" or normalized == "SEARCH"
+        or normalized == "RETURN_HOME" or normalized == "RETURN_TO_BASE"
+        or normalized == "RETREAT" or normalized == "FLEE"
+        or normalized == "SECURE_BASE" then
+        if state.control_mode == "HOLD" and state.destination == nil then
+            return "SUCCESS", "survivor reached the resolved task point"
+        end
+        return "RUNNING", "survivor is executing the resolved task"
+    end
+    return "SUCCESS", "survivor task was applied"
 end
 
 return Server

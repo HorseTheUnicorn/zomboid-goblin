@@ -16,7 +16,7 @@ import time
 import uuid
 from collections.abc import Callable
 
-from .ipc import BRIDGE_MARKER, CHANNELS, READY_INDEX_NAME
+from .ipc import BRIDGE_MARKER, CHANNELS, READY_INDEX_NAME, _atomic_write
 from .protocol import MAX_MESSAGE_BYTES, ProtocolError, REQUEST_ID_RE, decode_message
 
 _STEM_LIMIT = 128
@@ -34,7 +34,12 @@ _REMOTE_READ_CHANNELS = (
 # write.  These channels are therefore eligible for a validated JSON-only
 # fallback on the remote side.  Commands remain marker-gated: accepting a
 # command without its host-created marker would weaken the control boundary.
-_REMOTE_JSON_FALLBACK_CHANNELS = ("events", "responses")
+_REMOTE_JSON_FALLBACK_CHANNELS = ("events", "responses", "acks")
+_PZ_RUNTIME_NAMES = (
+    "zomboid-heartbeat.json",
+    "zomboid-state.json",
+    "zomboid-exact-state.json",
+)
 _MAX_FILES_PER_PASS = 256
 _MAX_REMOTE_INDEX_ENTRIES = 1024
 _FILENAME_RE = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
@@ -67,6 +72,10 @@ class RelayConfig:
     ssh_key: Path = Path("/home/goblin/.ssh/id_ed25519")
     interval_seconds: float = 1.0
     ssh_timeout_seconds: float = 8.0
+    # The production relay runs on .76 with a PZ server as the remote.  The
+    # Windows local harness reverses this: PZ is local and the .76 agent is
+    # remote.  The same atomic protocol is used in both directions.
+    remote_role: str = "pz"
 
     def __post_init__(self) -> None:
         if not self.remote_host or len(self.remote_host) > 253:
@@ -79,6 +88,8 @@ class RelayConfig:
             raise ValueError("relay interval is out of bounds")
         if self.ssh_timeout_seconds < 1 or self.ssh_timeout_seconds > 60:
             raise ValueError("SSH timeout is out of bounds")
+        if self.remote_role not in {"pz", "agent"}:
+            raise ValueError("relay remote role must be 'pz' or 'agent'")
 
     @classmethod
     def from_env(cls) -> "RelayConfig":
@@ -96,6 +107,7 @@ class RelayConfig:
             ssh_timeout_seconds=float(
                 os.environ.get("GOBLIN_RELAY_SSH_TIMEOUT", "8")
             ),
+            remote_role=os.environ.get("GOBLIN_RELAY_REMOTE_ROLE", "pz"),
         )
 
 
@@ -104,7 +116,9 @@ class SshFileRelay:
 
     The relay never creates the remote root, never follows remote paths, and
     publishes remote files in JSON-then-ready order. It is intentionally a
-    separate process from the existing Discord and Qwen services.
+    separate process from the existing Discord and Qwen services.  The
+    default direction has the agent bridge locally and PZ remotely; the
+    ``remote_role=agent`` direction is used by the Windows local harness.
     """
 
     def __init__(
@@ -127,6 +141,8 @@ class SshFileRelay:
         self._remote_ready = False
         self._remote_command_stems: list[str] | None = None
         self._remote_json_seen: set[tuple[str, str]] = set()
+        self._local_json_seen: set[tuple[str, str]] = set()
+        self._runtime_signatures: dict[str, tuple[int, int]] = {}
 
     @property
     def remote(self) -> str:
@@ -374,6 +390,8 @@ class SshFileRelay:
             return message_type.startswith("event.")
         if channel == "responses":
             return message_type == "response.command"
+        if channel == "acks":
+            return message_type == "ack.command"
         return False
 
     def _pull_json_fallback(self, channel: str) -> int:
@@ -426,12 +444,156 @@ class SshFileRelay:
                 count += 1
         return count
 
+    def _refresh_local_command_index(self) -> None:
+        """Keep PZ's restricted Lua reader aware of pulled commands."""
+        directory = self.config.local_root / "commands"
+        stems = [
+            ready_path.stem
+            for ready_path in sorted(directory.glob("*.ready"))
+            if _safe_stem(ready_path.stem)
+            and (directory / f"{ready_path.stem}.json").is_file()
+        ]
+        encoded = json.dumps(
+            stems, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+        _atomic_write(directory / READY_INDEX_NAME, encoded)
+
+    def _prepare_local_json_fallback(self, channel: str) -> int:
+        """Gate direct PZ JSON output with host-created ready markers.
+
+        Build 42 can close the JSON file but fail to materialize its marker.
+        In the reverse local direction the relay is the host-side consumer,
+        so it validates the payload before creating the marker that the .76
+        agent will consume.
+        """
+        if channel not in _REMOTE_JSON_FALLBACK_CHANNELS:
+            return 0
+        count = 0
+        directory = self.config.local_root / channel
+        for json_path in sorted(directory.glob("*.json")):
+            stem = json_path.stem
+            if not _safe_stem(stem) or json_path.name == READY_INDEX_NAME:
+                continue
+            key = (channel, stem)
+            ready_path = directory / f"{stem}.ready"
+            if key in self._local_json_seen and ready_path.is_file():
+                continue
+            try:
+                message = decode_message(
+                    json_path.read_bytes(),
+                    max_message_bytes=MAX_MESSAGE_BYTES,
+                )
+            except (OSError, ProtocolError, ValueError):
+                continue
+            if not self._json_fallback_type_allowed(channel, message.type):
+                continue
+            already_ready = ready_path.is_file()
+            if not self._write_local_ready(ready_path):
+                continue
+            self._local_json_seen.add(key)
+            if not already_ready:
+                count += 1
+        return count
+
     def pull(self) -> int:
+        if self.config.remote_role == "agent":
+            count = 0
+            # Commands, responses, and acknowledgements flow from .76 back
+            # into the local PZ bridge. Runtime files remain PZ-owned locally.
+            for channel in ("commands", "responses", "acks"):
+                count += self._pull_ready_channel(channel)
+            self._refresh_local_command_index()
+            return count
         count = self._pull_runtime()
         for channel in _REMOTE_READ_CHANNELS:
             if channel != "runtime":
                 count += self._pull_ready_channel(channel)
                 count += self._pull_json_fallback(channel)
+        return count
+
+    def _publish_remote_runtime(self, name: str) -> bool:
+        """Publish one PZ runtime JSON file to the remote agent root."""
+        if not self._remote_bridge_ready():
+            return False
+        local_path = self.config.local_root / "runtime" / name
+        if not local_path.is_file():
+            return False
+        try:
+            message = decode_message(
+                local_path.read_bytes(),
+                max_message_bytes=MAX_MESSAGE_BYTES,
+            )
+        except (OSError, ProtocolError, ValueError):
+            return False
+        if message.type not in {
+            "runtime.heartbeat", "runtime.state", "runtime.exact_state"
+        }:
+            return False
+        try:
+            stat = local_path.stat()
+        except OSError:
+            return False
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if self._runtime_signatures.get(name) == signature:
+            return False
+        remote_path = self._remote_file("runtime", name)
+        remote_tmp = self._remote_file(
+            "runtime", f"relaytmp-{uuid.uuid4().hex}.json"
+        )
+        try:
+            uploaded = self._scp(
+                local_path, f"{self.remote}:{remote_tmp}"
+            )
+            if uploaded.returncode != 0:
+                return False
+            moved = self._ssh(
+                f"mv -- {shlex.quote(remote_tmp)} "
+                f"{shlex.quote(remote_path)}"
+            )
+            if moved.returncode != 0:
+                return False
+            readable = self._ssh(
+                f"chmod g+r -- {shlex.quote(remote_path)}"
+            )
+            if readable.returncode != 0:
+                return False
+            self._runtime_signatures[name] = signature
+            return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _archive_local_item(self, channel: str, stem: str) -> None:
+        source_dir = self.config.local_root / channel
+        archive_dir = self.config.local_root / "archive"
+        suffix = f"relay-{uuid.uuid4().hex[:12]}"
+        for extension in ("json", "ready"):
+            source = source_dir / f"{stem}.{extension}"
+            if not source.exists():
+                continue
+            target = archive_dir / f"{stem}-{suffix}.{extension}"
+            try:
+                os.replace(source, target)
+            except OSError:
+                return
+
+    def _push_to_agent(self) -> int:
+        """Push local PZ events/results and state to the remote .76 agent."""
+        count = 0
+        for channel in ("events", "responses", "acks"):
+            self._prepare_local_json_fallback(channel)
+            for ready_path in sorted(
+                (self.config.local_root / channel).glob("*.ready")
+            )[:_MAX_FILES_PER_PASS]:
+                stem = ready_path.stem
+                if not _safe_stem(stem):
+                    continue
+                if not self._publish_remote(channel, stem):
+                    continue
+                self._archive_local_item(channel, stem)
+                count += 1
+        for name in _PZ_RUNTIME_NAMES:
+            if self._publish_remote_runtime(name):
+                count += 1
         return count
 
     def _publish_remote(self, channel: str, stem: str) -> bool:
@@ -506,6 +668,8 @@ class SshFileRelay:
                 return
 
     def push(self) -> int:
+        if self.config.remote_role == "agent":
+            return self._push_to_agent()
         if not self._load_remote_command_index():
             return 0
         count = 0

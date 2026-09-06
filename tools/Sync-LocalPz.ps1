@@ -157,6 +157,19 @@ $bridgeRoot = Join-Path $PzDataRoot "Lua\goblin-bridge"
 foreach ($channel in @("state", "events", "commands", "responses", "acks", "runtime", "archive", "deadletter")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $bridgeRoot $channel) | Out-Null
 }
+# Commands and their replay fences are ephemeral local-test inputs.  Clear
+# both sides of the explicitly disposable goblin-local queue so an old
+# command cannot survive a restart and starve newer commands at the 32-item
+# per-tick limit.  Never apply this cleanup to a production profile by
+# accident.
+if ($ProfileName -eq "goblin-local") {
+    $commandRoot = Join-Path $bridgeRoot "commands"
+    foreach ($commandFile in @(Get-ChildItem -LiteralPath $commandRoot -Force -File |
+        Where-Object { $_.Name -ne ".ready-index.json" })) {
+        Remove-Item -LiteralPath $commandFile.FullName -Force
+    }
+    Write-Utf8 (Join-Path $commandRoot ".ready-index.json") "[]"
+}
 # Runtime snapshots are disposable and must not survive a package restart;
 # otherwise local verification can read a previous server's Goblin status.
 $runtimeRoot = Join-Path $bridgeRoot "runtime"
@@ -164,6 +177,11 @@ foreach ($runtimeName in @("zomboid-heartbeat.json", "zomboid-state.json", "zomb
     $runtimePath = Join-Path $runtimeRoot $runtimeName
     if (Test-Path -LiteralPath $runtimePath -PathType Leaf) {
         Remove-Item -LiteralPath $runtimePath -Force
+    }
+}
+if ($ProfileName -eq "goblin-local") {
+    foreach ($processedMarker in @(Get-ChildItem -LiteralPath $runtimeRoot -Filter "processed_*.json" -Force -File -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $processedMarker.FullName -Force
     }
 }
 Write-Utf8 (Join-Path $bridgeRoot ".goblin-bridge-v1") "goblin-bridge-v1`n"

@@ -13,13 +13,18 @@ MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
     "WAIT", "SAY", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
-    "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
+    "JOIN_PARTY", "LEAVE_PARTY", "MELEE_ATTACK", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
     "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
     "DEFEND_AREA", "GUARD", "PATROL", "FLEE", "ENTER_VEHICLE", "EXIT_VEHICLE",
     "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
 }
+COMMAND_ACTIONS = {
+    "NOOP", "SAY", "FOLLOW_PLAYER", "FOLLOW_GOBLIN", "HOLD", "REGROUP",
+    "RETURN_HOME", "DEFEND_PLAYER", "RETREAT", "LOOT_AREA", "SCAVENGE_AREA",
+    "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE",
+}
 MODE_ALLOWED = {
-    "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
+    "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "MELEE_ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
     "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE"},
     "PARTY": INTENTS - {"SECURE_BASE", "PATROL", "GUARD"},
     "HUNT": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "GUARD", "PATROL"},
@@ -56,6 +61,14 @@ class ValidatedIntent:
     intent: str
     mode: str
     data: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ValidatedPlan:
+    """A bounded Qwen response containing speech and up to four commands."""
+
+    say: str | None
+    commands: tuple[ValidatedIntent, ...]
 
 
 def _scan_forbidden(value: Any, path: str = "$") -> None:
@@ -155,7 +168,7 @@ def _member_request(value: Any, field: str) -> int | list[str]:
     # A commander can ask for a bounded number of additional NPCs without
     # needing to know native entity ids. The deterministic squad manager
     # resolves that count to actual available NPCs.
-    if field == "requested_members" and isinstance(value, int) and not isinstance(value, bool):
+    if field.endswith("requested_members") and isinstance(value, int) and not isinstance(value, bool):
         if not 1 <= value <= 15:
             raise IntentError("requested_members count must be between 1 and 15")
         return value
@@ -222,7 +235,7 @@ class IntentValidator:
             "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA",
             "JOIN_PARTY", "TRADE", "HELP", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD",
             "PATROL", "CLEAR_BUILDING", "ENTER_VEHICLE", "FLEE", "RETREAT", "REGROUP",
-            "GO_HOME", "RETURN_TO_BASE",
+            "GO_HOME", "RETURN_TO_BASE", "MELEE_ATTACK",
         }
         if intent in target_required and "target" not in raw:
             raise IntentError(f"{intent} requires a target")
@@ -266,3 +279,120 @@ class IntentValidator:
             if key in raw:
                 result[key] = _text(raw[key], key, maximum=96)
         return ValidatedIntent(intent=intent, mode=mode, data=result)
+
+    def validate_plan_json(self, raw_json: str | bytes) -> ValidatedPlan:
+        if isinstance(raw_json, str):
+            encoded = raw_json.encode("utf-8")
+        elif isinstance(raw_json, bytes):
+            encoded = raw_json
+        else:
+            raise IntentError("plan must be JSON text")
+        if len(encoded) > self.max_bytes:
+            raise IntentError("plan exceeds the size limit")
+
+        def reject_constant(value: str) -> None:
+            raise IntentError(f"non-finite JSON value: {value}")
+
+        try:
+            raw = json.loads(encoded.decode("utf-8"), parse_constant=reject_constant)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IntentError("invalid JSON plan") from exc
+        return self.validate_plan(raw)
+
+    def validate_plan(self, raw: Any) -> ValidatedPlan:
+        """Validate the model's structured speech-plus-command envelope.
+
+        Plans deliberately use logical ids instead of target objects.  The
+        service resolves those ids against the latest server roster before a
+        command can reach the bridge.
+        """
+
+        if not isinstance(raw, Mapping):
+            raise IntentError("plan must be an object")
+        _scan_forbidden(raw)
+        unknown = set(raw).difference({"say", "commands"})
+        if unknown:
+            raise IntentError(f"unknown plan field: {sorted(unknown)[0]}")
+        say: str | None = None
+        if "say" in raw:
+            if raw["say"] is not None:
+                say = _text(raw["say"], "say", maximum=240)
+        commands = raw.get("commands")
+        if not isinstance(commands, list) or len(commands) > 4:
+            raise IntentError("commands must contain 0 to 4 commands")
+        if say is None and not commands:
+            raise IntentError("plan must contain speech or a command")
+
+        validated: list[ValidatedIntent] = []
+        command_keys = {
+            "survivor_id", "action", "target_id", "text", "priority", "job",
+            "leader", "requested_members", "members", "formation", "squad_id",
+            "mission",
+        }
+        target_required = {
+            "FOLLOW_PLAYER", "FOLLOW_GOBLIN", "DEFEND_PLAYER", "RETREAT",
+        }
+        for index, command in enumerate(commands):
+            if not isinstance(command, Mapping):
+                raise IntentError(f"commands[{index}] must be an object")
+            unknown_command = set(command).difference(command_keys)
+            if unknown_command:
+                raise IntentError(
+                    f"unknown command field: {sorted(unknown_command)[0]}"
+                )
+            action = _text(command.get("action"), f"commands[{index}].action", maximum=32).upper()
+            if action not in COMMAND_ACTIONS:
+                raise IntentError("unsupported plan action")
+            survivor_id = _id(
+                command.get("survivor_id"), f"commands[{index}].survivor_id"
+            )
+            priority = command.get("priority", 2)
+            if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 3:
+                raise IntentError("command priority must be between 0 and 3")
+            data: dict[str, Any] = {
+                "intent": action,
+                "mode": "PARTY",
+                "npc_id": survivor_id,
+                "priority": priority,
+            }
+            target_id = command.get("target_id")
+            if target_id is not None:
+                target_id = _id(target_id, f"commands[{index}].target_id")
+                data["target_id"] = target_id
+            if action in target_required and target_id is None:
+                raise IntentError(f"{action} requires target_id")
+            if action == "FOLLOW_PLAYER" and target_id is not None \
+                    and not target_id.casefold().startswith("player."):
+                raise IntentError("FOLLOW_PLAYER target_id must be a player id")
+            if action == "DEFEND_PLAYER" and target_id is not None \
+                    and not target_id.casefold().startswith("player."):
+                raise IntentError("DEFEND_PLAYER target_id must be a player id")
+            if "text" in command:
+                data["text"] = _text(command["text"], f"commands[{index}].text", maximum=240)
+            if action == "SAY" and "text" not in data:
+                raise IntentError("SAY command requires text")
+            if "job" in command:
+                data["job"] = _text(command["job"], f"commands[{index}].job", maximum=32).casefold()
+            if action == "ASSIGN_JOB" and "job" not in data:
+                raise IntentError("ASSIGN_JOB requires job")
+            if "leader" in command:
+                data["leader"] = _id(command["leader"], f"commands[{index}].leader")
+            if "squad_id" in command:
+                data["squad_id"] = _id(command["squad_id"], f"commands[{index}].squad_id")
+            for key in ("requested_members", "members"):
+                if key in command:
+                    data[key] = _member_request(command[key], f"commands[{index}].{key}")
+            if action == "FORM_SQUAD":
+                if "leader" not in data:
+                    raise IntentError("FORM_SQUAD requires leader")
+                if "requested_members" not in data and "members" not in data:
+                    raise IntentError("FORM_SQUAD requires members")
+            if "formation" in command:
+                formation = _text(command["formation"], f"commands[{index}].formation", maximum=16).casefold()
+                if formation not in {"line", "wedge", "column", "ring", "loose"}:
+                    raise IntentError("unsupported formation")
+                data["formation"] = formation
+            if "mission" in command:
+                data["mission"] = _text(command["mission"], f"commands[{index}].mission", maximum=96)
+            validated.append(ValidatedIntent(action, "PARTY", data))
+        return ValidatedPlan(say=say, commands=tuple(validated))

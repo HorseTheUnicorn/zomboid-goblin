@@ -153,7 +153,16 @@ function Perception.nearbyPlayers()
     local result = {}
     eachPlayer(function(player)
         local name = type(player.getUsername) == "function" and player:getUsername() or ""
-        if name ~= "" then table.insert(result, { id = name, online = true }) end
+        if name ~= "" then
+            -- The native username is useful for the authoritative resolver,
+            -- while the logical id is the only identity the model should
+            -- reason about across reconnects.
+            table.insert(result, {
+                id = "player." .. string.lower(name),
+                name = name,
+                online = true
+            })
+        end
     end)
     return result
 end

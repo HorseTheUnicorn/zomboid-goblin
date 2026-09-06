@@ -7,12 +7,16 @@ local Config = require("GoblinSurvivor/Config")
 local Protocol = require("GoblinSurvivor/ClientSurvivorProtocol")
 local EventLog = require("GoblinSurvivor/EventLog")
 local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
+local BaseManager = require("GoblinSurvivor/BaseManager")
 
 local Commands = { started = false, lastAt = {} }
 local COMMAND_COOLDOWN_SECONDS = 1
 
 local JOBS = {
     loot = "LOOT",
+    gather = "SCAVENGE",
+    forage = "SCAVENGE",
+    collect = "SCAVENGE",
     scavenge = "SCAVENGE",
     disassemble = "DISASSEMBLE",
     dismantle = "DISASSEMBLE",
@@ -79,7 +83,8 @@ local function executeForSelection(player, selector, action, fields)
             npc_id = npcId,
             action = action,
             priority = 2,
-            reason = "in-game command from " .. speaker
+            reason = "in-game command from " .. speaker,
+            source = "in_game_chat"
         }
         for key, value in pairs(fields or {}) do message[key] = value end
         local ok, response = ClientSurvivorServer.execute(message)
@@ -105,6 +110,10 @@ local function statusLines(player)
         reply(player, tostring(status.name or status.npc_id)
             .. " job=" .. tostring(status.job or "none")
             .. " task=" .. tostring(status.task or "waiting")
+            .. " phase=" .. tostring(status.expedition_phase or "none")
+            .. " cargo=" .. tostring(status.cargo_count or 0)
+            .. " movement=" .. tostring(status.movement_mode or "AUTO")
+            .. (status.running == true and "(running)" or "")
             .. " weapon=" .. tostring(status.firearm_type or "none")
             .. " god=" .. tostring(status.god_mode == true))
     end
@@ -136,12 +145,77 @@ local function handle(player, text)
     if command == "help" then
         reply(player, "/gss status | follow/join [all|id] | hold/leave [all|id]")
         reply(player, "/gss squad [all|id] | dismiss")
-        reply(player, "/gss loot|scavenge|disassemble|build|guard [all|id]")
-        reply(player, "/gss attack [all|id] | home [all|id]")
+        reply(player, "/gss loot|gather|scavenge|disassemble|build|guard [all|id]")
+        reply(player, "/gss cars [all|id] | cars off [all|id]")
+        reply(player, "/gss run|walk|auto [all|id]")
+        reply(player, "/gss base set [name] | base status | fortify [mike|id]")
+        reply(player, "Goblin follows while you move and scavenges after you are idle")
+        reply(player, "build is chat-authorized only and remains active until held or reassigned")
+        reply(player, "/gss attack/melee [all|id] | home [all|id]")
         return
     end
     if command == "status" or command == "list" then
         statusLines(player)
+        return
+    end
+    if command == "base" or command == "setbase" then
+        local subcommand = string.lower(args[3] or "status")
+        local requestedName = nil
+        if command == "setbase" then
+            subcommand = "set"
+            requestedName = args[3]
+        elseif subcommand == "set" or subcommand == "anchor" then
+            requestedName = args[4]
+        end
+        if subcommand == "set" or subcommand == "anchor" then
+            local anchored, detail = BaseManager.setFromPlayer(player, requestedName)
+            reply(player, detail)
+            return
+        end
+        if subcommand == "status" or subcommand == "show" then
+            local base = BaseManager.snapshot()
+            reply(player, "base '" .. tostring(base.name)
+                .. "' anchored=" .. tostring(base.has_anchor == true)
+                .. " guards=" .. tostring(base.assigned_guards or 0)
+                .. "/" .. tostring(base.minimum_guards or 0))
+            return
+        end
+        reply(player, "use /gss base set [name] or /gss base status")
+        return
+    end
+    if command == "fortify" then
+        if not BaseManager.hasAnchor() then
+            reply(player, "set the base first with /gss base set")
+            return
+        end
+        local fortifySelector = args[3] or "mike"
+        local accepted, detail = executeForSelection(player, fortifySelector,
+            "ASSIGN_JOB", { job = "BUILDER" })
+        reply(player, tostring(accepted) .. " survivor(s) assigned base fortification: "
+            .. tostring(detail))
+        return
+    end
+    if command == "run" or command == "sprint"
+        or command == "walk" or command == "auto" then
+        local mode = (command == "run" or command == "sprint") and "RUN"
+            or command == "walk" and "WALK" or "AUTO"
+        local accepted, detail = executeForSelection(player, selector,
+            "SET_MOVEMENT", { movement_mode = mode })
+        reply(player, tostring(accepted) .. " survivor(s) movement set to "
+            .. mode .. ": " .. tostring(detail))
+        return
+    end
+    if command == "cars" or command == "vehicles" or command == "recover" then
+        local enabled = true
+        local vehicleSelector = args[3] or "all"
+        if string.lower(vehicleSelector) == "off" then
+            enabled = false
+            vehicleSelector = args[4] or "all"
+        end
+        local accepted, detail = executeForSelection(player, vehicleSelector,
+            "SET_VEHICLE_RECOVERY", { enabled = enabled })
+        reply(player, tostring(accepted) .. " survivor(s) vehicle recovery "
+            .. (enabled and "enabled" or "disabled") .. ": " .. tostring(detail))
         return
     end
     if command == "follow" or command == "regroup" then
@@ -173,6 +247,13 @@ local function handle(player, text)
             target = { kind = "nearby_threat", name = "nearby hostile zombie" }
         })
         reply(player, tostring(accepted) .. " survivor(s) set to hunt zombies: " .. tostring(detail))
+        return
+    end
+    if command == "melee" or command == "meleeattack" then
+        local accepted, detail = executeForSelection(player, selector, "MELEE_ATTACK", {
+            target = { kind = "nearby_threat", name = "nearby hostile zombie" }
+        })
+        reply(player, tostring(accepted) .. " survivor(s) set to melee zombies: " .. tostring(detail))
         return
     end
     if command == "home" or command == "return" then

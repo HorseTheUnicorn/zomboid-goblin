@@ -8,7 +8,7 @@ import unittest
 from goblin_zomboid.config import AgentConfig
 from goblin_zomboid.protocol import make_message
 from goblin_zomboid.service import GoblinService
-from goblin_zomboid.validator import IntentValidator
+from goblin_zomboid.validator import IntentValidator, ValidatedIntent, ValidatedPlan
 
 
 class FakeQwen:
@@ -46,6 +46,29 @@ class SpeechQwen:
     def propose_intent(self, _context: object):
         return IntentValidator().validate(
             {"intent": "SAY", "mode": "PARTY", "text": "Standing by."}
+        )
+
+
+class PlanQwen:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.contexts: list[object] = []
+
+    def propose_plan(self, context: object) -> ValidatedPlan:
+        self.calls += 1
+        self.contexts.append(context)
+        return ValidatedPlan(
+            say="Goblin is listening.",
+            commands=(
+                ValidatedIntent(
+                    "FOLLOW_PLAYER", "PARTY",
+                    {
+                        "npc_id": "npc.0001",
+                        "target_id": "player.alice",
+                        "priority": 2,
+                    },
+                ),
+            ),
         )
 
 
@@ -353,6 +376,55 @@ class NpcServiceTests(unittest.TestCase):
                 )
             )
             self.assertEqual(service._pending_chat_replies, [])
+        finally:
+            service.close()
+
+    def test_addressed_chat_publishes_qwen_speech_and_companion_command(self) -> None:
+        qwen = PlanQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="client_survivor",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                    npcs=[{"npc_id": "npc.0001", "name": "Bob", "alive": True}],
+                    nearby_players=[{"id": "Alice", "name": "Alice", "online": True}],
+                ),
+            )
+            service.store.publish(
+                "events",
+                make_message(
+                    "event.chat", timestamp_ms=2_000_000,
+                    speaker="Alice", text="Goblin, follow me.", authorized=True,
+                    authority_token="chat-grant-1",
+                ),
+                stem="plan-chat",
+            )
+            result = service.run_once()
+            self.assertIn(result.status, {"npc_plan_published", "npc_speech_published"})
+            self.assertEqual(qwen.calls, 1)
+            self.assertEqual(qwen.contexts[0]["event"]["speaker_id"], "player.alice")
+            commands = [
+                service.store.read_ready(item)
+                for item in service.store.iter_ready("commands")
+            ]
+            self.assertEqual(
+                {command.fields["action"] for command in commands},
+                {"SAY", "FOLLOW"},
+            )
+            follow = next(
+                command for command in commands if command.fields["action"] == "FOLLOW"
+            )
+            self.assertEqual(follow.fields["npc_id"], "npc.0001")
+            self.assertEqual(follow.fields["target"]["label"], "player.alice")
         finally:
             service.close()
 

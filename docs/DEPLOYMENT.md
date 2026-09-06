@@ -71,6 +71,11 @@ default until an operator resumes it. Set `GOBLIN_TRACKER_PORT=8782` if the
 default tracker port is unavailable. Set
 `GOBLIN_TRACKER_MAP_ROOT=/home/goblin/share/pz-map/b42/muldraugh` after copying
 the current server map tile cache to that directory. Keep Qwen loopback-only.
+For the Windows local PZ harness, expose only key-authenticated SSH access to
+the `.76` `goblin` account and run `tools/Start-LocalGoblinRelay.ps1`; this
+mirrors the atomic bridge to `.76` without exposing Qwen. The production
+`.76` relay continues to connect outward to `.03`, so `.03` does not need
+direct access to the Qwen inference port.
 For a tunnel origin on the Proxmox host, set the tracker bind explicitly to
 `GOBLIN_TRACKER_BIND=192.168.0.76`; otherwise the default loopback bind keeps
 the tracker private.

@@ -8,6 +8,7 @@ local Protocol = require("GoblinSurvivor/ClientSurvivorProtocol")
 
 local Client = {
     actors = {},
+    motion = {},
     nextCreateAt = {},
     lastSequence = {},
     generations = {},
@@ -15,16 +16,30 @@ local Client = {
     pendingSpeech = {},
     states = {},
     mapMarkers = {},
-    mapMarkerApi = nil,
-    mapMarkerMap = nil,
-    nextMapMarkerAt = 0,
     mapFailureLogged = false,
     lastState = nil,
     nextRequestAt = 0,
     requestIntervalMs = 3000,
     started = false,
-    lastDiagnosticsAt = 0
+    lastDiagnosticsAt = 0,
+    nextZombieDiagnosticsAt = 0,
+    nextNameLabelDiagnosticsAt = 0,
+    nameLabelFailureLogged = false
 }
+
+-- Server snapshots arrive at a deliberately conservative cadence.  Applying
+-- each packet as a teleport makes the human model stutter and also resets the
+-- engine's previous-position fields, so B42 never sees a continuous walk.
+-- Keep a short visual-only interpolation window between authoritative points.
+-- Large corrections and floor changes still snap so a stale packet cannot drag
+-- an actor through the map.
+local MOTION_DURATION_MS = 560
+local MOTION_MIN_DURATION_MS = 220
+local MOTION_MAX_DURATION_MS = 700
+local WALK_SPEED_TILES_PER_SECOND = 1.4
+local RUN_SPEED_TILES_PER_SECOND = 2.8
+local MOTION_SNAP_DISTANCE = 6.0
+local MOTION_FLOOR_EPSILON = 0.1
 
 local function log(message)
     if type(print) == "function" then
@@ -66,6 +81,101 @@ local function cell()
     return ok and value or nil
 end
 
+local function localZombieDiagnostics(now)
+    if now < Client.nextZombieDiagnosticsAt then return end
+    Client.nextZombieDiagnosticsAt = now + 5000
+    local worldCell = cell()
+    if worldCell == nil then
+        log("local zombie diagnostics: cell unavailable")
+        return
+    end
+    local okList, zombies = call(worldCell, "getZombieList")
+    if not okList or zombies == nil then
+        log("local zombie diagnostics: zombie list unavailable")
+        return
+    end
+    local okSize, size = call(zombies, "size")
+    if not okSize or type(size) ~= "number" then
+        log("local zombie diagnostics: zombie list size unavailable")
+        return
+    end
+    local playerX, playerY = nil, nil
+    if type(getPlayer) == "function" then
+        local okPlayer, player = pcall(getPlayer)
+        if okPlayer and player ~= nil then
+            local okX, x = call(player, "getX")
+            local okY, y = call(player, "getY")
+            if okX and type(x) == "number" then playerX = x end
+            if okY and type(y) == "number" then playerY = y end
+        end
+    end
+    local fixtureCount = 0
+    local fixtures = {}
+    local nearby = {}
+    for index = 0, size - 1 do
+        local okZombie, zombie = call(zombies, "get", index)
+        if okZombie and zombie ~= nil then
+            local okData, data = call(zombie, "getModData")
+            local marker = nil
+            local actorId = nil
+            if okData and data ~= nil then
+                local okMarker, markerValue = call(data, "rawget", "goblin_debug_combat_fixture")
+                local okActor, actorValue = call(data, "rawget", "goblin_debug_combat_actor")
+                if okMarker then marker = markerValue end
+                if okActor then actorId = actorValue end
+            end
+            if marker == true then
+                fixtureCount = fixtureCount + 1
+                local okId, id = call(zombie, "getID")
+                local okOnlineId, onlineId = call(zombie, "getOnlineID")
+                local okX, x = call(zombie, "getX")
+                local okY, y = call(zombie, "getY")
+                local okDead, dead = call(zombie, "isDead")
+                table.insert(fixtures, "id=" .. tostring(okId and id or "?")
+                    .. " online=" .. tostring(okOnlineId and onlineId or "?")
+                    .. " actor=" .. tostring(actorId)
+                    .. " x=" .. tostring(okX and x or "?")
+                    .. " y=" .. tostring(okY and y or "?")
+                    .. " dead=" .. tostring(okDead and dead or false))
+            end
+            if playerX ~= nil and playerY ~= nil then
+                local okX, x = call(zombie, "getX")
+                local okY, y = call(zombie, "getY")
+                if okX and okY and type(x) == "number" and type(y) == "number" then
+                    local distance = math.sqrt((x - playerX) * (x - playerX)
+                        + (y - playerY) * (y - playerY))
+                    if distance <= 12 then
+                        local okId, id = call(zombie, "getID")
+                        local okOnlineId, onlineId = call(zombie, "getOnlineID")
+                        table.insert(nearby, {
+                            distance = distance,
+                            text = "id=" .. tostring(okId and id or "?")
+                                .. " online=" .. tostring(okOnlineId and onlineId or "?")
+                                .. " x=" .. tostring(x)
+                                .. " y=" .. tostring(y)
+                                .. " d=" .. string.format("%.1f", distance)
+                                .. " marked=" .. tostring(marker == true)
+                        })
+                    end
+                end
+            end
+        end
+    end
+    table.sort(nearby, function(left, right)
+        return left.distance < right.distance
+    end)
+    local nearbyText = {}
+    for index = 1, math.min(#nearby, 8) do
+        table.insert(nearbyText, nearby[index].text)
+    end
+    log("local zombie diagnostics: list=" .. tostring(size)
+        .. " marked_fixtures=" .. tostring(fixtureCount)
+        .. " player=" .. tostring(playerX) .. "," .. tostring(playerY)
+        .. " nearby=" .. tostring(#nearby)
+        .. (#nearbyText > 0 and " [" .. table.concat(nearbyText, "; ") .. "]" or "")
+        .. (#fixtures > 0 and " fixtures=[" .. table.concat(fixtures, "; ") .. "]" or ""))
+end
+
 local function squareFor(worldCell, x, y, z)
     if worldCell == nil then return nil end
     local ix, iy, iz = math.floor(x), math.floor(y), math.floor(z)
@@ -78,6 +188,139 @@ local function squareFor(worldCell, x, y, z)
         if ok then return square end
     end
     return nil
+end
+
+local function actorPosition(actor)
+    local okX, x = call(actor, "getX")
+    local okY, y = call(actor, "getY")
+    local okZ, z = call(actor, "getZ")
+    if not okX or not okY or not okZ
+        or type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then
+        return nil
+    end
+    return x, y, z
+end
+
+local function updateWorldPosition(actor, x, y, z)
+    local worldCell = cell()
+    local square = squareFor(worldCell, x, y, z)
+    if square == nil then return false end
+
+    local okCurrent, currentSquare = call(actor, "getCurrentSquare")
+    if okCurrent and currentSquare ~= nil and currentSquare ~= square then
+        call(actor, "removeFromSquare")
+    end
+
+    local okMovingSquare, movingSquare = call(actor, "getMovingSquare")
+    if not okMovingSquare or movingSquare ~= square then
+        local attached = call(actor, "setMovingSquare", square)
+        if not attached then
+            local okMoving, movingObjects = call(square, "getMovingObjects")
+            if okMoving then listAddOnce(movingObjects, actor) end
+        end
+    end
+    call(actor, "setCurrentSquare", square)
+    call(actor, "ensureVisualRegistration")
+    return true
+end
+
+local function setRenderedPosition(actor, x, y, z, previousX, previousY, previousZ)
+    -- Set the previous fields first.  This is the small but important
+    -- distinction from the old snapshot path, which wrote Lx/Ly/Lz to the
+    -- destination and thereby made every update look stationary to animation.
+    call(actor, "setLx", previousX)
+    call(actor, "setLy", previousY)
+    call(actor, "setLz", previousZ)
+    call(actor, "setX", x)
+    call(actor, "setY", y)
+    call(actor, "setZ", z)
+    updateWorldPosition(actor, x, y, z)
+end
+
+local function navigationIsMoving(state)
+    if state.movement_blocked == true then return false end
+    local navigation = state.navigation_status
+    return navigation == "moving"
+        or navigation == "group_return"
+        or navigation == "returning"
+        or navigation == "vehicle_approach"
+        or navigation == "vehicle_driving"
+end
+
+local function motionDurationMs(distance, state)
+    if not navigationIsMoving(state) or distance <= 0.001 then
+        return MOTION_DURATION_MS
+    end
+    -- Match the server's authoritative travel speed instead of using one
+    -- fixed interpolation window for both walking and running.  This keeps a
+    -- run from arriving early and then visibly braking at every snapshot,
+    -- while the clamps absorb packet jitter and short route corrections.
+    local speed = state.running == true
+        and RUN_SPEED_TILES_PER_SECOND
+        or WALK_SPEED_TILES_PER_SECOND
+    local duration = math.floor(distance / speed * 1000 + 0.5)
+    return math.max(MOTION_MIN_DURATION_MS,
+        math.min(MOTION_MAX_DURATION_MS, duration))
+end
+
+local function setMotionTarget(id, actor, state, snap)
+    local now = Protocol.nowMs()
+    local currentX, currentY, currentZ = actorPosition(actor)
+    if currentX == nil then
+        currentX, currentY, currentZ = state.x, state.y, state.z
+        snap = true
+    end
+
+    local dx = state.x - currentX
+    local dy = state.y - currentY
+    local distance = math.sqrt(dx * dx + dy * dy)
+    if math.abs(state.z - currentZ) > MOTION_FLOOR_EPSILON
+        or distance > MOTION_SNAP_DISTANCE then
+        snap = true
+    end
+
+    local motion = {
+        fromX = currentX,
+        fromY = currentY,
+        fromZ = currentZ,
+        targetX = state.x,
+        targetY = state.y,
+        targetZ = state.z,
+        startedAt = now,
+        durationMs = motionDurationMs(distance, state),
+        done = false
+    }
+    if snap then
+        setRenderedPosition(actor, state.x, state.y, state.z,
+            state.x, state.y, state.z)
+        motion.fromX, motion.fromY, motion.fromZ = state.x, state.y, state.z
+        motion.done = true
+    end
+    Client.motion[id] = motion
+end
+
+local function advanceMotion(id, actor, now)
+    local motion = Client.motion[id]
+    if motion == nil or motion.done then return false end
+
+    local currentX, currentY, currentZ = actorPosition(actor)
+    if currentX == nil then return false end
+    local elapsed = math.max(0, now - motion.startedAt)
+    local duration = math.max(1, motion.durationMs or MOTION_DURATION_MS)
+    local progress = math.min(1.0, elapsed / duration)
+    -- Linear interpolation keeps the survivor's ground speed stable.  The
+    -- next packet rebases from the currently rendered point, so there is no
+    -- visible snap when the authoritative route changes direction.
+    local x = motion.fromX + (motion.targetX - motion.fromX) * progress
+    local y = motion.fromY + (motion.targetY - motion.fromY) * progress
+    local z = motion.fromZ + (motion.targetZ - motion.fromZ) * progress
+    setRenderedPosition(actor, x, y, z, currentX, currentY, currentZ)
+    if progress >= 1.0 then
+        setRenderedPosition(actor, motion.targetX, motion.targetY, motion.targetZ,
+            x, y, z)
+        motion.done = true
+    end
+    return true
 end
 
 local function descriptor()
@@ -245,12 +488,28 @@ local function detachFromUpdateCollections(actor, worldCell)
     if okAdds then listRemove(addList, actor) end
 end
 
-local function displaySpeech(actor, text)
-    local ok = call(actor, "addLineChatElement", text, 0.1, 0.8, 0.1)
-    if not ok then
-        ok = call(actor, "Say", text)
+local function displayVanillaChat(author, text)
+    if type(author) ~= "string" or author == ""
+        or type(text) ~= "string" or text == "" then return false end
+    -- ChatManager is client-side in B42.  Storm performs the Java call so
+    -- Kahlua never has to dispatch methods on the unexposed Java instance.
+    local display = rawget(_G, "displayGoblinChatMessage")
+    if type(display) ~= "function" then return false end
+    local ok, shown = pcall(display, author, text)
+    return ok and shown == true
+end
+
+local function displaySpeech(actor, text, author, chatAlreadyDisplayed)
+    local overhead = false
+    if actor ~= nil then
+        overhead = call(actor, "addLineChatElement", text, 0.1, 0.8, 0.1)
+        if not overhead then
+            overhead = call(actor, "Say", text)
+        end
     end
-    return ok
+    local chat = chatAlreadyDisplayed == true
+        or displayVanillaChat(author or "Goblin", text)
+    return overhead or chat
 end
 
 local function applyRequestedOutfit(actor, state)
@@ -290,6 +549,44 @@ local function equipRequestedFirearm(actor, state)
     return true
 end
 
+local function equipRequestedWeapon(actor, state)
+    if string.upper(tostring(state.combat_mode or "HUNT")) == "MELEE" then
+        local ok, ready = call(actor, "ensureMeleeWeapon")
+        if not ok or ready ~= true then
+            log("could not equip melee weapon for client-side actor '"
+                .. tostring(state.actor_id) .. "'")
+            return false
+        end
+        return true
+    end
+    return equipRequestedFirearm(actor, state)
+end
+
+local function applyCombatPose(actor, state)
+    local melee = string.upper(tostring(state.combat_mode or "HUNT")) == "MELEE"
+    local attacking = melee and (
+        state.combat_status == "melee_attack"
+        or state.combat_status == "melee_kill"
+        or state.combat_status == "melee_attempt_failed")
+    -- HumanSurvivor owns the animation-variable boundary.  Lua only mirrors
+    -- the server's bounded combat status and never chooses a target or hit.
+    call(actor, "setMeleeAttackPose", attacking)
+    if not attacking then
+        local firearmFiring = state.combat_status == "firearm_attack"
+            or state.combat_status == "firearm_kill"
+            or state.combat_status == "firearm_attempt_failed"
+        local firearmAiming = state.combat_status == "aiming"
+            or firearmFiring
+        local posed = call(actor, "setFirearmPose", firearmAiming, firearmFiring)
+        if not posed then
+            -- Compatibility fallback for a stale loaded jar; the rebuilt jar
+            -- above is the authoritative path and enters B42's ranged state.
+            call(actor, "setVariable", "isAiming", firearmAiming)
+            call(actor, "setVariable", "isAttacking", firearmFiring)
+        end
+    end
+end
+
 local function currentWorldMap()
     local map = rawget(_G, "ISWorldMap_instance")
     if map == nil then
@@ -302,24 +599,15 @@ local function currentWorldMap()
     return map
 end
 
-local function removeMapMarker(id, api)
-    local marker = Client.mapMarkers[id]
-    if marker ~= nil then
-        call(api or Client.mapMarkerApi, "removeSymbol", marker)
-        Client.mapMarkers[id] = nil
-    end
+local function removeMapMarker(id)
+    -- Player markers are drawn directly during the map UI pass below, so
+    -- there is no persistent WorldMapSymbol object to remove.  Clearing the
+    -- bookkeeping entry is enough; the square disappears on the next frame.
+    Client.mapMarkers[id] = nil
 end
 
 local function clearMapMarkers()
-    local api = Client.mapMarkerApi
-    if api ~= nil then
-        for id, _ in pairs(Client.mapMarkers) do
-            removeMapMarker(id, api)
-        end
-    end
     Client.mapMarkers = {}
-    Client.mapMarkerApi = nil
-    Client.mapMarkerMap = nil
 end
 
 local function mapMarkerColor(id, state)
@@ -339,27 +627,28 @@ end
 
 local function updateMapMarkers(force)
     local map = currentWorldMap()
-    if map == nil then return false end
-    local now = Protocol.nowMs()
-    if not force and now < Client.nextMapMarkerAt then return true end
-    Client.nextMapMarkerAt = now + 250
+    if map == nil then
+        clearMapMarkers()
+        return false
+    end
 
-    local okApi, api = call(map.mapAPI, "getSymbolsAPIv2")
-    if not okApi or api == nil then
+    local mapApi = map.mapAPI
+    local mapSurface = map.javaObject
+    if mapApi == nil or mapSurface == nil then
         if not Client.mapFailureLogged then
             Client.mapFailureLogged = true
-            log("world-map symbol API is unavailable; survivor markers deferred")
+            log("world-map draw surface is unavailable; survivor markers deferred")
         end
         return false
     end
-    if Client.mapMarkerApi ~= nil and Client.mapMarkerApi ~= api then
-        clearMapMarkers()
-    end
-    Client.mapMarkerApi = api
-    Client.mapMarkerMap = map
-    -- Keep the standard symbol layer visible even if the player previously
-    -- disabled map symbols in the vanilla map options.
-    call(map.mapAPI, "setBoolean", "Symbols", true)
+
+    -- UIWorldMap:renderPlayer() draws the vanilla player marker as a 6x6
+    -- white square tinted by DrawTextureScaledColor with a nil texture.  Use
+    -- that same draw path so survivor markers look like players instead of
+    -- lootable-map gun symbols.  This must run during OnPostUIDraw because
+    -- DrawTextureScaledColor is an immediate UI draw, not a retained marker.
+    local squareSize = 6
+    local halfSquare = squareSize / 2
 
     local live = {}
     for id, actor in pairs(Client.actors) do
@@ -369,33 +658,178 @@ local function updateMapMarkers(force)
             local okX, x = call(actor, "getX")
             local okY, y = call(actor, "getY")
             if okX and okY and type(x) == "number" and type(y) == "number" then
-                local marker = Client.mapMarkers[id]
-                if marker == nil then
-                    local okAdd, added = call(api, "addTexture", "Gun", x, y)
-                    if okAdd then marker = added end
-                    if marker ~= nil then
-                        local r, g, b = mapMarkerColor(id, state)
-                        call(marker, "setRGBA", r, g, b, 1.0)
-                        call(marker, "setAnchor", 0.5, 0.5)
-                        call(marker, "setScale", 1.0)
-                        call(marker, "setApplyZoom", true)
-                        call(marker, "setMatchPerspective", false)
-                        call(marker, "setMinZoom", 0.0)
-                        call(marker, "setMaxZoom", 24.0)
-                        call(marker, "setUserDefined", false)
-                        Client.mapMarkers[id] = marker
+                local okUiX, uiX = call(mapApi, "worldToUIX", x, y)
+                local okUiY, uiY = call(mapApi, "worldToUIY", x, y)
+                if okUiX and okUiY and type(uiX) == "number" and type(uiY) == "number"
+                    and uiX == uiX and uiY == uiY
+                    and uiX ~= math.huge and uiX ~= -math.huge
+                    and uiY ~= math.huge and uiY ~= -math.huge then
+                    local r, g, b = mapMarkerColor(id, state)
+                    local okDraw = call(mapSurface, "DrawTextureScaledColor", nil,
+                        math.floor(uiX - halfSquare), math.floor(uiY - halfSquare),
+                        squareSize, squareSize, r, g, b, 1.0)
+                    if okDraw then
+                        Client.mapMarkers[id] = true
+                    elseif not Client.mapFailureLogged then
+                        Client.mapFailureLogged = true
+                        log("could not draw player-style survivor map square")
                     end
-                end
-                if marker ~= nil then
-                    call(marker, "setPosition", x, y)
-                    call(marker, "setVisible", true)
                     live[id] = true
                 end
             end
         end
     end
     for id, _ in pairs(Client.mapMarkers) do
-        if not live[id] then removeMapMarker(id, api) end
+        if not live[id] then removeMapMarker(id) end
+    end
+    return true
+end
+
+local function finiteScreenNumber(value)
+    return type(value) == "number"
+        and value == value
+        and value ~= math.huge
+        and value ~= -math.huge
+end
+
+local function nameLabelText(state)
+    if state == nil or type(state.display_name) ~= "string"
+        or state.display_name == "" then
+        return nil
+    end
+    -- Snapshot validation already bounds this field. Strip line breaks here
+    -- as a second guard because a name label must stay a single UI line.
+    local text = string.gsub(state.display_name, "[\r\n\t]", " ")
+    if #text > Protocol.maxDisplayName then
+        text = string.sub(text, 1, Protocol.maxDisplayName)
+    end
+    return text ~= "" and text or nil
+end
+
+local function projectNameLabel(actor, textManager)
+    if type(isoToScreenX) ~= "function" or type(isoToScreenY) ~= "function" then
+        return nil
+    end
+    local x, y, z = actorPosition(actor)
+    if x == nil then return nil end
+
+    -- isoToScreen* follows the same player-index convention used by the
+    -- vanilla world UI. Subtracting the split-screen viewport origin keeps
+    -- this correct if a local test later uses more than one player view.
+    local playerIndex = 0
+    local okX, screenX = pcall(isoToScreenX, playerIndex, x, y, z)
+    local okY, groundY = pcall(isoToScreenY, playerIndex, x, y, z)
+    if not okX or not okY
+        or not finiteScreenNumber(screenX)
+        or not finiteScreenNumber(groundY) then
+        return nil
+    end
+
+    local screenLeft, screenTop = 0, 0
+    if type(getPlayerScreenLeft) == "function" then
+        local ok, value = pcall(getPlayerScreenLeft, playerIndex)
+        if ok and finiteScreenNumber(value) then screenLeft = value end
+    end
+    if type(getPlayerScreenTop) == "function" then
+        local ok, value = pcall(getPlayerScreenTop, playerIndex)
+        if ok and finiteScreenNumber(value) then screenTop = value end
+    end
+
+    local zoom = 1.0
+    if type(getCore) == "function" then
+        local okCore, core = pcall(getCore)
+        if okCore and core ~= nil then
+            local okZoom, value = call(core, "getZoom", playerIndex)
+            if okZoom and finiteScreenNumber(value) and value > 0.05 then
+                zoom = value
+            end
+        end
+    end
+
+    local fontHeight = 16
+    if textManager ~= nil and UIFont ~= nil and UIFont.Small ~= nil then
+        local okHeight, value = call(textManager, "getFontHeight", UIFont.Small)
+        if okHeight and finiteScreenNumber(value) and value > 0 then
+            fontHeight = value
+        end
+    end
+
+    -- Anchor to the actor's ground point and lift by a zoom-aware amount so
+    -- the text remains above the head at every camera zoom. The extra font
+    -- height prevents the baseline from touching the model's hair.
+    local headOffset = math.max(80, 140 / zoom) + fontHeight
+    return screenX - screenLeft, groundY - screenTop - headOffset
+end
+
+local function drawSurvivorNameLabels()
+    if type(getTextManager) ~= "function" or UIFont == nil
+        or UIFont.Small == nil then
+        if not Client.nameLabelFailureLogged then
+            Client.nameLabelFailureLogged = true
+            log("survivor name labels deferred: text manager is unavailable")
+        end
+        return false
+    end
+
+    local okManager, textManager = pcall(getTextManager)
+    if not okManager or textManager == nil then
+        if not Client.nameLabelFailureLogged then
+            Client.nameLabelFailureLogged = true
+            log("survivor name labels deferred: text manager lookup failed")
+        end
+        return false
+    end
+
+    local screenWidth, screenHeight = nil, nil
+    if type(getCore) == "function" then
+        local okCore, core = pcall(getCore)
+        if okCore and core ~= nil then
+            local okWidth, width = call(core, "getScreenWidth")
+            local okHeight, height = call(core, "getScreenHeight")
+            if okWidth and finiteScreenNumber(width) then screenWidth = width end
+            if okHeight and finiteScreenNumber(height) then screenHeight = height end
+        end
+    end
+
+    local drawn = 0
+    local actorCount = 0
+    for id, actor in pairs(Client.actors) do
+        actorCount = actorCount + 1
+        local state = Client.states[id]
+        local alive = state ~= nil
+            and state.alive ~= false
+            and state.body_present ~= false
+        local text = alive and nameLabelText(state) or nil
+        if text ~= nil then
+            local screenX, screenY = projectNameLabel(actor, textManager)
+            if screenX ~= nil and screenY ~= nil then
+                local onScreen = true
+                local edge = 48
+                if screenWidth ~= nil and (screenX < -edge or screenX > screenWidth + edge) then
+                    onScreen = false
+                end
+                if screenHeight ~= nil and (screenY < -edge or screenY > screenHeight + edge) then
+                    onScreen = false
+                end
+                if onScreen then
+                    local red, green, blue = mapMarkerColor(id, state)
+                    -- A small black drop shadow keeps the label readable over
+                    -- grass, roofs, and the survivor's own hair.
+                    call(textManager, "DrawStringCentre", UIFont.Small,
+                        screenX + 1, screenY + 1, text, 0, 0, 0, 0.9)
+                    call(textManager, "DrawStringCentre", UIFont.Small,
+                        screenX, screenY, text, red, green, blue, 1.0)
+                    drawn = drawn + 1
+                end
+            end
+        end
+    end
+
+    local now = Protocol.nowMs()
+    if now >= Client.nextNameLabelDiagnosticsAt then
+        Client.nextNameLabelDiagnosticsAt = now + 5000
+        log("survivor name labels: drawn=" .. tostring(drawn)
+            .. " actors=" .. tostring(actorCount))
     end
     return true
 end
@@ -411,6 +845,7 @@ end
 
 local function removeActor(id)
     local actor = Client.actors[id]
+    Client.motion[id] = nil
     if actor == nil then return false end
     local manager = modelManager()
     if manager ~= nil then call(manager, "Remove", actor) end
@@ -467,14 +902,15 @@ local function createActor(state)
     applyRequestedOutfit(actor, state)
     if state.actor_id == "goblin.primary" then call(actor, "forceGoblinAppearance") end
     if state.god_mode ~= false then call(actor, "ensureGodMode") end
-    equipRequestedFirearm(actor, state)
+    equipRequestedWeapon(actor, state)
+    applyCombatPose(actor, state)
     registerInWorld(actor, worldCell, square)
     log("client-side actor '" .. tostring(state.actor_id) .. "' render state: "
         .. actorDiagnostics(actor))
     local pending = Client.pendingSpeech[state.actor_id]
     if pending ~= nil then
         Client.pendingSpeech[state.actor_id] = nil
-        displaySpeech(actor, pending.text)
+        displaySpeech(actor, pending.text, pending.author, pending.chat_displayed)
     end
     return actor
 end
@@ -489,6 +925,7 @@ local function applyState(state)
     Client.lastState = state
 
     local actor = Client.actors[id]
+    local created = false
     if state.alive == false or state.body_present == false then
         Client.lastSequence[id] = state.sequence
         Client.nextCreateAt[id] = nil
@@ -514,14 +951,15 @@ local function applyState(state)
         local now = Protocol.nowMs()
         if now < (Client.nextCreateAt[id] or 0) then return false end
         Client.nextCreateAt[id] = now + 1000
-        local created, detail = createActor(state)
-        if created == nil then
+        local createdActor, detail = createActor(state)
+        if createdActor == nil then
             log("could not create " .. Protocol.entityClass .. ": " .. tostring(detail))
             return false
         end
-        Client.actors[id] = created
+        Client.actors[id] = createdActor
         Client.nextCreateAt[id] = nil
-        actor = created
+        actor = createdActor
+        created = true
         local okZombie, isZombie = call(actor, "isZombie")
         log("created Java human survivor actor '" .. tostring(id)
             .. "' java_class=" .. tostring(runtimeClassName(actor))
@@ -530,35 +968,18 @@ local function applyState(state)
 
     Client.lastSequence[id] = state.sequence
     Client.generations[id] = generation
-    equipRequestedFirearm(actor, state)
+    equipRequestedWeapon(actor, state)
     if state.god_mode ~= false then call(actor, "ensureGodMode") end
 
-    call(actor, "setX", state.x)
-    call(actor, "setY", state.y)
-    call(actor, "setZ", state.z)
-    call(actor, "setLx", state.x)
-    call(actor, "setLy", state.y)
-    call(actor, "setLz", state.z)
     call(actor, "setAlphaAndTarget", 1.0)
     call(actor, "setDoRender", true)
     call(actor, "setInvisible", false)
-    local worldCell = cell()
-    local square = squareFor(worldCell, state.x, state.y, state.z)
-    local okCurrent, currentSquare = call(actor, "getCurrentSquare")
-    if okCurrent and currentSquare ~= square and currentSquare ~= nil then
-        call(actor, "removeFromSquare")
-    end
-    if square ~= nil then
-        local okMovingSquare, movingSquare = call(actor, "getMovingSquare")
-        if not okMovingSquare or movingSquare ~= square then
-            local attached = call(actor, "setMovingSquare", square)
-            if not attached then
-                local okMoving, movingObjects = call(square, "getMovingObjects")
-                if okMoving then listAddOnce(movingObjects, actor) end
-            end
-        end
-        call(actor, "setCurrentSquare", square)
-    end
+    setMotionTarget(id, actor, state, created)
+    local moving = navigationIsMoving(state)
+    call(actor, "setMovementMode", moving, state.running == true)
+    call(actor, "setTraversalPose", state.navigation_status == "jumping",
+        state.running == true)
+    applyCombatPose(actor, state)
     local now = Protocol.nowMs()
     if now >= Client.lastDiagnosticsAt then
         Client.lastDiagnosticsAt = now + 5000
@@ -581,10 +1002,12 @@ local function showSpeech(value)
     Client.lastSpeechSequence[value.actor_id] = value.speech_sequence
     local actor = Client.actors[value.actor_id]
     if actor == nil then
+        local chatDisplayed = displayVanillaChat(value.author or "Goblin", value.text)
+        value.chat_displayed = chatDisplayed == true
         Client.pendingSpeech[value.actor_id] = value
-        return true
+        return chatDisplayed
     end
-    local ok = displaySpeech(actor, value.text)
+    local ok = displaySpeech(actor, value.text, value.author)
     if ok then
         log("displayed speech for client-side actor '" .. tostring(value.actor_id) .. "'")
     else
@@ -621,6 +1044,7 @@ if Events and Events.OnGameStart
     Events.OnGameStart.Add(function()
         for id, _ in pairs(Client.actors) do removeActor(id) end
         Client.actors = {}
+        Client.motion = {}
         Client.nextCreateAt = {}
         Client.lastSequence = {}
         Client.generations = {}
@@ -628,10 +1052,12 @@ if Events and Events.OnGameStart
         Client.pendingSpeech = {}
         Client.states = {}
         clearMapMarkers()
-        Client.nextMapMarkerAt = 0
         Client.mapFailureLogged = false
         Client.lastState = nil
         Client.nextRequestAt = 0
+        Client.nextZombieDiagnosticsAt = 0
+        Client.nextNameLabelDiagnosticsAt = 0
+        Client.nameLabelFailureLogged = false
         requestSnapshot()
     end)
 end
@@ -649,21 +1075,31 @@ if Events and Events.OnTick and type(Events.OnTick.Add) == "function" then
         -- Retry every pending roster member after transient creation failures.
         -- Successfully applied sequences are ignored by applyState.
         for _, state in pairs(Client.states) do applyState(state) end
+        localZombieDiagnostics(now)
         for id, actor in pairs(Client.actors) do
+            -- Render motion is intentionally client-side.  The server remains
+            -- authoritative for the target point, while this short bridge
+            -- makes the body travel there at frame cadence instead of snapping
+            -- at the network snapshot cadence.
+            advanceMotion(id, actor, now)
+            call(actor, "ensureVisualRegistration")
             local ok, detail = call(actor, "tickVisual")
             if not ok and not Client.visualFailureLogged then
                 Client.visualFailureLogged = true
                 log("visual tick failed for " .. tostring(id) .. ": " .. tostring(detail))
             end
         end
-        updateMapMarkers()
     end)
 end
 
 if Events and Events.OnPostUIDraw and type(Events.OnPostUIDraw.Add) == "function" then
-    -- The world map can pause the simulation, so keep marker positions fresh
-    -- from the UI draw path as well as the normal game tick.
-    Events.OnPostUIDraw.Add(function() updateMapMarkers() end)
+    -- The world map can pause the simulation.  More importantly, the
+    -- player-style square is an immediate draw, so it must be issued during
+    -- the UI pass every frame rather than from the simulation tick.
+    Events.OnPostUIDraw.Add(function()
+        updateMapMarkers()
+        drawSurvivorNameLabels()
+    end)
 end
 
 Client.started = true

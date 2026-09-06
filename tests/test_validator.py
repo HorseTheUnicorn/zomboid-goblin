@@ -95,6 +95,25 @@ class ValidatorTests(unittest.TestCase):
         )
         self.assertEqual(result.data["candidate"]["kind"], "nearby_building")
 
+    def test_melee_attack_requires_a_semantic_threat_target(self) -> None:
+        result = self.validator.validate(
+            {
+                "intent": "MELEE_ATTACK",
+                "mode": "HUNT",
+                "target": {"kind": "nearby_threat", "name": "nearby hostile zombie"},
+            }
+        )
+        self.assertEqual(result.intent, "MELEE_ATTACK")
+        self.assertEqual(result.data["target"]["kind"], "nearby_threat")
+        with self.assertRaises(IntentError):
+            self.validator.validate(
+                {
+                    "intent": "MELEE_ATTACK",
+                    "mode": "SAFE",
+                    "target": {"kind": "nearby_threat", "name": "nearby hostile zombie"},
+                }
+            )
+
     def test_rejects_markdown_and_recursive_coordinates(self) -> None:
         with self.assertRaises(IntentError):
             markdown = chr(96) * 3 + "json\n" + '{"intent":"WAIT","mode":"SAFE"}' + "\n" + chr(96) * 3
@@ -106,6 +125,52 @@ class ValidatorTests(unittest.TestCase):
                     "mode": "SAFE",
                     "abort_if": ["stop"],
                     "item": {"name": "water", "x": 1},
+                }
+            )
+
+    def test_validates_bounded_commander_plan(self) -> None:
+        plan = self.validator.validate_plan(
+            {
+                "say": "Bob, stay with Goblin.",
+                "commands": [
+                    {
+                        "survivor_id": "npc.0001",
+                        "action": "FOLLOW_PLAYER",
+                        "target_id": "player.alice",
+                        "priority": 2,
+                    },
+                    {
+                        "survivor_id": "goblin.primary",
+                        "action": "HOLD",
+                    },
+                ],
+            }
+        )
+        self.assertEqual(plan.say, "Bob, stay with Goblin.")
+        self.assertEqual(
+            [command.intent for command in plan.commands],
+            ["FOLLOW_PLAYER", "HOLD"],
+        )
+        self.assertEqual(plan.commands[0].data["target_id"], "player.alice")
+        with self.assertRaises(IntentError):
+            self.validator.validate_plan(
+                {
+                    "commands": [
+                        {
+                            "survivor_id": "npc.0001",
+                            "action": "FOLLOW_PLAYER",
+                            "target_id": "alice",
+                        }
+                    ]
+                }
+            )
+        with self.assertRaises(IntentError):
+            self.validator.validate_plan(
+                {
+                    "say": "too many",
+                    "commands": [
+                        {"survivor_id": "npc.0001", "action": "NOOP"}
+                    ] * 5,
                 }
             )
 

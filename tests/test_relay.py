@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import tempfile
 import unittest
 
+from goblin_zomboid.ipc import BridgeStore
+from goblin_zomboid.protocol import make_message
 from goblin_zomboid.relay import RelayConfig, SshFileRelay, _safe_path, _safe_stem
 
 
@@ -78,6 +81,37 @@ class RelayTests(unittest.TestCase):
             self.assertIsNone(invalid_relay._remote_command_stems)
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_reverse_local_relay_gates_pz_json_and_refreshes_command_index(self) -> None:
+        temp_dir = Path(tempfile.mkdtemp(prefix="goblin-relay-reverse-"))
+        try:
+            store = BridgeStore(temp_dir)
+            event = make_message(
+                "event.chat", speaker="horse", text="goblin?",
+                authorized=False,
+            )
+            event_path = store.publish("events", event, ready=False)
+            relay = SshFileRelay(
+                RelayConfig(local_root=temp_dir, remote_role="agent")
+            )
+            self.assertEqual(relay._prepare_local_json_fallback("events"), 1)
+            self.assertTrue(event_path.with_suffix(".ready").is_file())
+
+            command = make_message(
+                "command.npc_action", npc_id="goblin.primary", action="HOLD"
+            )
+            store.publish("commands", command)
+            relay._refresh_local_command_index()
+            index = json.loads(
+                (temp_dir / "commands" / ".ready-index.json").read_text()
+            )
+            self.assertIn(command.request_id, index)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_relay_rejects_unknown_remote_role(self) -> None:
+        with self.assertRaises(ValueError):
+            RelayConfig(remote_role="unknown")
 
 
 if __name__ == "__main__":

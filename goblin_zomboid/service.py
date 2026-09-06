@@ -21,7 +21,8 @@ from .controllers import BodyState, SafetyController
 from .entities import BaseManager, EntityRegistry, JobManager, SquadManager
 from .events import EventGate
 from .hunt import HuntManager
-from .ipc import EventConsumer, RequestLedger, ResponseConsumer
+from .identities import player_entity_id
+from .ipc import AckConsumer, EventConsumer, RequestLedger, ResponseConsumer
 from .memory import MemoryStore
 from .modes import Mode, ModeController
 from .npc import NPC_ID, NpcBodyDriver
@@ -32,7 +33,8 @@ from .qwen import QwenClient, QwenError
 from .social import ChatterGovernor
 from .state import brain_view, public_view
 from .tracker import TrackerStore
-from .validator import IntentError, IntentValidator
+from .perception import build_agent_perception
+from .validator import IntentError, IntentValidator, ValidatedIntent, ValidatedPlan
 
 
 @dataclass(frozen=True)
@@ -105,10 +107,16 @@ class GoblinService:
             RequestLedger(memory_file.with_suffix(".responses.json"), max_entries=4096),
             max_age_ms=max(30_000, int(config.pz_timeout_seconds * 1000)),
         )
+        self.ack_consumer = AckConsumer(
+            self.store,
+            RequestLedger(memory_file.with_suffix(".acks.json"), max_entries=8192),
+            max_age_ms=max(30_000, int(config.pz_timeout_seconds * 1000)),
+        )
         self.mode_controller = ModeController(now=int(self.clock()))
         self.paused = config.start_paused
         self.last_events: list[dict[str, object]] = []
         self.last_response: dict[str, object] | None = None
+        self.last_ack: dict[str, object] | None = None
         self.event_overlay: dict[str, object] = {}
         self.current_body: BodyState | None = None
         self.last_status = "starting"
@@ -156,6 +164,27 @@ class GoblinService:
             except OSError:
                 pass
 
+    def _poll_acks(self) -> None:
+        """Consume lifecycle progress without mistaking it for a response."""
+
+        now_ms = int(self.clock() * 1000)
+        for acknowledgement in self.ack_consumer.poll(limit=64, now=now_ms):
+            fields = acknowledgement.message.fields
+            self.last_ack = {
+                "request_id": acknowledgement.message.request_id,
+                "command_id": fields.get(
+                    "command_id", acknowledgement.message.request_id
+                ),
+                "status": fields.get("status"),
+                "detail": fields.get("detail", ""),
+                "terminal": fields.get("terminal", False),
+                "timestamp_ms": acknowledgement.message.timestamp_ms,
+            }
+            try:
+                self.ack_consumer.finalize(acknowledgement)
+            except OSError:
+                pass
+
     def _register_player(self, player: object) -> None:
         if isinstance(player, str) and player:
             try:
@@ -163,8 +192,15 @@ class GoblinService:
             except ValueError:
                 pass
         elif isinstance(player, Mapping):
-            value = player.get("id", player.get("player"))
-            self._register_player(value)
+            value = player.get("id", player.get("player", player.get("name")))
+            name = player.get("name")
+            try:
+                if isinstance(value, str):
+                    self.entity_registry.register_player(
+                        value, name=name if isinstance(name, str) else None
+                    )
+            except ValueError:
+                pass
 
     def _register_npc(self, npc: object) -> None:
         if not isinstance(npc, Mapping):
@@ -222,6 +258,11 @@ class GoblinService:
             if key == "authority_token":
                 if isinstance(value, str) and value:
                     self._plan_authority_token = value
+                continue
+            if key == "speaker":
+                logical_id = player_entity_id(value)
+                if logical_id is not None:
+                    event["speaker_id"] = logical_id
                 continue
             event[key] = value
         self._plan_authorized = fields.get("authorized") is True
@@ -299,12 +340,79 @@ class GoblinService:
         self._plan_cooldown_until = now
 
     def _planning_context(self) -> dict[str, object]:
-        context = dict(self.last_state)
+        context = build_agent_perception(self.last_state)
         if self._plan_reason is not None:
             context["planning_reason"] = self._plan_reason
         if self._plan_event is not None:
             context["event"] = dict(self._plan_event)
         return brain_view(context)
+
+    @staticmethod
+    def _plan_command_intent(
+        command: ValidatedIntent, body: BodyState
+    ) -> ValidatedIntent:
+        """Translate the public commander vocabulary to the legacy typed gate."""
+
+        aliases = {
+            "NOOP": "WAIT",
+            "FOLLOW_PLAYER": "FOLLOW",
+            "HOLD": "HOLD_POSITION",
+            "RETURN_HOME": "RETURN_TO_BASE",
+            "SCAVENGE_AREA": "SCAVENGE",
+        }
+        intent_name = aliases.get(command.intent, command.intent)
+        data = dict(command.data)
+        target_id = data.pop("target_id", None)
+        if command.intent in {"FOLLOW_PLAYER", "DEFEND_PLAYER"}:
+            data["target"] = {
+                "kind": "player", "player": target_id,
+            }
+        elif command.intent == "FOLLOW_GOBLIN":
+            data["target"] = {
+                "kind": "goblin", "name": target_id or NPC_ID,
+            }
+        elif command.intent == "REGROUP":
+            data["target"] = {
+                "kind": "goblin", "name": target_id or NPC_ID,
+            }
+        elif command.intent == "RETURN_HOME":
+            data["target"] = {"kind": "home_base", "name": "home base"}
+        elif command.intent == "RETREAT":
+            data["target"] = {
+                "kind": "escape_route", "name": "nearest safe route",
+            }
+        elif command.intent in {"LOOT_AREA", "SCAVENGE_AREA"}:
+            data["target"] = {
+                "kind": "current_position", "name": "current position",
+            }
+        elif command.intent == "SECURE_BASE":
+            # The server resolves the anchored base itself; keeping a semantic
+            # target in the typed intent makes the command auditable without
+            # putting a coordinate in the model response.
+            data["target"] = {"kind": "home_base", "name": "home base"}
+        data["mode"] = body.mode
+        return ValidatedIntent(intent_name, body.mode, data)
+
+    def _publish_intent(
+        self,
+        intent: ValidatedIntent,
+        body: BodyState,
+        *,
+        authority_token: str | None = None,
+    ) -> tuple[bool, str, str | None]:
+        reference_error = self._validate_references(intent)
+        if reference_error is not None:
+            return False, reference_error, None
+        decision = self.safety.decide(intent, body)
+        if not decision.accepted or decision.action is None:
+            return False, decision.reason, None
+        result = self.npc_driver.execute(
+            decision.action, authority_token=authority_token
+        )
+        if not result.accepted:
+            return False, result.detail, None
+        self.last_action = decision.action.as_dict()
+        return True, result.status, result.detail
 
     def _apply_event(self, kind: str, fields: Mapping[str, object], timestamp_ms: int) -> None:
         created_at = timestamp_ms // 1000
@@ -398,15 +506,94 @@ class GoblinService:
             self._pending_chat_replies.append((dict(fields), event_request_id))
             self._pending_chat_replies = self._pending_chat_replies[-16:]
             return
+        context = build_agent_perception(
+            self.last_state,
+            event={
+                "type": "PLAYER_CHAT",
+                "speaker_id": player_entity_id(speaker),
+                "text": text,
+            },
+        )
+        context["event"] = {
+            "type": "PLAYER_CHAT",
+            "speaker_id": player_entity_id(speaker),
+            "text": text,
+        }
+        context["recent_memories"] = self.memory.recent_memories(8)
+
+        # New Qwen adapters return one bounded speech-plus-command plan. Keep
+        # the legacy speech-only path below for test doubles and older local
+        # processes while the deployed .76 service is upgraded.
+        propose_plan = getattr(self.qwen, "propose_plan", None)
+        if callable(propose_plan):
+            try:
+                plan = propose_plan(brain_view(context))
+                if not isinstance(plan, ValidatedPlan):
+                    raise QwenError("Qwen plan adapter returned an invalid plan")
+            except (IntentError, QwenError, TypeError, ValueError):
+                self.last_status = "qwen_plan_rejected"
+                self.last_detail = "addressed chat plan failed strict validation"
+                return
+
+            published = 0
+            failures: list[str] = []
+            if plan.say is not None:
+                try:
+                    say_intent = IntentValidator().validate({
+                        "intent": "SAY",
+                        "mode": self.current_body.mode,
+                        "npc_id": NPC_ID,
+                        "text": plan.say,
+                        "priority": 2,
+                    })
+                    chatter = self.chatter.record(
+                        f"reply:{event_request_id}", "game", plan.say,
+                        now=int(self.clock()), priority=2,
+                    )
+                    if chatter.allowed:
+                        ok, detail, _ = self._publish_intent(
+                            say_intent, self.current_body,
+                            authority_token=self._plan_authority_token,
+                        )
+                        if ok:
+                            published += 1
+                        else:
+                            failures.append(detail)
+                    else:
+                        failures.append("chat governor suppressed the reply")
+                except (IntentError, TypeError, ValueError) as exc:
+                    failures.append(str(exc))
+
+            for command in plan.commands:
+                try:
+                    intent = self._plan_command_intent(command, self.current_body)
+                    ok, detail, _ = self._publish_intent(
+                        intent, self.current_body,
+                        authority_token=self._plan_authority_token,
+                    )
+                    if ok:
+                        published += 1
+                    else:
+                        failures.append(detail)
+                except (IntentError, TypeError, ValueError) as exc:
+                    failures.append(str(exc))
+
+            self._finish_planning(float(self.clock()), retry=False)
+            if published > 0:
+                self.last_status = (
+                    "npc_plan_published" if plan.commands else "npc_speech_published"
+                )
+                self.last_detail = (
+                    f"validated Goblin leader plan published ({published} action(s))"
+                )
+            else:
+                self.last_status = "npc_plan_noop"
+                self.last_detail = failures[0] if failures else "plan contained no executable action"
+            return
+
         propose_speech = getattr(self.qwen, "propose_speech", None)
         if not callable(propose_speech):
             return
-        context = {
-            "event": {"speaker": speaker, "text": text},
-            "mode": self.current_body.mode,
-            "threat_level": self.current_body.threat_level,
-            "recent_memories": self.memory.recent_memories(8),
-        }
         try:
             speech = propose_speech(context)
             intent = IntentValidator().validate({
@@ -430,13 +617,21 @@ class GoblinService:
             self.last_status = "npc_speech_published"
             self.last_detail = "addressed chat reply sent to the server-side NPC"
 
-    def _drain_pending_chat_replies(self) -> None:
+    def _drain_pending_chat_replies(self) -> bool:
         if self.paused or self.current_body is None or not self.current_body.body_ready:
-            return
+            return False
         pending = self._pending_chat_replies
         self._pending_chat_replies = []
+        chat_handler = self.qwen is not None and (
+            callable(getattr(self.qwen, "propose_plan", None))
+            or callable(getattr(self.qwen, "propose_speech", None))
+        )
         for fields, request_id in pending:
             self._reply_to_chat(fields, event_request_id=request_id)
+        # Older/local test adapters may expose only propose_intent.  Leave
+        # those addressed events pending for the normal planner so existing
+        # intent-only deployments keep their behavior.
+        return bool(pending) and chat_handler
 
     def _poll_events(self) -> None:
         now_ms = int(self.clock() * 1000)
@@ -525,6 +720,8 @@ class GoblinService:
         npc_id = data.get("npc_id", NPC_ID)
         if not isinstance(npc_id, str) or not self.entity_registry.known_npc(npc_id):
             return "unknown managed survivor id"
+        if intent.intent == "ASSIGN_JOB" and npc_id == NPC_ID:
+            return "Goblin is the permanent survivor leader and cannot be assigned a worker job"
         if intent.intent in PRIVILEGED_ACTIONS and not self._plan_authorized:
             return "privileged action requires an authorized in-game commander request"
         target = data.get("target")
@@ -532,6 +729,14 @@ class GoblinService:
             player = target.get("player", target.get("name", target.get("label")))
             if isinstance(player, str) and not self.entity_registry.known_player(player):
                 return "player is not in the server-reported allowlist"
+        if isinstance(target, Mapping) and target.get("kind") == "goblin":
+            target_id = target.get("name", target.get("label"))
+            if target_id != NPC_ID:
+                return "unknown Goblin target"
+        if isinstance(target, Mapping) and target.get("kind") == "survivor":
+            target_id = target.get("name", target.get("label"))
+            if not isinstance(target_id, str) or not self.entity_registry.known_npc(target_id):
+                return "survivor is not in the server-reported allowlist"
         if intent.intent == "ASSIGN_JOB":
             try:
                 self.jobs.assign(str(data.get("npc_id", NPC_ID)), str(data.get("job", "")))
@@ -540,9 +745,20 @@ class GoblinService:
         if intent.intent == "FORM_SQUAD":
             try:
                 members = data.get("requested_members", data.get("members", []))
+                leader = str(data["leader"])
+                if not self.entity_registry.known_player(leader) \
+                        and not self.entity_registry.known_npc(leader):
+                    return "unknown squad leader"
+                if isinstance(members, list):
+                    unknown_members = [
+                        member for member in members
+                        if not self.entity_registry.known_npc(str(member))
+                    ]
+                    if unknown_members:
+                        return "squad contains an unknown survivor id"
                 squad = self.squads.form(
                     data.get("squad_id", "squad.primary"),
-                    leader=str(data["leader"]), requested=members,
+                    leader=leader, requested=members,
                     formation=data.get("formation", "loose"),
                     mission=str(data.get("mission", "general expedition")),
                     created_at=int(self.clock()),
@@ -605,7 +821,11 @@ class GoblinService:
         )
         if reflex_result.status != "fallback_safe":
             return reflex_result
-        self._drain_pending_chat_replies()
+        if self._drain_pending_chat_replies():
+            # A player-directed plan is already the meaningful planning turn
+            # for this heartbeat.  Do not immediately make a second model
+            # request that can overwrite the chat response or companion order.
+            return ServiceResult(self.last_status, self.last_detail)
         if self.qwen is None:
             return self._run_deterministic_fallback(body, "no Qwen adapter configured")
         now = float(self.clock())
@@ -684,6 +904,7 @@ class GoblinService:
             self.last_detail = "master feature flag is false"
             return ServiceResult(self.last_status, self.last_detail)
         self._poll_responses()
+        self._poll_acks()
         self._poll_events()
         if self.paused:
             self.last_status = "paused"
@@ -734,6 +955,7 @@ class GoblinService:
             "brain_state": dict(self.last_state),
             "last_action": dict(self.last_action) if self.last_action else None,
             "last_response": dict(self.last_response) if self.last_response else None,
+            "last_ack": dict(self.last_ack) if self.last_ack else None,
             "last_events": [dict(event) for event in self.last_events],
             "npc": {
                 "id": NPC_ID,

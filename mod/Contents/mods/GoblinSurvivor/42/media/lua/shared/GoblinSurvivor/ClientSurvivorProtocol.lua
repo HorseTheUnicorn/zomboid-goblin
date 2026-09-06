@@ -13,7 +13,9 @@ local Protocol = {
     maxEntityId = 96,
     maxDisplayName = 48,
     maxMode = 32,
-    maxSpeech = 240
+    maxSpeech = 240,
+    maxSpeechAuthor = 48,
+    maxSpeechChannel = 16
 }
 
 local function finiteNumber(value)
@@ -98,12 +100,61 @@ function Protocol.validSnapshot(value)
     if value.work_count ~= nil
         and (not finiteNumber(value.work_count) or value.work_count < 0
             or math.floor(value.work_count) ~= value.work_count) then return false end
+    if value.expedition_phase ~= nil
+        and not Protocol.safeText(value.expedition_phase, 32, false) then return false end
+    for _, key in ipairs({ "expedition_round", "cargo_count", "cargo_types",
+        "offline_cargo_count", "offline_cargo_types", "vehicle_recoveries" }) do
+        if value[key] ~= nil
+            and (not finiteNumber(value[key]) or value[key] < 0
+                or math.floor(value[key]) ~= value[key]) then
+            return false
+        end
+    end
+    if value.vehicle_id ~= nil
+        and (not finiteNumber(value.vehicle_id) or value.vehicle_id < 0
+            or math.floor(value.vehicle_id) ~= value.vehicle_id) then
+        return false
+    end
+    for _, key in ipairs({ "vehicle_target_x", "vehicle_target_y", "vehicle_target_z" }) do
+        if value[key] ~= nil and not finiteNumber(value[key]) then return false end
+    end
+    for _, key in ipairs({ "vehicle_recovery_enabled", "vehicle_engine_running" }) do
+        if value[key] ~= nil and type(value[key]) ~= "boolean" then return false end
+    end
+    if value.vehicle_status ~= nil
+        and not Protocol.safeText(value.vehicle_status, 64, false) then return false end
+    if value.vehicle_error ~= nil
+        and not Protocol.safeText(value.vehicle_error, 160, false) then return false end
+    for _, key in ipairs({ "auto_expedition", "return_to_follow" }) do
+        if value[key] ~= nil and type(value[key]) ~= "boolean" then return false end
+    end
+    if value.delivery_status ~= nil
+        and not Protocol.safeText(value.delivery_status, 96, false) then return false end
+    if value.movement_mode ~= nil
+        and not Protocol.safeText(value.movement_mode, 8, false) then return false end
+    if value.running ~= nil and type(value.running) ~= "boolean" then return false end
     -- Every managed body carries the same non-empty rifle contract; the
     -- server and client live diagnostics verify the concrete item type.
     if value.firearm_type ~= nil
         and not Protocol.safeText(value.firearm_type, 64, true) then return false end
     if value.weapon_policy ~= nil
         and not Protocol.safeText(value.weapon_policy, 64, false) then return false end
+    if value.melee_weapon_type ~= nil and not validItemType(value.melee_weapon_type) then
+        return false
+    end
+    if value.melee_weapon_ready ~= nil
+        and type(value.melee_weapon_ready) ~= "boolean" then return false end
+    for _, key in ipairs({ "melee_attacks", "melee_kills" }) do
+        if value[key] ~= nil
+            and (not finiteNumber(value[key]) or value[key] < 0
+                or math.floor(value[key]) ~= value[key]) then return false end
+    end
+    if value.last_melee_error ~= nil
+        and not Protocol.safeText(value.last_melee_error, 128, false) then return false end
+    if value.combat_mode ~= nil
+        and not Protocol.safeText(value.combat_mode, 32, false) then return false end
+    if value.combat_status ~= nil
+        and not Protocol.safeText(value.combat_status, 64, false) then return false end
     if value.profile.sex ~= nil
         and not Protocol.safeText(value.profile.sex, 16, false) then return false end
     if value.profile.hair ~= nil
@@ -122,13 +173,24 @@ function Protocol.validSnapshot(value)
 end
 
 function Protocol.validSpeech(value)
-    return type(value) == "table"
-        and value.protocol == Protocol.version
-        and Protocol.safeText(value.actor_id, Protocol.maxEntityId, false)
-        and finiteNumber(value.speech_sequence)
-        and math.floor(value.speech_sequence) == value.speech_sequence
-        and value.speech_sequence >= 1
-        and Protocol.safeText(value.text, Protocol.maxSpeech, false)
+    if type(value) ~= "table"
+        or value.protocol ~= Protocol.version
+        or not Protocol.safeText(value.actor_id, Protocol.maxEntityId, false)
+        or not finiteNumber(value.speech_sequence)
+        or math.floor(value.speech_sequence) ~= value.speech_sequence
+        or value.speech_sequence < 1
+        or not Protocol.safeText(value.text, Protocol.maxSpeech, false) then
+        return false
+    end
+    if value.author ~= nil
+        and not Protocol.safeText(value.author, Protocol.maxSpeechAuthor, false) then
+        return false
+    end
+    if value.channel ~= nil
+        and not Protocol.safeText(value.channel, Protocol.maxSpeechChannel, false) then
+        return false
+    end
+    return true
 end
 
 return Protocol

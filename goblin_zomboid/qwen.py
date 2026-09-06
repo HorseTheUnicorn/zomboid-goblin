@@ -11,7 +11,8 @@ from typing import Any
 
 from .social import sanitize_speech
 from .state import brain_view
-from .validator import IntentError, IntentValidator, ValidatedIntent
+from .capabilities import IMPLEMENTED_CAPABILITIES
+from .validator import IntentError, IntentValidator, ValidatedIntent, ValidatedPlan
 
 
 class QwenError(RuntimeError):
@@ -39,17 +40,25 @@ class QwenClient:
 
     @staticmethod
     def _system_prompt() -> str:
+        # ``propose_intent`` is retained for older autonomous-loop adapters,
+        # but it must describe the same implemented surface as the newer
+        # speech-plus-command plan envelope.  Do not teach the model legacy
+        # combat, hunt, vehicle, or debug verbs that the remote command
+        # authority intentionally does not advertise.
+        legacy_intents = (
+            "WAIT", "SAY", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
+            "REGROUP", "RETURN_TO_BASE", "DEFEND_PLAYER", "RETREAT",
+            "LOOT_AREA", "SCAVENGE", "FORM_SQUAD", "DISMISS_SQUAD",
+            "ASSIGN_JOB", "SECURE_BASE",
+        )
         return (
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
             "Goblin is the persistent server-side coordinator with id goblin.primary. The runtime state "
             "contains a bounded server-reported roster of managed human survivors; when directing a "
             "companion, put its reported npc_id in the intent. Goblin is the big brain and may assign "
             "the six companions to follow, loot, disassemble, build, guard, scout, haul, farm, or medic "
-            "work. Never refer to a Steam/PZ client or create a character. Allowed intents include WAIT, SAY, MOVE_TO, FOLLOW, FOLLOW_GOBLIN, "
-            "HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, GO_HOME, JOIN_PARTY, "
-            "LEAVE_PARTY, FORM_SQUAD, DISMISS_SQUAD, ASSIGN_JOB, SECURE_BASE, RETURN_TO_BASE, "
-            "CLEAR_BUILDING, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, ENTER_VEHICLE, "
-            "EXIT_VEHICLE, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
+            "work. Never refer to a Steam/PZ client or create a character. The implemented legacy intent "
+            f"surface is: {', '.join(legacy_intents)}. "
             "Allowed modes are SAFE, ROAM, PARTY, and HUNT. Use only coarse named targets such as a "
             "nearby building, area, player, home base, escape route, squad, vehicle, candidate, or "
             "current position. Never output coordinates, routes, cells, chunks, IDs for buildings, Lua, "
@@ -64,6 +73,23 @@ class QwenClient:
             "reply to the supplied player message. Stay in character and never reveal hidden locations, "
             "coordinates, private admin information, credentials, code, or tools. Return exactly one JSON "
             "object with only the field text."
+        )
+
+    @staticmethod
+    def _plan_system_prompt() -> str:
+        capabilities = ", ".join(IMPLEMENTED_CAPABILITIES)
+        return (
+            "Return exactly one JSON object and nothing else with this shape: "
+            "{\"say\":\"optional short reply\",\"commands\":[...]} . "
+            "The say field may be omitted when no reply is needed; commands must contain at most four "
+            "bounded high-level commands. Goblin is the persistent leader with logical id goblin.primary. "
+            "Each command must contain survivor_id and action. The only currently implemented actions are: "
+            f"{capabilities}. Use target_id only as a stable logical id such as player.alice, "
+            "goblin.primary, or npc.0001; never use native object ids. FOLLOW_PLAYER and DEFEND_PLAYER "
+            "require a player target_id. Do not output coordinates, distances, routes, cells, chunks, "
+            "building ids, PZ/Lua/Java APIs, shell commands, code, credentials, or raw packets. "
+            "Java owns resolution, movement, combat, inventory, and persistence; you only choose the "
+            "semantic action. Keep say under 240 characters and every command field bounded."
         )
 
     def _request_json(self, system_prompt: str, payload: Mapping[str, Any], *, max_tokens: int) -> str:
@@ -111,6 +137,17 @@ class QwenClient:
             return self.validator.validate_json(content)
         except (IntentError, ValueError) as exc:
             raise QwenError("Qwen response failed strict intent validation") from exc
+
+    def propose_plan(self, context: Mapping[str, Any]) -> ValidatedPlan:
+        if not isinstance(context, Mapping):
+            raise QwenError("plan context must be an object")
+        try:
+            content = self._request_json(
+                self._plan_system_prompt(), brain_view(context), max_tokens=384
+            )
+            return self.validator.validate_plan_json(content)
+        except (IntentError, ValueError) as exc:
+            raise QwenError("Qwen response failed strict plan validation") from exc
 
     def propose_speech(self, context: Mapping[str, Any]) -> str:
         if not isinstance(context, Mapping):

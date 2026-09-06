@@ -23,6 +23,51 @@ separate multiplayer save. The empty Workshop list is intentional: local
 iteration uses the synchronized direct package and does not wait for a
 Workshop download.
 
+## Use the `.76` Goblin brain from the Windows test server
+
+The local PZ server should reach the `.76` bridge, not the raw Qwen HTTP
+endpoint. Qwen stays private on `.76` at `127.0.0.1:8000`; the Python agent
+reads it locally, validates its output, and exposes only typed bridge files.
+This is the same boundary that production `.03` will use. For the local
+harness, the relay runs on Windows and reverses the normal production
+direction: it pushes PZ events/results/state to `.76` and pulls typed
+commands back.
+
+The Windows-to-`.76` test relay requires key-only OpenSSH access to the
+pre-provisioned `goblin` account on `.76`. It does not copy passwords or
+tokens and it does not use a PZ/Steam client on `.76`. First verify that the
+`.76` host's SSH service is reachable and that the key is already trusted:
+
+```powershell
+Test-NetConnection 192.168.0.76 -Port 22
+ssh -i "$env:USERPROFILE\.ssh\id_ed25519_goblin" goblin@192.168.0.76 true
+```
+
+Then run the local relay in a separate PowerShell window while the `.76`
+agent and its local Qwen service are enabled:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalGoblinRelay.ps1
+```
+
+The helper defaults to the existing Windows key at
+`C:\Users\tomgr\.ssh\id_ed25519_goblin`; pass `-SshKey` only when the key is
+stored elsewhere. The private key itself must remain outside the repository.
+
+For a one-pass connectivity check, use `-Once`. The helper's remote root is
+`/mnt/goblin-zomboid-local` by default. A separate `.76` local-test agent
+must use that root; do not point the production `.76` relay at it or point
+the local relay at `/mnt/goblin-zomboid`, because that would mix `.03` and
+local events.
+For production, `.76` runs its existing relay toward `.03`, and `.03` still
+does not need direct access to port `8000`.
+
+On `.76`, keep the agent's Qwen URL loopback-only and enable the agent only
+after the local acceptance gates are ready. The required service settings
+are `GOBLIN_QWEN_URL=http://127.0.0.1:8000`, `GOBLIN_ENABLED=true`, and an
+operator-controlled `GOBLIN_START_PAUSED` value. Do not bind Qwen to
+`0.0.0.0` or publish port `8000` to the LAN.
+
 ## Synchronize and launch
 
 Run PowerShell from the repository checkout. Stop the local server and client
