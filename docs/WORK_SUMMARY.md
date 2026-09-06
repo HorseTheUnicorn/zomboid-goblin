@@ -20,6 +20,12 @@ tracker telemetry; it does not run a PZ gameplay client.
 - Updated local Windows launch/cache helpers and synchronized direct and
   Workshop-staging package copies.
 - Confirmed local visibility by user observation and client diagnostics.
+- Verified the live `.76` agent, relay, and Qwen services. The real Qwen
+  adapter uses the shared Goblin personality prompt used by the Discord side
+  and produced a valid speech response through the production agent path.
+- Published GitHub commit `5b5f640` and completed a guarded `.03` rollout of
+  the matching package. The previous server package and save are recoverable
+  under the timestamped backup recorded in `LIVE_ENVIRONMENT.md`.
 
 ## Latest local evidence
 
@@ -37,12 +43,12 @@ completed.
 
 Melee and combat animation, smooth/collision-aware movement, real job effects,
 guard/hauler/farmer/medic/scout behavior, companion and squad behavior,
-unload/rebind, reconnect, two distinct clients, `.76` chat/Qwen round-trip,
-and final package/release validation remain open. The repeatable June route
-failure must also be resolved or explicitly bounded.
+unload/rebind, reconnect, two distinct clients, and a live in-game
+`.76` chat/Qwen round-trip remain open. The repeatable June route failure must
+also be resolved or explicitly bounded.
 
-The development branch was pushed at commit `2238dd7`; the release metadata
-and normalized 256x256 preview are being published with the follow-up commit.
-The exact package is published as unlisted Steam Workshop item `3797127671`
-under `HorseTheUnicorn`. Production `.03` remains unchanged until the guarded
-deployment and post-restart verification are completed.
+The development branch is pushed through commit `5b5f640`; the normalized
+256x256 preview and release metadata are committed. The unlisted Workshop
+item is `3797127671` under `HorseTheUnicorn`. Production `.03` is running the
+matching direct package; Workshop auto-delivery remains disabled pending a
+successful re-test of the unlisted item's server download behavior.

@@ -15,8 +15,9 @@ test a mod change.
 GoblinSurvivor is a single self-contained mod. It creates and controls its
 own native Build 42 bodies and has no external NPC framework or required body
 engine. The server's ordered loadout contains only `GoblinSurvivor` for this
-feature, and `WorkshopItems=` remains empty until the new unlisted
-GoblinSurvivor Workshop item is published.
+feature. The current `.03` recovery state keeps `WorkshopItems=` empty because
+the unlisted Workshop download path must be re-tested before automatic client
+delivery is enabled.
 
 The live server's target paths are:
 
@@ -64,6 +65,13 @@ death-recovery checks:
 
 The `.03` migration is a separate guarded operation. A local test failure
 must never trigger a production restart or alter the production save.
+
+The guarded rollout for commit `5b5f640` completed on 2026-09-06. The active
+Storm jar SHA-256 is
+`798d29dea9d11d45ca83ebc6e6f4e649db6275d8bb67d995f3bcf919f4ce3253`, the
+service is `zomboid-servertest.service`, and the recovery directory is
+`/home/zomboid/backups/goblinsurvivor-20260906-231020`. The old package and
+removed Workshop cache were moved there rather than deleted.
 
 ## Agent
 

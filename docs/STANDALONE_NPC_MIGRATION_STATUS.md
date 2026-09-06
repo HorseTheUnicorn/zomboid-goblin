@@ -1,13 +1,13 @@
 # Standalone B42 survivor-engine status
 
-Updated: 2026-09-05
+Updated: 2026-09-06
 
 ## Scope
 
 This checkpoint tracks the standalone Build 42 human-survivor engine. The
-development branch is `checkpoint/pre-standalone-survivor-engine`; the
-production `.03` server, its save, and its package have not been changed by
-the local validation work.
+development branch is `checkpoint/pre-standalone-survivor-engine`. A guarded
+production rollout completed on 2026-09-06 after the local package checks;
+the active `.03` package matches commit `5b5f640`.
 
 The authoritative checkout is:
 
@@ -95,11 +95,14 @@ the warm-session workflow.
 6. A second client has not passed: an isolated process reached the server but
    reused the first client's username and was rejected. It must be repeated
    with a distinct user identity.
-7. `.76` chat/Qwen round-trip, companion/squad commands, and the final
-   integration path remain to be tested end-to-end.
-8. GitHub publication is authorized but must include the final intended
-   checkpoint. Workshop publication and `.03` installation remain closed
-   until the local gates above pass.
+7. Companion/squad commands and a live `.03` chat/Qwen round-trip still need
+   an end-to-end player test. The production `.76` agent path itself is
+   healthy, and its Qwen prompts include Goblin's shared Discord personality.
+8. GitHub publication is complete at commit `5b5f640`, and the unlisted
+   Workshop item is `3797127671`. `.03` is running the matching direct
+   package; WorkshopItems auto-delivery is intentionally not enabled until
+   the unlisted-item download failure is resolved.
 
-No production restart or production configuration change is authorized by
-this checkpoint.
+The production restart and configuration change were authorized and completed
+under the timestamped recovery procedure. Do not perform another restart
+without a new change window.
