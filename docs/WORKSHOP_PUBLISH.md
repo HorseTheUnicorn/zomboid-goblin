@@ -21,8 +21,8 @@ GoblinSurvivor files used by the local test profile.
 
 ## Publish an unlisted item
 
-1. Use the Steam account authorized for the project (`djfubar33`) in the
-   Windows PZ client.
+1. Use the already signed-in Steam account authorized for this project
+   (`HorseTheUnicorn`) in the Windows PZ client.
 2. Open Project Zomboid's Workshop Submit screen from the main menu.
 3. Select the staging folder and choose the new-item path.
 4. Set visibility to **Unlisted**, keep the title `GoblinSurvivor`, and use
