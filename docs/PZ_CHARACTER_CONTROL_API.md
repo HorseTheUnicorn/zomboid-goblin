@@ -79,6 +79,7 @@ goblinAgentCapabilities()
 validateGoblinSurvivorCommand(message)
 goblinSurvivorCommandRejectReason(message)
 normalizeGoblinAction(action)
+executeGoblinSurvivorCommand(message, state)
 ```
 
 The debug spawn/death functions are guarded by the disposable local-test
@@ -101,9 +102,12 @@ commands.
 ## Capability policy
 
 The capability list is intentionally smaller than the internal compatibility
-action set. `.03` publishes only actions that the current client-survivor
-executor implements: `NOOP`, `SAY`, `FOLLOW_PLAYER`, `FOLLOW_GOBLIN`, `HOLD`,
-`REGROUP`, `RETURN_HOME`, `DEFEND_PLAYER`, `RETREAT`, `LOOT_AREA`,
-`SCAVENGE_AREA`, `FORM_SQUAD`, `DISMISS_SQUAD`, `ASSIGN_JOB`, and `SECURE_BASE`.
-Unknown actions, stale commands, malformed targets, unsafe fields, and any
-attempt to assign Goblin away from his permanent leader role fail closed.
+action set. `.03` publishes only actions in the bounded capability list:
+`NOOP`, `SAY`, `FOLLOW_PLAYER`, `FOLLOW_GOBLIN`, `HOLD`, `REGROUP`,
+`RETURN_HOME`, `DEFEND_PLAYER`, `RETREAT`, `LOOT_AREA`, `SCAVENGE_AREA`,
+`FORM_SQUAD`, `DISMISS_SQUAD`, `ASSIGN_JOB`, and `SECURE_BASE`. Storm directly
+submits the verified initial movement/hold goals and delegates only actions
+whose roster or base resolver still belongs to the Lua server adapter.
+Unknown actions, stale commands, malformed targets, unsafe nested fields,
+duplicate request ids, and any attempt to assign Goblin away from his
+permanent leader role fail closed.

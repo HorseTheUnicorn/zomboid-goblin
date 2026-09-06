@@ -39,7 +39,10 @@ class StateViewTests(unittest.TestCase):
                 "alive": True,
                 "body_present": True,
                 "nearby_players": [{"id": "Alice", "online": True}],
-                "npcs": [{"npc_id": "npc.0001", "name": "Sarah", "x": 10, "y": 11}],
+                "npcs": [{
+                    "npc_id": "npc.0001", "name": "Sarah", "x": 10, "y": 11,
+                    "join_assist": True, "join_assist_username": "Alice",
+                }],
                 "base": {"id": "base.primary", "x": 20, "y": 21},
                 "threat_level": "near",
                 "ordinary_zombie_count": 2,
@@ -59,6 +62,10 @@ class StateViewTests(unittest.TestCase):
         self.assertNotIn("z", perception)
         self.assertNotIn("x", perception["survivors"][0])
         self.assertNotIn("y", perception["survivors"][0])
+        self.assertTrue(perception["survivors"][0]["join_assist"])
+        self.assertEqual(
+            perception["survivors"][0]["join_assist_username"], "Alice"
+        )
         self.assertNotIn("x", perception["base"])
         self.assertNotIn("y", perception["base"])
         self.assertEqual(perception["event"]["speaker_id"], "player.alice")

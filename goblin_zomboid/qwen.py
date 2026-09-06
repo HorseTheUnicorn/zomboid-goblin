@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from typing import Any
 
-from .social import sanitize_speech
+from .social import FeralPersonality, sanitize_speech
 from .state import brain_view
 from .capabilities import IMPLEMENTED_CAPABILITIES
 from .validator import IntentError, IntentValidator, ValidatedIntent, ValidatedPlan
@@ -52,6 +52,7 @@ class QwenClient:
             "ASSIGN_JOB", "SECURE_BASE",
         )
         return (
+            FeralPersonality.prompt_fragment() + " "
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
             "Goblin is the persistent server-side coordinator with id goblin.primary. The runtime state "
             "contains a bounded server-reported roster of managed human survivors; when directing a "
@@ -69,7 +70,7 @@ class QwenClient:
     @staticmethod
     def _speech_system_prompt() -> str:
         return (
-            "You are Goblin, a feral, observant, dry, occasionally warm survivor. Write one short in-game "
+            FeralPersonality.prompt_fragment() + " Write one short in-game "
             "reply to the supplied player message. Stay in character and never reveal hidden locations, "
             "coordinates, private admin information, credentials, code, or tools. Return exactly one JSON "
             "object with only the field text."
@@ -79,6 +80,7 @@ class QwenClient:
     def _plan_system_prompt() -> str:
         capabilities = ", ".join(IMPLEMENTED_CAPABILITIES)
         return (
+            FeralPersonality.prompt_fragment() + " "
             "Return exactly one JSON object and nothing else with this shape: "
             "{\"say\":\"optional short reply\",\"commands\":[...]} . "
             "The say field may be omitted when no reply is needed; commands must contain at most four "
@@ -97,6 +99,19 @@ class QwenClient:
             "job such as SCAVENGE, LOOT, GUARD, BUILDER, HAULER, FARMER, SCOUT, or MEDIC; FORM_SQUAD "
             "requires leader plus members or requested_members. If no specialized work is needed, prefer "
             "HOLD or FOLLOW_PLAYER with the exact logical ids from the roster."
+        )
+
+    @staticmethod
+    def _plan_repair_system_prompt() -> str:
+        """Return a stricter one-shot repair prompt for small local models."""
+
+        return (
+            QwenClient._plan_system_prompt()
+            + " A previous answer failed validation. Return a corrected envelope now. "
+            "Use at most four command objects total, never assign a job to goblin.primary, "
+            "include leader and requested_members or members for FORM_SQUAD, and omit any "
+            "action you cannot express with the exact fields above. If unsure, return one "
+            "short top-level say field and an empty commands array. Do not explain the repair."
         )
 
     @staticmethod
@@ -193,12 +208,23 @@ class QwenClient:
         if not isinstance(context, Mapping):
             raise QwenError("plan context must be an object")
         try:
+            safe_context = brain_view(context)
             content = self._request_json(
                 self._plan_system_prompt(), brain_view(context), max_tokens=384
             )
-            return self.validator.validate_plan_json(
-                self._normalize_plan_compatibility(content)
-            )
+            normalized = self._normalize_plan_compatibility(content)
+            try:
+                return self.validator.validate_plan_json(normalized)
+            except (IntentError, ValueError):
+                # The model is allowed one bounded shape repair.  The second
+                # response is still passed through the exact same validator;
+                # this is not a truncation or an implicit command rewrite.
+                repaired = self._request_json(
+                    self._plan_repair_system_prompt(), safe_context, max_tokens=256
+                )
+                return self.validator.validate_plan_json(
+                    self._normalize_plan_compatibility(repaired)
+                )
         except (IntentError, ValueError) as exc:
             raise QwenError("Qwen response failed strict plan validation") from exc
 

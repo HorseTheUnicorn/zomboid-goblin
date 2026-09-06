@@ -25,12 +25,26 @@ local Server = {
     lastLegacyCleanupAt = 0,
     lastPersistAt = 0,
     persistDirty = false,
-    persistenceLoaded = false
+    persistenceLoaded = false,
+    onlinePlayerDiagnosticLogged = false,
+    onlinePlayerLastCount = -1,
+    onlinePlayerLastName = nil,
+    onlinePlayerNames = {},
+    onlinePlayersInitialized = false,
+    leaderPlayerName = nil,
+    discoveredPlayers = {},
+    discoveredPlayerCount = 0,
+    pendingPlayerSearch = {}
 }
 
 local PERSISTENCE_NAME = "GoblinSurvivorClientSurvivor"
 local PERSISTENCE_VERSION = 4
 local PERSIST_INTERVAL_MS = 5000
+-- A multiplayer player can briefly disappear from getOnlinePlayers() while
+-- PZ rebinds a connection or streams a different server cell. Keep the last
+-- server-side discovery record for a short grace window so a join-assist
+-- worker continues its search instead of being recalled to the base.
+local DISCOVERY_GRACE_MS = 15000
 -- All companions scavenge by default. Role labels remain useful for
 -- appearance, status, and explicit player orders, but a fresh roster must
 -- not leave a guard, builder, or medic standing idle while the player is
@@ -104,16 +118,69 @@ local function position(object)
     return { x = x, y = y, z = z }
 end
 
+local function collectionCount(collection)
+    if collection == nil then return 0 end
+    if type(collection.size) == "function" then
+        local ok, value = pcall(function() return collection:size() end)
+        if not ok or type(value) ~= "number" then return nil end
+        return math.max(0, math.floor(value))
+    end
+    if type(collection) == "table" then return #collection end
+    return nil
+end
+
+local function collectionAt(collection, index)
+    if collection == nil then return nil end
+    if type(collection.get) == "function" then
+        local ok, value = pcall(function() return collection:get(index) end)
+        return ok and value or nil
+    end
+    if type(collection) == "table" then return collection[index + 1] end
+    return nil
+end
+
 local function onlinePlayers()
     local result = {}
-    if type(getOnlinePlayers) ~= "function" then return result end
+    if type(getOnlinePlayers) ~= "function" then
+        if not Server.onlinePlayerDiagnosticLogged then
+            log("online player diagnostic: getOnlinePlayers is unavailable")
+            Server.onlinePlayerDiagnosticLogged = true
+        end
+        return result
+    end
     local ok, players = pcall(getOnlinePlayers)
-    if not ok or players == nil then return result end
-    local count = type(players.size) == "function" and players:size() or #players
+    if not ok or players == nil then
+        if not Server.onlinePlayerDiagnosticLogged then
+            log("online player diagnostic: getOnlinePlayers failed")
+            Server.onlinePlayerDiagnosticLogged = true
+        end
+        return result
+    end
+    local count = collectionCount(players)
+    if count == nil then
+        if not Server.onlinePlayerDiagnosticLogged then
+            log("online player diagnostic: unsupported collection type=" .. tostring(type(players)))
+            Server.onlinePlayerDiagnosticLogged = true
+        end
+        return result
+    end
     for index = 0, count - 1 do
-        local player = type(players.get) == "function"
-            and players:get(index) or players[index + 1]
+        local player = collectionAt(players, index)
         if player ~= nil then table.insert(result, player) end
+    end
+    local firstName = nil
+    local first = result[1]
+    if first ~= nil and type(first.getUsername) == "function" then
+        local okName, value = pcall(function() return first:getUsername() end)
+        if okName and type(value) == "string" then firstName = value end
+    end
+    if count ~= Server.onlinePlayerLastCount or firstName ~= Server.onlinePlayerLastName then
+        log("online player diagnostic: collection=" .. tostring(type(players))
+            .. " reported=" .. tostring(count)
+            .. " usable=" .. tostring(#result)
+            .. " first=" .. tostring(firstName))
+        Server.onlinePlayerLastCount = count
+        Server.onlinePlayerLastName = firstName
     end
     return result
 end
@@ -126,6 +193,70 @@ local function playerName(player)
     if player == nil or type(player.getUsername) ~= "function" then return nil end
     local ok, value = pcall(function() return player:getUsername() end)
     return ok and Protocol.safeText(value, 96, false) and value or nil
+end
+
+-- The multiplayer player collection is authoritative even when a player's
+-- world cell is outside the current loaded window. Keep a short-lived server
+-- discovery record so a new or rejoining player is queued for assistance as
+-- soon as a usable position becomes available; exact coordinates never leave
+-- this server-side table.
+local function updatePlayerDiscovery(players, now)
+    local current = {}
+    for _, player in ipairs(players or {}) do
+        local name = playerName(player)
+        if name ~= nil then
+            local previous = Server.discoveredPlayers[name]
+            local point = position(player)
+            current[name] = {
+                player = player,
+                point = point or (previous ~= nil and previous.point or nil),
+                first_seen_ms = previous ~= nil and previous.first_seen_ms or now,
+                last_seen_ms = now,
+                missing_since_ms = nil,
+                has_position = point ~= nil
+            }
+        end
+    end
+    -- Retain only a bounded, last-known record. The coordinate stays inside
+    -- server memory and is never sent to a client; Java uses it only if PZ's
+    -- player collection is in the middle of a reconnect/cell rebind.
+    for name, previous in pairs(Server.discoveredPlayers or {}) do
+        if current[name] == nil and type(previous) == "table"
+            and type(previous.last_seen_ms) == "number"
+            and now - previous.last_seen_ms <= DISCOVERY_GRACE_MS then
+            current[name] = {
+                player = nil,
+                point = previous.point,
+                first_seen_ms = previous.first_seen_ms or previous.last_seen_ms,
+                last_seen_ms = previous.last_seen_ms,
+                missing_since_ms = previous.missing_since_ms or now,
+                has_position = previous.has_position == true
+                    or previous.point ~= nil
+            }
+        end
+    end
+    Server.discoveredPlayers = current
+    local count = 0
+    for _, _ in pairs(current) do count = count + 1 end
+    Server.discoveredPlayerCount = count
+end
+
+local function discoveryRecord(username, now)
+    if type(username) ~= "string" or username == "" then return nil end
+    now = type(now) == "number" and now or Protocol.nowMs()
+    local wanted = string.lower(username)
+    if string.sub(wanted, 1, 7) == "player." then
+        wanted = string.sub(wanted, 8)
+    end
+    for name, record in pairs(Server.discoveredPlayers or {}) do
+        local normalized = string.lower(tostring(name))
+        if normalized == wanted and type(record) == "table"
+            and type(record.last_seen_ms) == "number"
+            and now - record.last_seen_ms <= DISCOVERY_GRACE_MS then
+            return record
+        end
+    end
+    return nil
 end
 
 local function findPlayer(username)
@@ -146,6 +277,24 @@ local function findPlayer(username)
         end
     end
     return nil
+end
+
+-- getOnlinePlayers() is not guaranteed to keep the same order as clients
+-- connect/rebind. All automatic formation, work origins, and Goblin follow
+-- behavior must use the stable first-player leader selected for this session.
+local function leaderPlayer(players)
+    players = players or onlinePlayers()
+    local wanted = Server.leaderPlayerName
+    if type(wanted) == "string" and wanted ~= "" then
+        local normalizedWanted = string.lower(wanted)
+        for _, player in ipairs(players) do
+            local name = playerName(player)
+            if name ~= nil and string.lower(name) == normalizedWanted then
+                return player
+            end
+        end
+    end
+    return players[1]
 end
 
 local function rosterIds()
@@ -206,7 +355,7 @@ end
 local function workOrigin(state)
     local base = BaseManager.point()
     if base ~= nil then return base end
-    local player = position(firstPlayer())
+    local player = position(leaderPlayer())
     if player ~= nil then return player end
     if state == nil or type(state.home_x) ~= "number"
         or type(state.home_y) ~= "number" or type(state.home_z) ~= "number" then
@@ -400,6 +549,17 @@ local function ensureState(player)
             vehicle_target_z = nil,
             auto_expedition = false,
             return_to_follow = false,
+            join_assist = false,
+            join_assist_username = nil,
+            join_assist_return_job = nil,
+            player_search_enabled = false,
+            player_search_target = nil,
+            player_search_status = "idle",
+            -- Server-only last-known point used during a short connection or
+            -- cell-rebind gap; never include these fields in publicState().
+            player_search_last_x = nil,
+            player_search_last_y = nil,
+            player_search_last_z = nil,
             delivery_status = nil,
             movement_mode = "AUTO",
             running = false,
@@ -482,6 +642,12 @@ local function publicState(state)
         task = state.task,
         target_username = state.target_username,
         target_actor_id = state.target_actor_id,
+        join_assist = state.join_assist == true,
+        join_assist_username = state.join_assist_username,
+        player_search_enabled = state.player_search_enabled == true,
+        player_search_target = state.player_search_target,
+        player_search_status = state.player_search_status,
+        discovered_player_count = Server.discoveredPlayerCount or 0,
         leader_id = Config.npcId,
         command_role = state.actor_id == Config.npcId and "LEADER" or "COMPANION",
         protection_base_x = state.protection_base_x,
@@ -646,6 +812,12 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
     state.target_username = savedText(record.target_username, 96)
     state.follow_username = savedText(record.follow_username, 96)
     state.manual_control = record.manual_control == true
+    state.join_assist = record.join_assist == true
+    state.join_assist_username = savedText(record.join_assist_username, 96)
+    state.join_assist_return_job = savedText(record.join_assist_return_job, 32)
+    state.player_search_enabled = record.player_search_enabled == true
+    state.player_search_target = savedText(record.player_search_target, 96)
+    state.player_search_status = savedText(record.player_search_status, 64) or "idle"
     -- Construction authorization is deliberately session-local. A saved
     -- builder assignment must wait for a new explicit in-game chat command
     -- after restart instead of resuming wall placement on its own.
@@ -718,7 +890,7 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
     -- A saved follow target is useful only when it is still online. On a
     -- server restart, bind the roster back to the first online player instead
     -- of leaving every actor permanently holding on a stale username.
-    if state.control_mode == "FOLLOW" then
+    if state.control_mode == "FOLLOW" and state.join_assist ~= true then
         local wanted = state.follow_username or state.target_username
         if findPlayer(wanted) == nil then
             local name = playerName(player)
@@ -729,13 +901,18 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
     -- Older saves initialized every companion as a player follower. Migrate
     -- only records that were never explicitly controlled; a later FOLLOW or
     -- JOIN_PARTY command remains a deliberate player choice.
-    if state.actor_id ~= Config.npcId and state.manual_control ~= true then
+    if state.actor_id ~= Config.npcId and state.manual_control ~= true
+        and state.join_assist ~= true then
+        local savedPlayerSearch = state.player_search_enabled == true
+            and (state.player_search_target == nil
+                or state.player_search_target == "")
         state.control_mode = "JOB"
         state.mode = "WORK"
         -- A non-manual saved role is a default roster assignment, not a
         -- player order. Reapply the automatic scavenging policy on every
         -- restart so older saves with GUARD/BUILDER/etc. migrate cleanly.
-        state.job = defaultJob({ role = state.role })
+        state.job = savedPlayerSearch and "SCOUT"
+            or defaultJob({ role = state.role })
         state.task = "JOB_" .. state.job
         state.target_username = nil
         state.follow_username = nil
@@ -752,7 +929,18 @@ restoreRecord = function(state, record, player, savedLayoutVersion)
         state.expedition_target = nil
         state.expedition_phase = loadedCargo > 0 and "RETURNING" or "OUTBOUND"
         state.destination = workPointFor(state, state.job)
-        state.work_status = "assigned"
+        if savedPlayerSearch then
+            state.player_search_enabled = true
+            state.player_search_target = nil
+            state.player_search_status = savedText(record.player_search_status, 64)
+                or "sweeping"
+            state.work_status = "searching_for_players"
+        else
+            state.player_search_enabled = false
+            state.player_search_target = nil
+            state.player_search_status = "idle"
+            state.work_status = "assigned"
+        end
     end
     if builderWaitingForChat(state) then
         state.destination = nil
@@ -789,6 +977,12 @@ local function savePersistentRoster(force)
             target_username = state.target_username,
             follow_username = state.follow_username,
             manual_control = state.manual_control == true,
+            join_assist = state.join_assist == true,
+            join_assist_username = state.join_assist_username,
+            join_assist_return_job = state.join_assist_return_job,
+            player_search_enabled = state.player_search_enabled == true,
+            player_search_target = state.player_search_target,
+            player_search_status = state.player_search_status,
             work_status = state.work_status,
             work_count = state.work_count or 0,
             last_work_item = state.last_work_item,
@@ -883,8 +1077,258 @@ local function resolvePoint(message, actorState)
     return nil, "target kind '" .. kind .. "' has no deterministic client-survivor resolver"
 end
 
+local setFollow
+
+local function clearJoinAssist(state)
+    if state == nil then return end
+    state.join_assist = false
+    state.join_assist_username = nil
+    state.join_assist_return_job = nil
+    state.player_search_enabled = false
+    state.player_search_target = nil
+    state.player_search_status = "idle"
+    state.player_search_last_x = nil
+    state.player_search_last_y = nil
+    state.player_search_last_z = nil
+end
+
+-- A join assist is an automatic temporary follow order.  It must not become
+-- a permanent manual command, and it must return the worker to its saved
+-- expedition role when the assisted player disconnects.
+local function restoreJoinAssist(state)
+    if state == nil or state.actor_id == Config.npcId then
+        clearJoinAssist(state)
+        return false
+    end
+    local job = string.upper(tostring(state.join_assist_return_job or ""))
+    if not ALLOWED_WORK_JOBS[job] or not ExpeditionManager.isExpeditionJob(job) then
+        job = DEFAULT_COMPANION_JOB
+    end
+    clearJoinAssist(state)
+    state.control_mode = "JOB"
+    state.task = "JOB_" .. job
+    state.mode = "WORK"
+    state.job = job
+    state.target_username = nil
+    state.follow_username = nil
+    state.target_actor_id = nil
+    state.destination = nil
+    state.arrival_task = nil
+    state.expedition_target = nil
+    local offlineCount = ExpeditionManager.cargoSummary(state)
+    state.expedition_phase = ((state.cargo_count or 0) > 0 or offlineCount > 0)
+        and "RETURNING" or "OUTBOUND"
+    state.auto_expedition = false
+    state.return_to_follow = false
+    state.manual_control = false
+    state.builder_commanded = false
+    state.combat_mode = "HUNT"
+    state.movement_mode = "AUTO"
+    state.running = false
+    state.work_status = (offlineCount > 0 or (state.cargo_count or 0) > 0)
+        and "returning_with_cargo" or "resuming_" .. string.lower(job)
+    state.destination = workPointFor(state, job)
+    return true
+end
+
+local function assignJoinAssist(state, player)
+    if state == nil or player == nil or state.actor_id == Config.npcId
+        or state.join_assist == true or state.manual_control == true
+        or state.control_mode ~= "JOB" then
+        return false
+    end
+    local name = playerName(player)
+    if name == nil then return false end
+    local returnJob = string.upper(tostring(state.job or ""))
+    if not ALLOWED_WORK_JOBS[returnJob]
+        or not ExpeditionManager.isExpeditionJob(returnJob) then
+        returnJob = DEFAULT_COMPANION_JOB
+    end
+    if not setFollow(state, "JOIN_PARTY", player) then return false end
+    state.join_assist = true
+    state.join_assist_username = name
+    state.join_assist_return_job = returnJob
+    -- This is an automatic assist, so an idle timer or manual-command check
+    -- must not treat it as a permanent player order.
+    state.manual_control = false
+    -- The target may be in a different or not-yet-loaded server cell. Java
+    -- uses this flag to widen the automatic leash while its bounded
+    -- multi-cell travel requests the target area.
+    state.player_search_enabled = true
+    state.player_search_target = name
+    state.player_search_status = "tracking_player"
+    state.work_status = "assisting_" .. name
+    return true
+end
+
+local function hasPlayerAssignment(username)
+    if type(username) ~= "string" or username == "" then return false end
+    for _, actorState in ipairs(orderedStates()) do
+        if actorState.join_assist == true
+            and actorState.join_assist_username == username then
+            return true
+        end
+        -- A deliberate FOLLOW/JOIN command already serves this player. Do
+        -- not replace a manual order with an automatic search assignment.
+        if actorState.control_mode == "FOLLOW"
+            and (actorState.target_username == username
+                or actorState.follow_username == username) then
+            return true
+        end
+    end
+    return false
+end
+
+local function availableJoinAssist()
+    for _, actorState in ipairs(orderedStates()) do
+        if actorState.actor_id ~= Config.npcId
+            and actorState.join_assist ~= true
+            and actorState.manual_control ~= true
+            and actorState.control_mode == "JOB" then
+            return actorState
+        end
+    end
+    return nil
+end
+
+local function updateJoinAssists(players, now)
+    local current = {}
+    for _, player in ipairs(players or {}) do
+        local name = playerName(player)
+        if name ~= nil then current[name] = player end
+    end
+    -- The first connected player is the Goblin leader. Preserve only that
+    -- name as the initial baseline so two players who finish connecting in
+    -- the same server tick still cause the second player to receive a
+    -- companion assist.
+    if not Server.onlinePlayersInitialized then
+        Server.onlinePlayerNames = {}
+        Server.onlinePlayersInitialized = true
+        Server.leaderPlayerName = playerName(players and players[1])
+    end
+    if Server.leaderPlayerName == nil then
+        Server.leaderPlayerName = playerName(players and players[1])
+    end
+    if Server.leaderPlayerName ~= nil
+        and discoveryRecord(Server.leaderPlayerName, now) == nil then
+        -- The previous leader has been absent beyond the rebind grace
+        -- window. Elect the first currently online player for the next
+        -- session anchor rather than letting collection order move the
+        -- formation on every tick.
+        Server.leaderPlayerName = playerName(players and players[1])
+    end
+    local changed = false
+    -- Reclaim an assist whose old target has gone away before selecting a
+    -- worker for a new player in the same tick. A short-lived missing entry
+    -- is still a discovered player while PZ rebinds its connection/cell.
+    for _, actorState in ipairs(orderedStates()) do
+        if actorState.join_assist == true
+            and discoveryRecord(actorState.join_assist_username, now) == nil then
+            if restoreJoinAssist(actorState) then changed = true end
+        end
+    end
+    for _, player in ipairs(players or {}) do
+        local name = playerName(player)
+        if name ~= nil and name ~= Server.leaderPlayerName
+            and not hasPlayerAssignment(name) then
+            -- Re-evaluate every currently online non-leader.  The PZ player
+            -- collection can briefly lose a client during cell/connection
+            -- rebinding; if that clears a temporary join assist, the player
+            -- is still entitled to a replacement once the collection is
+            -- healthy again.  Historical onlinePlayerNames is retained for
+            -- diagnostics, but must never suppress a live reassignment.
+            local candidate = availableJoinAssist()
+            if candidate ~= nil and assignJoinAssist(candidate, player) then
+                Server.pendingPlayerSearch[name] = nil
+                log("assigned join assist " .. tostring(candidate.actor_id)
+                    .. " to player " .. tostring(name)
+                    .. " (server-wide player discovery)")
+                changed = true
+            elseif Server.pendingPlayerSearch[name] ~= true then
+                Server.pendingPlayerSearch[name] = true
+                log("queued player search for joined player " .. tostring(name)
+                    .. "; waiting for an available companion")
+            end
+        end
+    end
+    for name, _ in pairs(Server.pendingPlayerSearch) do
+        if discoveryRecord(name, now) == nil then
+            Server.pendingPlayerSearch[name] = nil
+        end
+    end
+    Server.onlinePlayerNames = current
+    return changed
+end
+
+-- Keep one uncommanded companion on a durable map-search patrol.  The
+-- patrol is deliberately separate from the automatic join-assist assignment:
+-- all other companions can continue looting while the scout expands the
+-- search radius, and a newly connected player can immediately take that
+-- scout over through the same authoritative follow path.  A manual order
+-- always wins, so `/gss search`, `/gss loot`, or `/gss follow` never gets
+-- silently replaced by this default behavior.
+local function updatePlayerSearchPatrol()
+    for _, actorState in ipairs(orderedStates()) do
+        if actorState.actor_id ~= Config.npcId
+            and actorState.player_search_enabled == true
+            and (actorState.player_search_target == nil
+                or actorState.player_search_target == "") then
+            return false
+        end
+    end
+
+    local preferred = nil
+    local fallback = nil
+    for _, actorState in ipairs(orderedStates()) do
+        local job = string.upper(tostring(actorState.job or ""))
+        if actorState.actor_id ~= Config.npcId
+            and actorState.join_assist ~= true
+            and actorState.manual_control ~= true
+            and actorState.control_mode == "JOB"
+            and not builderWaitingForChat(actorState)
+            and (job == "SCAVENGE" or job == "SCOUT") then
+            if fallback == nil then fallback = actorState end
+            local role = string.lower(tostring(actorState.role or ""))
+            if role == "scout" or actorState.actor_id == "npc.june" then
+                preferred = actorState
+                break
+            end
+        end
+    end
+    local state = preferred or fallback
+    if state == nil then return false end
+
+    local offlineCount = ExpeditionManager.cargoSummary(state)
+    state.job = "SCOUT"
+    state.task = "JOB_SCOUT"
+    state.mode = "WORK"
+    state.control_mode = "JOB"
+    state.target_username = nil
+    state.follow_username = nil
+    state.target_actor_id = nil
+    state.arrival_task = nil
+    state.builder_commanded = false
+    state.expedition_target = nil
+    state.expedition_phase = ((state.cargo_count or 0) > 0 or offlineCount > 0)
+        and "RETURNING" or "OUTBOUND"
+    state.auto_expedition = false
+    state.return_to_follow = false
+    state.player_search_enabled = true
+    state.player_search_target = nil
+    state.player_search_status = "sweeping"
+    state.movement_mode = "AUTO"
+    state.running = false
+    state.combat_mode = "HUNT"
+    state.manual_control = false
+    state.work_status = "searching_for_players"
+    state.destination = workPointFor(state, "SCOUT")
+    log("assigned automatic player-search scout " .. tostring(state.actor_id))
+    return true
+end
+
 local function setHold(state, task, mode, point)
     if state == nil or point == nil then return false end
+    clearJoinAssist(state)
     state.control_mode = "HOLD"
     state.task = task or "HOLD"
     state.mode = mode or "PARTY"
@@ -920,6 +1364,7 @@ end
 
 local function setDestination(state, task, mode, point, arrivalTask)
     if state == nil or point == nil then return false end
+    clearJoinAssist(state)
     state.control_mode = "MOVE"
     state.task = task or "MOVE_TO"
     state.mode = mode or "PARTY"
@@ -945,9 +1390,10 @@ local function setDestination(state, task, mode, point, arrivalTask)
     return true
 end
 
-local function setFollow(state, task, player)
+setFollow = function(state, task, player)
     local name = playerName(player)
     if state == nil or name == nil then return false end
+    clearJoinAssist(state)
     state.control_mode = "FOLLOW"
     state.task = task or "FOLLOW"
     state.mode = "PARTY"
@@ -980,6 +1426,7 @@ end
 
 local function setFollowActor(state, task, targetState)
     if state == nil or targetState == nil or state == targetState then return false end
+    clearJoinAssist(state)
     state.control_mode = "FOLLOW_ACTOR"
     state.task = task or "FOLLOW_GOBLIN"
     state.mode = "PARTY"
@@ -1019,16 +1466,56 @@ local function updateTask(state)
         -- loaded in the current cell.
         target = nil
     elseif state.control_mode == "FOLLOW" then
-        local player = findPlayer(state.follow_username or state.target_username)
+        local wantedPlayer = state.follow_username or state.target_username
+        local player = findPlayer(wantedPlayer)
         if player ~= nil then
             target = position(player)
             state.target_username = playerName(player)
+            if target ~= nil and state.player_search_enabled == true then
+                state.player_search_last_x = target.x
+                state.player_search_last_y = target.y
+                state.player_search_last_z = target.z
+            end
+            if target == nil and state.player_search_enabled == true then
+                state.player_search_status = "waiting_for_player_position"
+                state.work_status = "waiting_for_player_position"
+            elseif state.player_search_enabled == true then
+                state.player_search_status = "tracking_player"
+                state.work_status = "searching_for_" .. tostring(state.target_username)
+            end
         else
-            -- A disconnected follow target must not silently retarget the
-            -- actor to an arbitrary player. Hold until a new command arrives.
-            state.control_mode = "HOLD"
-            state.task = "HOLD"
-            state.target_username = nil
+            -- Preserve an automatic join assist through the short PZ
+            -- connection/cell-rebind gap. A last-known point is only a
+            -- bounded routing hint; Java still asks ServerMap for each
+            -- loaded square and never teleports the survivor to it.
+            local discovered = discoveryRecord(wantedPlayer, Protocol.nowMs())
+            local lastPoint = discovered ~= nil and discovered.point or nil
+            if state.join_assist == true and lastPoint ~= nil then
+                target = lastPoint
+                state.player_search_status = "tracking_last_known_player"
+                state.work_status = "searching_for_" .. tostring(wantedPlayer)
+                state.player_search_last_x = lastPoint.x
+                state.player_search_last_y = lastPoint.y
+                state.player_search_last_z = lastPoint.z
+            elseif state.join_assist == true and discovered ~= nil then
+                state.player_search_status = "waiting_for_player_position"
+                state.work_status = "waiting_for_player_position"
+            elseif state.join_assist == true then
+                -- Join assists are temporary automatic work orders.  When
+                -- their player leaves, return this companion to its saved
+                -- expedition role instead of leaving it idle at the last
+                -- follow point.
+                restoreJoinAssist(state)
+                markPersistentDirty()
+                target = state.destination
+            else
+                -- A disconnected manual follow target must not silently
+                -- retarget the actor to an arbitrary player. Hold until a
+                -- new command arrives.
+                state.control_mode = "HOLD"
+                state.task = "HOLD"
+                state.target_username = nil
+            end
         end
     elseif state.control_mode == "FOLLOW_ACTOR" then
         local targetState = Server.states[state.target_actor_id]
@@ -1209,6 +1696,10 @@ function Server.status()
         task = ready and Server.state.task or nil,
         target_player = ready and Server.state.target_username or nil,
         target_npc_id = ready and Server.state.target_actor_id or nil,
+        player_search_enabled = ready and Server.state.player_search_enabled == true or false,
+        player_search_target = ready and Server.state.player_search_target or nil,
+        player_search_status = ready and Server.state.player_search_status or "idle",
+        discovered_player_count = Server.discoveredPlayerCount or 0,
         control_mode = ready and Server.state.control_mode or "WAITING",
         job = ready and Server.state.job or nil,
         builder_commanded = ready and Server.state.builder_commanded == true or false,
@@ -1282,6 +1773,12 @@ function Server.statusAll()
             task = state.task,
             target_player = state.target_username,
             target_npc_id = state.target_actor_id,
+            join_assist = state.join_assist == true,
+            join_assist_username = state.join_assist_username,
+            player_search_enabled = state.player_search_enabled == true,
+            player_search_target = state.player_search_target,
+            player_search_status = state.player_search_status,
+            discovered_player_count = Server.discoveredPlayerCount or 0,
             leader_id = Config.npcId,
             command_role = state.actor_id == Config.npcId and "LEADER" or "COMPANION",
             control_mode = state.control_mode,
@@ -1310,6 +1807,15 @@ function Server.statusAll()
             delivery_status = state.delivery_status,
             movement_mode = movementMode(state.movement_mode),
             running = state.running == true,
+            x = state.x,
+            y = state.y,
+            z = state.z,
+            movement_blocked = state.movement_blocked == true,
+            navigation_status = state.navigation_status,
+            route_remaining = state.route_remaining or 0,
+            group_distance = state.group_distance,
+            group_leash_radius = state.group_leash_radius,
+            separation_blocks = state.separation_blocks or 0,
             friendly = true,
             protected = state.actor_id == Config.npcId and Config.protected == true,
             needs_disabled = state.actor_id == Config.npcId,
@@ -1381,6 +1887,12 @@ function Server.tick()
     -- futile spawn/rebind attempts and noisy route diagnostics. The next
     -- connected player resumes physical servicing from the saved state.
     if #players == 0 then
+        Server.onlinePlayersInitialized = false
+        Server.onlinePlayerNames = {}
+        Server.leaderPlayerName = nil
+        Server.discoveredPlayers = {}
+        Server.discoveredPlayerCount = 0
+        Server.pendingPlayerSearch = {}
         cleanupLegacyBodies()
         local now = Protocol.nowMs()
         local changed = ExpeditionManager.tickOffline(orderedStates(), now)
@@ -1389,17 +1901,24 @@ function Server.tick()
         Server.lastTickAt = now
         return true
     end
+    local now = Protocol.nowMs()
+    updatePlayerDiscovery(players, now)
+    if updateJoinAssists(players, now) then markPersistentDirty() end
+    if updatePlayerSearchPatrol() then markPersistentDirty() end
+
     -- Only Goblin's automatic FOLLOW target is rebound when a player returns.
     -- A deliberate manual command remains in force. This does not invent a
-    -- fake player or use a zombie fallback.
+    -- fake player or use a zombie fallback. The stable leader is selected
+    -- before this block so a second client's collection slot cannot retarget
+    -- Goblin or the free-roaming workers.
     local goblin = Server.states[Config.npcId]
-    local now = Protocol.nowMs()
-    if goblin ~= nil and ExpeditionManager.updateGoblinIdle(goblin, player, now) then
+    local leader = leaderPlayer(players) or player
+    if goblin ~= nil and ExpeditionManager.updateGoblinIdle(goblin, leader, now) then
         markPersistentDirty()
     end
     if goblin ~= nil and goblin.manual_control ~= true
         and goblin.control_mode == "HOLD" then
-        setFollow(goblin, "FOLLOW", player)
+        setFollow(goblin, "FOLLOW", leader)
     end
     -- Run this after the authority has a usable world cell. On a fresh server
     -- tick the cell can exist before the player/world position is available,
@@ -1408,6 +1927,7 @@ function Server.tick()
     -- point.
     cleanupLegacyBodies()
     for _, actorState in ipairs(orderedStates()) do
+        actorState.leader_username = Server.leaderPlayerName
         ExpeditionManager.prepare(actorState)
         publishProtectionAnchor(actorState)
         if actorState.control_mode == "JOB" then
@@ -1479,6 +1999,31 @@ function Server.execute(message)
     end
     markPersistentDirty()
 
+    -- Storm is the semantic command executor for the verified initial
+    -- slices.  It may fully submit a goal (and let the Java authority step
+    -- it) or delegate a resolver that still needs this module's roster/base
+    -- context.  A rejected or duplicate request never reaches a Lua action
+    -- branch a second time.
+    local javaExecute = rawget(_G, "executeGoblinSurvivorCommand")
+    if type(javaExecute) == "function" then
+        local ok, result = pcall(javaExecute, message, state)
+        if not ok or type(result) ~= "string" then
+            return false, "Storm semantic command executor failed"
+        end
+        if string.sub(result, 1, 9) == "REJECTED:" then
+            return false, string.sub(result, 10)
+        end
+        if string.sub(result, 1, 10) == "DUPLICATE:" then
+            return false, string.sub(result, 11)
+        end
+        if string.sub(result, 1, 8) == "HANDLED:" then
+            return true, string.sub(result, 9)
+        end
+        if result ~= "DELEGATE" then
+            return false, "Storm semantic command executor returned an unknown status"
+        end
+    end
+
     if action == "SAY" then
         if not Protocol.safeText(message.text, Protocol.maxSpeech, false) then
             return false, "client-survivor speech is malformed"
@@ -1510,6 +2055,7 @@ function Server.execute(message)
         -- ATTACK is an intent, not a request to name or move to an arbitrary
         -- zombie. Java selects only live ordinary IsoZombies in its bounded
         -- hunt radius and owns the lethal firearm result.
+        clearJoinAssist(state)
         state.control_mode = "COMBAT"
         state.combat_mode = "HUNT"
         state.task = "ATTACK"
@@ -1531,6 +2077,7 @@ function Server.execute(message)
         -- ordinary zombie, closes only within its bounded melee radius, and
         -- owns the hit/death result; the wire message never carries a zombie
         -- object id or coordinates.
+        clearJoinAssist(state)
         state.control_mode = "COMBAT"
         state.combat_mode = "MELEE"
         state.task = "MELEE_ATTACK"
@@ -1666,6 +2213,47 @@ function Server.execute(message)
         return false, "client-survivor actor cannot follow itself or a missing Goblin"
     end
 
+    if action == "SEARCH_PLAYERS" then
+        if state.actor_id == Config.npcId then
+            return false, "Goblin stays with the leader player; assign a companion to search"
+        end
+        clearJoinAssist(state)
+        state.control_mode = "JOB"
+        state.task = "JOB_SCOUT"
+        state.mode = "WORK"
+        state.job = "SCOUT"
+        state.target_username = nil
+        state.follow_username = nil
+        state.target_actor_id = nil
+        state.destination = nil
+        state.arrival_task = nil
+        state.builder_commanded = false
+        state.expedition_target = nil
+        local offlineCount = ExpeditionManager.cargoSummary(state)
+        state.expedition_phase = ((state.cargo_count or 0) > 0 or offlineCount > 0)
+            and "RETURNING" or "OUTBOUND"
+        state.auto_expedition = false
+        state.return_to_follow = false
+        state.player_search_enabled = true
+        state.player_search_target = nil
+        state.player_search_status = "sweeping"
+        state.vehicle_recovery_enabled = false
+        state.vehicle_status = "disabled"
+        state.vehicle_error = nil
+        state.vehicle_id = nil
+        state.vehicle_engine_running = false
+        state.vehicle_target_x = nil
+        state.vehicle_target_y = nil
+        state.vehicle_target_z = nil
+        state.movement_mode = "AUTO"
+        state.running = false
+        state.combat_mode = "HUNT"
+        state.manual_control = true
+        state.work_status = "searching_for_players"
+        state.destination = workPointFor(state, "SCOUT")
+        return true, "client-survivor actor is searching the map for online players"
+    end
+
     if action == "MOVE_TO" or action == "REGROUP"
         or action == "SEARCH" or action == "SCAVENGE"
         or action == "LOOT_AREA" then
@@ -1731,6 +2319,7 @@ function Server.execute(message)
     end
 
     if action == "SET_MOVEMENT" then
+        clearJoinAssist(state)
         local requested = movementMode(message.movement_mode)
         if type(message.movement_mode) ~= "string"
             or string.upper(message.movement_mode) ~= requested then
@@ -1746,6 +2335,7 @@ function Server.execute(message)
     end
 
     if action == "SET_VEHICLE_RECOVERY" then
+        clearJoinAssist(state)
         if type(message.enabled) ~= "boolean" then
             return false, "vehicle recovery requires a boolean enabled flag"
         end
@@ -1759,6 +2349,7 @@ function Server.execute(message)
     end
 
     if action == "ASSIGN_JOB" then
+        clearJoinAssist(state)
         if state.actor_id == Config.npcId then
             return false, "Goblin is the permanent survivor leader and cannot take a worker job"
         end
@@ -1824,7 +2415,8 @@ function Server.commandStatus(actorId, action)
     if state == nil then return "FAILED", "managed survivor is unavailable" end
     local normalized = string.upper(tostring(action or ""))
     if normalized == "FOLLOW_PLAYER" or normalized == "FOLLOW"
-        or normalized == "FOLLOW_GOBLIN" or normalized == "ATTACK"
+        or normalized == "FOLLOW_GOBLIN" or normalized == "JOIN_PARTY"
+        or normalized == "DEFEND_PLAYER" or normalized == "ATTACK"
         or normalized == "MELEE_ATTACK" then
         return "RUNNING", "survivor task remains active"
     end

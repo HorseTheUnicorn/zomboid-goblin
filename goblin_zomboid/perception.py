@@ -58,11 +58,15 @@ def _semantic_survivor(value: Any) -> dict[str, Any] | None:
     for key, maximum in (
         ("name", 48), ("role", 32), ("job", 32), ("task", 48),
         ("work_status", 64), ("expedition_phase", 32),
+        ("join_assist_username", 96),
     ):
         text = _text(value.get(key), maximum)
         if text:
             result[key] = text
-    for key in ("alive", "active", "body_present", "control_ready", "running"):
+    for key in (
+        "alive", "active", "body_present", "control_ready", "running",
+        "join_assist",
+    ):
         if isinstance(value.get(key), bool):
             result[key] = value[key]
     result["available"] = (
@@ -185,4 +189,3 @@ def build_agent_perception(
     # The explicit construction above is the primary guard.  Keep a final
     # recursive redaction so a future field addition cannot bypass it.
     return brain_view(result)
-

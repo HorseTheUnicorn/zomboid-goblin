@@ -24,7 +24,7 @@ def parse_bool(value: str | bool | None, *, default: bool = False) -> bool:
 class AgentConfig:
     bridge_root: Path = Path("/mnt/goblin-zomboid")
     enabled: bool = False
-    heartbeat_seconds: float = 5.0
+    heartbeat_seconds: float = 1.0
     planning_interval_seconds: float = 60.0
     minimum_base_guards: int = 1
     pz_timeout_seconds: float = 15.0
@@ -49,7 +49,7 @@ class AgentConfig:
             if enabled_override is not None
             else parse_bool(os.environ.get("GOBLIN_ENABLED"), default=False)
         )
-        heartbeat = float(os.environ.get("GOBLIN_HEARTBEAT_SECONDS", "5"))
+        heartbeat = float(os.environ.get("GOBLIN_HEARTBEAT_SECONDS", "1"))
         planning_interval = float(
             os.environ.get("GOBLIN_PLANNING_INTERVAL_SECONDS", "60")
         )

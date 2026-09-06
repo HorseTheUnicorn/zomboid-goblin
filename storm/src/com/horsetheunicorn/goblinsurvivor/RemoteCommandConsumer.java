@@ -1,11 +1,16 @@
 package com.horsetheunicorn.goblinsurvivor;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Set;
 import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 
 /** Semantic validation for commands arriving from the .76 bridge. */
 public final class RemoteCommandConsumer {
+    private static final long MAX_COMMAND_AGE_MS = 120_000L;
+    private static final long MAX_FUTURE_SKEW_MS = 60_000L;
+    private static final int MAX_NESTED_TABLE_DEPTH = 6;
     private static final Set<String> ACTIONS = Set.of(
             "NOOP", "SAY", "FOLLOW_PLAYER", "FOLLOW_GOBLIN", "HOLD",
             "REGROUP", "RETURN_HOME", "DEFEND_PLAYER", "RETREAT",
@@ -48,13 +53,33 @@ public final class RemoteCommandConsumer {
         return !lower.contains("coordinates") && !lower.matches(".*\\b[xyz]\\s*[:=].*");
     }
 
+    private static boolean safeRequestId(Object value) {
+        return safeText(value, 128)
+                && ((String)value).matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}");
+    }
+
     private static boolean safeId(Object value) {
         return safeText(value, 96) && ((String)value).matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,95}");
     }
 
     private static boolean forbiddenKey(Object key) {
         return key instanceof String text
-                && FORBIDDEN_KEYS.contains(text.toLowerCase(java.util.Locale.ROOT));
+                && FORBIDDEN_KEYS.contains(text.toLowerCase(java.util.Locale.ROOT)
+                        .replace('-', '_'));
+    }
+
+    private static boolean containsForbiddenKey(Object raw, int depth,
+            Set<KahluaTable> visited) {
+        if (!(raw instanceof KahluaTable table)) return false;
+        if (depth > MAX_NESTED_TABLE_DEPTH || !visited.add(table)) return depth > MAX_NESTED_TABLE_DEPTH;
+        KahluaTableIterator iterator = table.iterator();
+        while (iterator != null && iterator.advance()) {
+            if (forbiddenKey(iterator.getKey())
+                    || containsForbiddenKey(iterator.getValue(), depth + 1, visited)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean validTarget(Object raw) {
@@ -71,9 +96,31 @@ public final class RemoteCommandConsumer {
     /** Return null when a bridge command is semantically safe to inspect. */
     public static String rejectReason(KahluaTable message) {
         if (message == null) return "command is not a table";
-        KahluaTableIterator iterator = message.iterator();
-        while (iterator != null && iterator.advance()) {
-            if (forbiddenKey(iterator.getKey())) return "command contains a forbidden field";
+        Object protocol = message.rawget("protocol");
+        if (!(protocol instanceof Number protocolNumber)
+                || !Double.isFinite(protocolNumber.doubleValue())
+                || protocolNumber.doubleValue() != 1.0) {
+            return "unsupported command protocol";
+        }
+        if (!safeRequestId(message.rawget("request_id"))) return "invalid request id";
+        Object timestamp = message.rawget("timestamp_ms");
+        if (!(timestamp instanceof Number timestampNumber)
+                || !Double.isFinite(timestampNumber.doubleValue())
+                || timestampNumber.doubleValue() <= 0.0
+                || Math.floor(timestampNumber.doubleValue()) != timestampNumber.doubleValue()) {
+            return "invalid command timestamp";
+        }
+        long now = System.currentTimeMillis();
+        long timestampMs = (long)timestampNumber.doubleValue();
+        if (timestampMs > now + MAX_FUTURE_SKEW_MS) return "command timestamp is too far in the future";
+        if (now - timestampMs > MAX_COMMAND_AGE_MS) return "stale command";
+        if (!(message.rawget("type") instanceof String type)
+                || !"command.npc_action".equals(type)) {
+            return "unexpected command type";
+        }
+        if (containsForbiddenKey(message, 0,
+                Collections.newSetFromMap(new IdentityHashMap<>()))) {
+            return "command contains a forbidden field";
         }
         if (!(message.rawget("npc_id") instanceof String npcId)
                 || !safeId(npcId)) return "invalid logical survivor id";

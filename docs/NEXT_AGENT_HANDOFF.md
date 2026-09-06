@@ -79,6 +79,12 @@ The latest local run established:
   June; logs identify `HumanSurvivor` and `isZombie=false`;
 - client model/object registration, increasing render calls, and user-visible
   human characters;
+- a clean isolated-client reconnect after a forced package refresh: the client
+  completed `DoLuaChecksum` with `checksum=Success`, the server accepted the
+  session, and all seven human actors were recreated. The isolated-cache
+  staging helper now mirrors exact package contents and removes files deleted
+  from the source package, preventing stale Lua/jar files from causing a
+  future checksum mismatch;
 - Goblin hair forced to `Spike`;
 - all managed bodies equipped with `Base.AssaultRifle2` and a ready M14/.308
   firearm policy;
@@ -86,6 +92,14 @@ The latest local run established:
 - one-shot/one-kill hostile-zombie fixture with no incoming hit; and
 - Goblin death/recreation from generation 1 to generation 2 with the human
   body mode and firearm re-established.
+- Hauler vehicle recovery was live-verified on the disposable `goblin-local`
+  profile. The custom tile route correctly failed closed when the vehicle was
+  behind an unreachable obstacle; the guarded Build 42
+  `PathFindBehavior2.pathToVehicleAdjacent` fallback found a route, the
+  headless server body advanced along collision-checked path points, and Dave
+  entered and returned the car to the shared player/base anchor. The vehicle
+  was not teleported and the dedicated-server path does not call
+  `vehicle.updatePhysics()`.
 - The live `.76` `goblin-zomboid-agent.service` and
   `goblin-zomboid-relay.service` now run the current repository Python control
   package. The existing Qwen service remains loopback-only at `127.0.0.1:8000`
@@ -95,6 +109,14 @@ The latest local run established:
   now passes strict plan validation; the planner prompt explicitly documents
   the required fields for `SAY`, `FOLLOW_PLAYER`, `DEFEND_PLAYER`,
   `ASSIGN_JOB`, and `FORM_SQUAD`.
+- Storm now owns the semantic admission/goal-submission step for the initial
+  command slice. `RemoteCommandConsumer` checks the versioned command
+  envelope, freshness, nested forbidden fields, logical IDs, and capability;
+  `SurvivorCommandExecutor` deduplicates request IDs, resolves online player
+  targets, and submits bounded HOLD/FOLLOW/REGROUP/home goals to the existing
+  Java authority. Speech, squad/job, base, and area-specific resolution still
+  delegate to the established Lua server adapter until each Java world-context
+  path is verified.
 
 The latest client cold load measured 278 seconds in the game-loading state.
 The dated PZ log shows the main wait in vanilla `WorldStreamer.isBusy()` /
@@ -118,8 +140,10 @@ iterating where possible.
 4. Builder and the other jobs need in-game behavior tests with measurable
    work effects. A bridge-only job probe using a fabricated grant was
    correctly rejected and must not be bypassed.
-5. Guard, hauler, farmer, medic, scout, loot, and disassembly currently need
-   behavior-level implementation/validation beyond status metadata.
+5. Guard, farmer, medic, scout, loot, and disassembly currently need
+   behavior-level implementation/validation beyond status metadata. Hauler
+   vehicle recovery has one successful live pathfinder/fallback run, but still
+   needs broader obstacle, driving, persistence, and failure-case coverage.
 6. Save/restart, cell unload/rebind, disconnect/reconnect, and duplicate-body
    cleanup need live tests.
 7. A second-client probe used an isolated cache successfully but reused the
@@ -127,8 +151,9 @@ iterating where possible.
    usernames; cache isolation alone is not a multiplayer pass.
 8. Companion/squad command behavior and the `.76` chat/Qwen round-trip remain
    open. The live `.76` package and direct semantic Qwen path are updated, but
-   the isolated Windows client is currently stopped at its PIN screen, so no
-   new end-to-end command evidence has been recorded.
+   the isolated Windows client is currently still in the title/video path and
+   has not completed a multiplayer handshake, so no new end-to-end command
+   evidence has been recorded.
 9. Workshop publication and `.03` installation are not complete and must not
    be attempted until the local matrix passes.
 
@@ -141,6 +166,14 @@ Set-Location 'C:\Users\tomgr\Documents\Codex\2026-09-01\new-chat\work\remote-sta
 powershell -ExecutionPolicy Bypass -File .\tools\Sync-LocalPz.ps1
 powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzServer.ps1 -Storm
 powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalPzClient.ps1 -Storm -Visible -ConnectAddress '127.0.0.1:16271'
+```
+
+For an isolated parallel client, refresh the complete package before every
+join after a source change. This also removes files left by an older package:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Stage-LocalPzClientCache.ps1 `
+  -TargetPzDataRoot 'C:\Users\tomgr\Zomboid\goblin-local-client-7'
 ```
 
 Use `-ManagedNpcCount 0` for a Goblin-only smoke test. Stop both processes
@@ -160,7 +193,7 @@ work counters, or world effects prove the job works.
 
 ## Validation already run
 
-- Python contract suite: 106 tests passed.
+- Python contract suite: 108 tests passed.
 - The live `.76` agent and relay remained active after switching to the current
   tested Python package; Qwen health returned `status=ok`.
 - The active `.76` Qwen adapter accepted a semantic-only plan with four
@@ -169,6 +202,9 @@ work counters, or world effects prove the job works.
 - Java route executable: 17 scenarios passed.
 - Java Storm package built against the installed game.
 - Client Kahlua retry harness passed.
+- The isolated client passed a fresh post-refresh checksum join; the source,
+  direct package, Workshop staging package, and isolated cache each contained
+  the same 55-file package.
 - `git diff --check` passed; only normal Windows line-ending warnings were
   reported.
 - A source scan excluding `.git`, jars, logs, SQLite, and database files found
@@ -187,7 +223,8 @@ Do not claim a gameplay gate from static tests alone.
 
 ## Release order
 
-1. Fix or explicitly bound the June route failure and validate jobs/melee.
+1. Fix or explicitly bound the June/Mike companion route failure and validate
+   jobs/melee; retain the verified hauler fallback while expanding its tests.
 2. Run restart, unload/rebind, reconnect, duplicate prevention, and two-user
    multiplayer tests.
 3. Run companion/squad and `.76` chat/Qwen round-trip tests.

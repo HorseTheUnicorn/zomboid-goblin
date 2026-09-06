@@ -185,6 +185,40 @@ class NpcServiceTests(unittest.TestCase):
         finally:
             service.close()
 
+    def test_event_driven_planner_uses_the_current_plan_envelope(self) -> None:
+        qwen = PlanQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="client_survivor",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                    npcs=[{"npc_id": "npc.0001", "name": "Bob", "alive": True}],
+                    nearby_players=[{"id": "Alice", "name": "Alice", "online": True}],
+                ),
+            )
+            result = service.run_once()
+            self.assertEqual(result.status, "npc_plan_published")
+            self.assertEqual(qwen.calls, 1)
+            commands = [
+                service.store.read_ready(item)
+                for item in service.store.iter_ready("commands")
+            ]
+            self.assertEqual(
+                {command.fields["action"] for command in commands},
+                {"SAY", "FOLLOW"},
+            )
+        finally:
+            service.close()
+
     def test_server_reported_managed_npcs_update_the_agent_allowlist(self) -> None:
         qwen = FakeQwen()
         service = GoblinService(

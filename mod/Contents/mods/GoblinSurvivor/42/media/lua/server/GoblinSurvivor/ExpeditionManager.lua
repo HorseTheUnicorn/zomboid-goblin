@@ -167,7 +167,13 @@ local function calculateOutboundPoint(state, origin)
     local hash = stableHash(state.actor_id)
     local round = integer(state.expedition_round, 0, 0, 2147483647)
     local angle = ((hash % 360) + (round * 73) % 360) * math.pi / 180
-    local radius = 22 + (hash % 9)
+    -- A dedicated player-search scout expands its sweep in bounded rings.
+    -- Ordinary looters keep their compact work lanes, while the scout can
+    -- cover multiple loaded cells without teleporting or abandoning the
+    -- group's anchored return path.
+    local radius = state.player_search_enabled == true
+        and (96 + (round % 8) * 48)
+        or (22 + (hash % 9))
     local point = {
         x = origin.x + math.cos(angle) * radius,
         y = origin.y + math.sin(angle) * radius,

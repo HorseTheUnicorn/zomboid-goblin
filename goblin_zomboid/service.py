@@ -393,6 +393,79 @@ class GoblinService:
         data["mode"] = body.mode
         return ValidatedIntent(intent_name, body.mode, data)
 
+    def _publish_plan(
+        self,
+        plan: ValidatedPlan,
+        body: BodyState,
+        *,
+        authority_token: str | None = None,
+        event_request_id: str | None = None,
+    ) -> ServiceResult:
+        """Publish a validated model plan through the same typed gate as chat.
+
+        The plan envelope is the current Qwen contract for both addressed chat
+        and autonomous/event-driven planning.  Keeping publication in one
+        method prevents the ordinary planner from accidentally falling back to
+        the legacy intent envelope while the live model is emitting plans.
+        """
+
+        published = 0
+        failures: list[str] = []
+        if plan.say is not None:
+            try:
+                say_intent = IntentValidator().validate({
+                    "intent": "SAY",
+                    "mode": body.mode,
+                    "npc_id": NPC_ID,
+                    "text": plan.say,
+                    "priority": 2,
+                })
+                chatter_key = (
+                    f"reply:{event_request_id}"
+                    if event_request_id
+                    else f"plan:{int(self.clock() * 1000)}"
+                )
+                chatter = self.chatter.record(
+                    chatter_key, "game", plan.say,
+                    now=int(self.clock()), priority=2,
+                )
+                if chatter.allowed:
+                    ok, detail, _ = self._publish_intent(
+                        say_intent, body, authority_token=authority_token
+                    )
+                    if ok:
+                        published += 1
+                    else:
+                        failures.append(detail)
+                else:
+                    failures.append("chat governor suppressed the reply")
+            except (IntentError, TypeError, ValueError) as exc:
+                failures.append(str(exc))
+
+        for command in plan.commands:
+            try:
+                intent = self._plan_command_intent(command, body)
+                ok, detail, _ = self._publish_intent(
+                    intent, body, authority_token=authority_token
+                )
+                if ok:
+                    published += 1
+                else:
+                    failures.append(detail)
+            except (IntentError, TypeError, ValueError) as exc:
+                failures.append(str(exc))
+
+        self._finish_planning(float(self.clock()), retry=False)
+        if published > 0:
+            status = "npc_plan_published" if plan.commands else "npc_speech_published"
+            detail = f"validated Goblin leader plan published ({published} action(s))"
+        else:
+            status = "npc_plan_noop"
+            detail = failures[0] if failures else "plan contained no executable action"
+        self.last_status = status
+        self.last_detail = detail
+        return ServiceResult(status, detail)
+
     def _publish_intent(
         self,
         intent: ValidatedIntent,
@@ -569,60 +642,12 @@ class GoblinService:
                 )
                 return
 
-            published = 0
-            failures: list[str] = []
-            if plan.say is not None:
-                try:
-                    say_intent = IntentValidator().validate({
-                        "intent": "SAY",
-                        "mode": self.current_body.mode,
-                        "npc_id": NPC_ID,
-                        "text": plan.say,
-                        "priority": 2,
-                    })
-                    chatter = self.chatter.record(
-                        f"reply:{event_request_id}", "game", plan.say,
-                        now=int(self.clock()), priority=2,
-                    )
-                    if chatter.allowed:
-                        ok, detail, _ = self._publish_intent(
-                            say_intent, self.current_body,
-                            authority_token=self._plan_authority_token,
-                        )
-                        if ok:
-                            published += 1
-                        else:
-                            failures.append(detail)
-                    else:
-                        failures.append("chat governor suppressed the reply")
-                except (IntentError, TypeError, ValueError) as exc:
-                    failures.append(str(exc))
-
-            for command in plan.commands:
-                try:
-                    intent = self._plan_command_intent(command, self.current_body)
-                    ok, detail, _ = self._publish_intent(
-                        intent, self.current_body,
-                        authority_token=self._plan_authority_token,
-                    )
-                    if ok:
-                        published += 1
-                    else:
-                        failures.append(detail)
-                except (IntentError, TypeError, ValueError) as exc:
-                    failures.append(str(exc))
-
-            self._finish_planning(float(self.clock()), retry=False)
-            if published > 0:
-                self.last_status = (
-                    "npc_plan_published" if plan.commands else "npc_speech_published"
-                )
-                self.last_detail = (
-                    f"validated Goblin leader plan published ({published} action(s))"
-                )
-            else:
-                self.last_status = "npc_plan_noop"
-                self.last_detail = failures[0] if failures else "plan contained no executable action"
+            self._publish_plan(
+                plan,
+                self.current_body,
+                authority_token=self._plan_authority_token,
+                event_request_id=event_request_id,
+            )
             return
 
         propose_speech = getattr(self.qwen, "propose_speech", None)
@@ -867,6 +892,22 @@ class GoblinService:
             self.last_status = "npc_steady"
             self.last_detail = "native NPC task continues; no model planning trigger is pending"
             return ServiceResult(self.last_status, self.last_detail)
+        propose_plan = getattr(self.qwen, "propose_plan", None)
+        if callable(propose_plan):
+            try:
+                plan = propose_plan(self._planning_context())
+                if not isinstance(plan, ValidatedPlan):
+                    raise QwenError("Qwen plan adapter returned an invalid plan")
+            except (IntentError, QwenError, TypeError, ValueError) as exc:
+                self._finish_planning(now, retry=True)
+                return self._run_deterministic_fallback(
+                    body, f"Qwen plan unavailable: {exc}"
+                )
+            return self._publish_plan(
+                plan,
+                body,
+                authority_token=self._plan_authority_token,
+            )
         try:
             intent = self.qwen.propose_intent(self._planning_context())
         except QwenError as exc:

@@ -102,6 +102,49 @@ class FriendlySurvivorContractTests(unittest.TestCase):
         self.assertIn('call(actor, "applyOutfit"', client)
         self.assertNotIn("IsoZombie.new(", client)
 
+    def test_storm_executor_submits_verified_initial_semantic_goals(self) -> None:
+        storm = (Path(__file__).resolve().parents[1]
+                 / "storm/src/com/horsetheunicorn/goblinsurvivor/GoblinSurvivorStormMod.java").read_text(encoding="utf-8")
+        consumer = (Path(__file__).resolve().parents[1]
+                    / "storm/src/com/horsetheunicorn/goblinsurvivor/RemoteCommandConsumer.java").read_text(encoding="utf-8")
+        executor = (Path(__file__).resolve().parents[1]
+                    / "storm/src/com/horsetheunicorn/goblinsurvivor/SurvivorCommandExecutor.java").read_text(encoding="utf-8")
+        server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        for symbol in (
+            "MAX_COMMAND_AGE_MS",
+            "containsForbiddenKey",
+            "command.npc_action",
+            "stale command",
+            "MAX_SEEN_REQUESTS",
+            "rememberRequest",
+            "GameServer.getPlayers()",
+            "setFollowPlayer",
+            "setFollowGoblin",
+            "setDestination",
+            '"RETREAT".equals(action) || "FLEE".equals(action)',
+            '"SAFE", action',
+            "FOLLOW_GOBLIN requires goblin.primary",
+            "java_goal_action",
+            "public static String execute",
+        ):
+            self.assertIn(symbol, consumer + executor)
+        self.assertIn('"executeGoblinSurvivorCommand"', storm)
+        self.assertIn('rawget(_G, "executeGoblinSurvivorCommand")', server)
+        self.assertIn('string.sub(result, 1, 8) == "HANDLED:"', server)
+        self.assertIn('result ~= "DELEGATE"', server)
+        self.assertNotIn("IsoZombie", executor)
+
+    def test_in_game_commands_use_the_same_versioned_executor_envelope(self) -> None:
+        commands = (SERVER / "PlayerCommands.lua").read_text(encoding="utf-8")
+        for symbol in (
+            'type = "command.npc_action"',
+            "request_id = \"chat-\"",
+            "timestamp_ms = Protocol.nowMs()",
+            "Commands.sequence = Commands.sequence + 1",
+            'source = "in_game_chat"',
+        ):
+            self.assertIn(symbol, commands)
+
     def test_default_roster_is_goblin_plus_six_human_survivors(self) -> None:
         config = (SHARED / "Config.lua").read_text(encoding="utf-8")
         profiles = (SHARED / "Profiles.lua").read_text(encoding="utf-8")
@@ -145,6 +188,10 @@ class FriendlySurvivorContractTests(unittest.TestCase):
         self.assertIn('members = companions', commands)
         self.assertIn("ensureGodMode", human)
         self.assertIn("setInvulnerable(true)", human)
+        authority = (Path(__file__).resolve().parents[1]
+                     / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        self.assertIn("removeBodyInventoryItem", authority)
+        self.assertIn("inventory.DoRemoveItem(item)", authority)
         authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
         self.assertIn("body.ensureFirearm();", authority)
         self.assertIn("IsoThumpable", authority)
@@ -274,6 +321,9 @@ class FriendlySurvivorContractTests(unittest.TestCase):
             "updateWorldPosition",
             'call(actor, "setMovingSquare", square)',
             'advanceMotion(id, actor, now)',
+            'Events.OnRenderTick.Add',
+            'Client.renderTickActive = true',
+            'updateVisualActors(Protocol.nowMs())',
             'call(actor, "ensureVisualRegistration")',
             'call(actor, "setMovementMode", moving, state.running == true)',
         ):
@@ -360,6 +410,75 @@ class FriendlySurvivorContractTests(unittest.TestCase):
             self.assertIn(symbol, authority)
         self.assertIn('"persistActorCargo"', storm)
 
+    def test_join_assist_returns_workers_to_expeditions_and_commands_do_not_expire(self) -> None:
+        server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        command_loop = (SERVER / "CommandLoop.lua").read_text(encoding="utf-8")
+        authority = (Path(__file__).resolve().parents[1]
+                     / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        for symbol in (
+            "onlinePlayerNames",
+            "onlinePlayersInitialized",
+            "updateJoinAssists(players, now)",
+            "assigned join assist",
+            "join_assist = true",
+            "join_assist_return_job",
+            "restoreJoinAssist(state)",
+            'state.task = "JOB_" .. job',
+            'state.work_status = "assisting_" .. name',
+        ):
+            self.assertIn(symbol, server)
+        for action in (
+            "JOIN_PARTY",
+            "DEFEND_PLAYER",
+            "FOLLOW_GOBLIN",
+            "ATTACK",
+            "MELEE_ATTACK",
+        ):
+            self.assertIn(action, command_loop)
+        self.assertIn("persistentActions[message.action] == true", command_loop)
+        self.assertIn("pending.deadline_ms ~= nil", command_loop)
+        self.assertIn('normalized == "JOIN_PARTY"', server)
+        self.assertIn('normalized == "DEFEND_PLAYER"', server)
+        self.assertIn('state.rawset("work_status", "looted_next_area")', authority)
+        self.assertIn("advanceSpecialistRoute(state);", authority)
+        self.assertIn('String controlMode = text(state, "control_mode", "HOLD").toUpperCase();', authority)
+        self.assertIn('semanticWorkStatus instanceof String status', authority)
+
+    def test_player_discovery_uses_pz_pathing_and_preserves_roaming_workers(self) -> None:
+        server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
+        expedition = (SERVER / "ExpeditionManager.lua").read_text(encoding="utf-8")
+        authority = (Path(__file__).resolve().parents[1]
+                     / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        for symbol in (
+            "DISCOVERY_GRACE_MS = 15000",
+            "updatePlayerDiscovery(players, now)",
+            "discoveryRecord(username, now)",
+            "tracking_last_known_player",
+            "server-wide player discovery",
+            "updatePlayerSearchPatrol()",
+            "player_search_enabled = true",
+        ):
+            self.assertIn(symbol, server)
+        for symbol in (
+            "PLAYER_SEARCH_LEG_TILES",
+            "PLAYER_SEARCH_LEASH_RADIUS",
+            "PathFindBehavior2",
+            "nativePathPointAhead",
+            "playerSearchRoute",
+            "enforcePeerSeparation",
+            "importantAreaIn",
+            "loading_target_area",
+            "stateAnchor(state, \"player_search_last\")",
+        ):
+            self.assertIn(symbol, authority)
+        for symbol in (
+            "state.player_search_enabled == true",
+            "calculateOutboundPoint",
+            "expedition_target = nil",
+            "function ExpeditionManager.tickOffline",
+        ):
+            self.assertIn(symbol, expedition)
+
     def test_expedition_loot_vehicle_recovery_and_fence_traversal_are_server_owned(self) -> None:
         authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
         server = (SERVER / "ClientSurvivorServer.lua").read_text(encoding="utf-8")
@@ -374,12 +493,23 @@ class FriendlySurvivorContractTests(unittest.TestCase):
             "vehicleHasOtherOccupant",
             "vehicle_recovery_enabled",
             "beginVehicleRecovery",
-            "vehicle.getController().getClientControls()",
+            "findReachableVehicleApproach",
+            "PathFindBehavior2",
+            "pathToVehicleAdjacent",
+            "getClientControls()",
             "vehicle.cheatHotwire(true, false)",
             "vehicle.enter(0, entry.body)",
-            "vehicle.updatePhysics()",
+            "moveHeadlessVehicle",
+            "updatePhysicsNetwork()",
             "vehicle_returned",
             "vehicle_stuck",
+            "VEHICLE_ENTER_DISTANCE = 4.0",
+            "NATIVE_ROUTE_TIMEOUT_NANOS",
+            "advanceNativeLocationPath",
+            "pathToLocationF",
+            'navigation = "pathfinding"',
+            "setForwardDirection((float)dx, (float)dy)",
+            "stateAnchor(state, \"protection_base\")",
             "isHoppableTo",
             "isPlayerAbleToHopWallTo",
             "IsoWindow.canClimbThroughHelper",
@@ -388,6 +518,7 @@ class FriendlySurvivorContractTests(unittest.TestCase):
             "failed_to_cross",
         ):
             self.assertIn(symbol, authority)
+        self.assertNotIn("vehicle.updatePhysics()", authority)
         for symbol in (
             '"SET_VEHICLE_RECOVERY"',
             'command == "cars"',
@@ -396,6 +527,34 @@ class FriendlySurvivorContractTests(unittest.TestCase):
             self.assertIn(symbol, server + commands + command_loop)
         self.assertIn('state.navigation_status == "jumping"', client)
         self.assertIn("vehicle_recoveries", protocol)
+
+    def test_native_route_retries_are_bounded_without_recursive_overflow(self) -> None:
+        authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        self.assertIn("entry.nextRouteAt = now + NATIVE_ROUTE_RETRY_NANOS", authority)
+        self.assertIn("recursive retry", authority)
+        self.assertIn("LOCAL_ESCAPE_RING_RADIUS", authority)
+        self.assertIn("findLocalEscapeRoute", authority)
+        self.assertIn("OBSTACLE_DETOUR_HOLD_NANOS", authority)
+        self.assertIn("obstacleDetourActive", authority)
+        self.assertIn("entry.nextRouteAt = Math.max(entry.nextRouteAt", authority)
+        self.assertIn("nativeResult.point() == null", authority)
+        self.assertIn("nativeRejected || now >= entry.nextRouteAt", authority)
+        self.assertIn("!nativeRejectedBeforeGrid && now >= entry.nextRouteAt", authority)
+        self.assertIn("private static void clearObstacleDetour", authority)
+        self.assertIn("private static GridRoute.Result findLocalEscapeRoute", authority)
+        self.assertIn("its private cursor is stale", authority)
+        self.assertIn("valid path and a", authority)
+        self.assertNotIn(
+            "return advanceNativeLocationPath(entry, cell, tx, ty, tz,\n                        stopDistance, now);",
+            authority,
+        )
+
+    def test_reconnect_reanchors_missing_bodies_to_the_live_player_cell(self) -> None:
+        authority = (Path(__file__).resolve().parents[1] / "storm/src/com/horsetheunicorn/goblinsurvivor/ServerSurvivorAuthority.java").read_text(encoding="utf-8")
+        self.assertIn("spawnBodyAtSavedOrPlayerAnchor", authority)
+        self.assertIn("WorldAnchor anchor = playerAnchor(cell);", authority)
+        self.assertIn("human survivor reanchored to live player cell", authority)
+        self.assertIn("entry.body = spawnBodyAtSavedOrPlayerAnchor(cell, state, id, entry.generation);", authority)
 
     def test_gss_slash_commands_are_relayed_before_vanilla_server_commands(self) -> None:
         relay = (CLIENT / "ChatRelay.lua").read_text(encoding="utf-8")

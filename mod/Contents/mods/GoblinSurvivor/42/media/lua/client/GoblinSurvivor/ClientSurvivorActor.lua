@@ -15,6 +15,7 @@ local Client = {
     lastSpeechSequence = {},
     pendingSpeech = {},
     states = {},
+    lastServerTimestamp = {},
     mapMarkers = {},
     mapFailureLogged = false,
     lastState = nil,
@@ -24,7 +25,9 @@ local Client = {
     lastDiagnosticsAt = 0,
     nextZombieDiagnosticsAt = 0,
     nextNameLabelDiagnosticsAt = 0,
-    nameLabelFailureLogged = false
+    nameLabelFailureLogged = false,
+    renderTickActive = false,
+    visualFailureLogged = false
 }
 
 -- Server snapshots arrive at a deliberately conservative cadence.  Applying
@@ -36,6 +39,7 @@ local Client = {
 local MOTION_DURATION_MS = 560
 local MOTION_MIN_DURATION_MS = 220
 local MOTION_MAX_DURATION_MS = 700
+local MOTION_RENDER_LEAD_MS = 80
 local WALK_SPEED_TILES_PER_SECOND = 1.4
 local RUN_SPEED_TILES_PER_SECOND = 2.8
 local MOTION_SNAP_DISTANCE = 6.0
@@ -247,9 +251,19 @@ local function navigationIsMoving(state)
         or navigation == "vehicle_driving"
 end
 
-local function motionDurationMs(distance, state)
+local function motionDurationMs(distance, state, serverIntervalMs)
     if not navigationIsMoving(state) or distance <= 0.001 then
         return MOTION_DURATION_MS
+    end
+    -- The authoritative stream is currently 500 ms apart.  Use its measured
+    -- cadence when it is available, with a small render lead so a packet that
+    -- arrives exactly on a frame does not make the actor visibly stop before
+    -- the next target.  The speed-derived fallback keeps this compatible with
+    -- older servers that do not include a usable timestamp delta.
+    if type(serverIntervalMs) == "number" and serverIntervalMs > 0 then
+        local duration = math.floor(serverIntervalMs + MOTION_RENDER_LEAD_MS + 0.5)
+        return math.max(MOTION_MIN_DURATION_MS,
+            math.min(MOTION_MAX_DURATION_MS, duration))
     end
     -- Match the server's authoritative travel speed instead of using one
     -- fixed interpolation window for both walking and running.  This keeps a
@@ -265,6 +279,20 @@ end
 
 local function setMotionTarget(id, actor, state, snap)
     local now = Protocol.nowMs()
+    local serverTimestamp = tonumber(state.server_timestamp_ms)
+    local previousServerTimestamp = Client.lastServerTimestamp[id]
+    local serverIntervalMs = nil
+    if type(serverTimestamp) == "number"
+        and type(previousServerTimestamp) == "number"
+        and serverTimestamp > previousServerTimestamp then
+        local measured = serverTimestamp - previousServerTimestamp
+        if measured >= 100 and measured <= 2000 then
+            serverIntervalMs = measured
+        end
+    end
+    if type(serverTimestamp) == "number" then
+        Client.lastServerTimestamp[id] = serverTimestamp
+    end
     local currentX, currentY, currentZ = actorPosition(actor)
     if currentX == nil then
         currentX, currentY, currentZ = state.x, state.y, state.z
@@ -287,7 +315,8 @@ local function setMotionTarget(id, actor, state, snap)
         targetY = state.y,
         targetZ = state.z,
         startedAt = now,
-        durationMs = motionDurationMs(distance, state),
+        durationMs = motionDurationMs(distance, state, serverIntervalMs),
+        serverIntervalMs = serverIntervalMs,
         done = false
     }
     if snap then
@@ -1034,6 +1063,22 @@ local function onServerCommand(module, command, args)
     applyState(args)
 end
 
+local function updateVisualActors(now)
+    for id, actor in pairs(Client.actors) do
+        -- Render motion is intentionally client-side.  The server remains
+        -- authoritative for the target point, while this short bridge makes
+        -- the body travel at render cadence instead of the network/simulation
+        -- tick cadence.
+        advanceMotion(id, actor, now)
+        call(actor, "ensureVisualRegistration")
+        local ok, detail = call(actor, "tickVisual")
+        if not ok and not Client.visualFailureLogged then
+            Client.visualFailureLogged = true
+            log("visual tick failed for " .. tostring(id) .. ": " .. tostring(detail))
+        end
+    end
+end
+
 if Events and Events.OnServerCommand
     and type(Events.OnServerCommand.Add) == "function" then
     Events.OnServerCommand.Add(onServerCommand)
@@ -1051,6 +1096,7 @@ if Events and Events.OnGameStart
         Client.lastSpeechSequence = {}
         Client.pendingSpeech = {}
         Client.states = {}
+        Client.lastServerTimestamp = {}
         clearMapMarkers()
         Client.mapFailureLogged = false
         Client.lastState = nil
@@ -1058,6 +1104,8 @@ if Events and Events.OnGameStart
         Client.nextZombieDiagnosticsAt = 0
         Client.nextNameLabelDiagnosticsAt = 0
         Client.nameLabelFailureLogged = false
+        Client.renderTickActive = false
+        Client.visualFailureLogged = false
         requestSnapshot()
     end)
 end
@@ -1076,19 +1124,18 @@ if Events and Events.OnTick and type(Events.OnTick.Add) == "function" then
         -- Successfully applied sequences are ignored by applyState.
         for _, state in pairs(Client.states) do applyState(state) end
         localZombieDiagnostics(now)
-        for id, actor in pairs(Client.actors) do
-            -- Render motion is intentionally client-side.  The server remains
-            -- authoritative for the target point, while this short bridge
-            -- makes the body travel there at frame cadence instead of snapping
-            -- at the network snapshot cadence.
-            advanceMotion(id, actor, now)
-            call(actor, "ensureVisualRegistration")
-            local ok, detail = call(actor, "tickVisual")
-            if not ok and not Client.visualFailureLogged then
-                Client.visualFailureLogged = true
-                log("visual tick failed for " .. tostring(id) .. ": " .. tostring(detail))
-            end
-        end
+        -- Build 42 can dispatch OnTick at the simulation cadence, which is
+        -- intentionally lower than the render cadence on some clients. Keep
+        -- this fallback for runtimes without OnRenderTick; once the render
+        -- event fires, the visual path is advanced there instead.
+        if not Client.renderTickActive then updateVisualActors(now) end
+    end)
+end
+
+if Events and Events.OnRenderTick and type(Events.OnRenderTick.Add) == "function" then
+    Events.OnRenderTick.Add(function()
+        Client.renderTickActive = true
+        updateVisualActors(Protocol.nowMs())
     end)
 end
 

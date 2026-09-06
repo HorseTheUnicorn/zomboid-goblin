@@ -9,7 +9,7 @@ local EventLog = require("GoblinSurvivor/EventLog")
 local ClientSurvivorServer = require("GoblinSurvivor/ClientSurvivorServer")
 local BaseManager = require("GoblinSurvivor/BaseManager")
 
-local Commands = { started = false, lastAt = {} }
+local Commands = { started = false, lastAt = {}, sequence = 0 }
 local COMMAND_COOLDOWN_SECONDS = 1
 
 local JOBS = {
@@ -78,8 +78,13 @@ local function executeForSelection(player, selector, action, fields)
     local accepted = 0
     local detail = ""
     for _, npcId in ipairs(ids) do
+        Commands.sequence = Commands.sequence + 1
         local message = {
             protocol = Protocol.version,
+            type = "command.npc_action",
+            request_id = "chat-" .. tostring(Protocol.nowMs()) .. "-"
+                .. tostring(Commands.sequence) .. "-" .. string.sub(tostring(npcId), 1, 64),
+            timestamp_ms = Protocol.nowMs(),
             npc_id = npcId,
             action = action,
             priority = 2,
@@ -146,6 +151,7 @@ local function handle(player, text)
         reply(player, "/gss status | follow/join [all|id] | hold/leave [all|id]")
         reply(player, "/gss squad [all|id] | dismiss")
         reply(player, "/gss loot|gather|scavenge|disassemble|build|guard [all|id]")
+        reply(player, "/gss search [all|id]  -- scout the map for online players")
         reply(player, "/gss cars [all|id] | cars off [all|id]")
         reply(player, "/gss run|walk|auto [all|id]")
         reply(player, "/gss base set [name] | base status | fortify [mike|id]")
@@ -230,6 +236,14 @@ local function handle(player, text)
             target = { kind = "player", name = speaker }
         })
         reply(player, tostring(accepted) .. " survivor(s) joined your party: " .. tostring(detail))
+        return
+    end
+    if command == "search" or command == "find" or command == "recruit" then
+        local accepted, detail = executeForSelection(player, selector,
+            "SEARCH_PLAYERS", {})
+        reply(player, tostring(accepted)
+            .. " survivor(s) searching the map for online players: "
+            .. tostring(detail))
         return
     end
     if command == "hold" or command == "rest" then

@@ -3,6 +3,7 @@ package com.horsetheunicorn.goblinsurvivor;
 import zombie.characters.IsoLivingCharacter;
 import zombie.characters.SurvivorDesc;
 import zombie.characters.BodyDamage.BodyDamage;
+import zombie.characters.Moodles.Moodles;
 import zombie.core.skinnedmodel.visual.BaseVisual;
 import zombie.core.skinnedmodel.visual.HumanVisual;
 import zombie.core.skinnedmodel.visual.IHumanVisual;
@@ -56,6 +57,14 @@ public final class HumanSurvivor extends IsoLivingCharacter implements IHumanVis
      * authoritative in this class and never uses vanilla injury simulation.
      */
     private BodyDamage compatibilityBodyDamage;
+    /**
+     * IsoGameCharacter only constructs Moodles for IsoPlayer and animals in
+     * B42.  A custom human therefore reaches vehicle/animation code with a
+     * null moodle container unless it supplies the same compatibility object.
+     * The server still owns survivor health and needs; this object only keeps
+     * engine APIs that query moodles from throwing.
+     */
+    private Moodles compatibilityMoodles;
     private String deathReason = "";
     private String lastFireError = "";
     private String lastMeleeError = "";
@@ -69,6 +78,15 @@ public final class HumanSurvivor extends IsoLivingCharacter implements IHumanVis
             compatibilityBodyDamage = new BodyDamage(this);
         }
         return compatibilityBodyDamage;
+    }
+
+    @Override
+    public Moodles getMoodles() {
+        if (moodles != null) return moodles;
+        if (compatibilityMoodles == null) {
+            compatibilityMoodles = new Moodles(this);
+        }
+        return compatibilityMoodles;
     }
 
     public HumanSurvivor(SurvivorDesc descriptor, IsoCell cell, int x, int y, int z) {

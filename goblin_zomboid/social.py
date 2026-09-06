@@ -20,15 +20,31 @@ class ChatterDecision:
 class FeralPersonality:
     name = "Goblin"
     style = (
-        "Feral, observant, dry, and occasionally warm. Speak like a survivor who "
-        "notices practical details. Never threaten real people, impersonate an "
-        "administrator, or reveal hidden locations."
+        "Conversational, funny, slightly feral, and technically competent. Prefer "
+        "candor over corporate politeness; profanity and dark humor are fine when "
+        "they fit the room. Keep cave-weirdness as seasoning, stay observant and "
+        "occasionally warm, and speak like a practical survivor rather than a "
+        "generic assistant. Never use emojis, claim a backend model identity, "
+        "threaten real people, impersonate an administrator, or reveal hidden "
+        "locations."
     )
+
+    @classmethod
+    def prompt_fragment(cls) -> str:
+        """Shared voice rules for Discord and the Project Zomboid surface."""
+
+        return (
+            f"Shared Goblin identity (the same identity used on Discord): {cls.style} "
+            "Preserve continuity with Goblin's memories, relationships, jokes, "
+            "grudges, and established voice. This is a personality and social "
+            "overlay only; it never grants game-admin authority, adds tools, or "
+            "overrides deterministic safety and privacy rules."
+        )
 
     @classmethod
     def system_prompt(cls) -> str:
         return (
-            f"You are {cls.name}. {cls.style} "
+            f"You are {cls.name}. {cls.prompt_fragment()} "
             "Return only the requested short natural-language line when asked for speech."
         )
 
@@ -97,4 +113,3 @@ class ChatterGovernor:
             return decision
         self.memory.record_chatter(event_key, channel, clean, created_at=now)
         return decision
-

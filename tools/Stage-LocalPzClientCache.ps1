@@ -29,12 +29,42 @@ function Assert-Directory([string]$Path, [string]$Label) {
     }
 }
 
+function Remove-StalePackageFiles([string]$SourceRoot, [string]$TargetRoot) {
+    # Mirror only the exact package target supplied by this script. This keeps
+    # an isolated cache from retaining a Lua or jar file removed from the
+    # authoritative package, which can make a later client checksum diverge.
+    $sourceFull = [IO.Path]::GetFullPath($SourceRoot).TrimEnd('\')
+    $targetFull = [IO.Path]::GetFullPath($TargetRoot).TrimEnd('\')
+    if ([String]::Equals($sourceFull, $targetFull, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to mirror a package onto itself: $TargetRoot"
+    }
+    $sourceFiles = @{}
+    foreach ($sourceFile in @(Get-ChildItem -LiteralPath $sourceFull -Recurse -File)) {
+        $relative = $sourceFile.FullName.Substring($sourceFull.Length).TrimStart('\', '/')
+        $sourceFiles[$relative.ToLowerInvariant()] = $true
+    }
+    foreach ($targetFile in @(Get-ChildItem -LiteralPath $targetFull -Recurse -File)) {
+        $relative = $targetFile.FullName.Substring($targetFull.Length).TrimStart('\', '/')
+        if (-not $sourceFiles.ContainsKey($relative.ToLowerInvariant())) {
+            Remove-Item -LiteralPath $targetFile.FullName -Force
+        }
+    }
+    $directories = @(Get-ChildItem -LiteralPath $targetFull -Recurse -Directory |
+        Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($directory in $directories) {
+        if ($null -eq (Get-ChildItem -LiteralPath $directory.FullName -Force | Select-Object -First 1)) {
+            Remove-Item -LiteralPath $directory.FullName -Force
+        }
+    }
+}
+
 function Copy-Package([string]$RelativePath, [string]$Label) {
     $source = Join-Path $SourcePzDataRoot $RelativePath
     $target = Join-Path $TargetPzDataRoot $RelativePath
     Assert-Directory $source $Label
     New-Item -ItemType Directory -Force -Path $target | Out-Null
     Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+    Remove-StalePackageFiles $source $target
 }
 
 New-Item -ItemType Directory -Force -Path $TargetPzDataRoot | Out-Null

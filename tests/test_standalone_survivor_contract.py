@@ -123,6 +123,9 @@ class StandaloneSurvivorContractTests(unittest.TestCase):
         deploy = (TOOLS / "deploy-03.ps1").read_text(encoding="utf-8")
         self.assertIn("ShouldProcess", deploy)
         self.assertIn("backups/GoblinSurvivor-", deploy)
+        client_cache = (TOOLS / "Stage-LocalPzClientCache.ps1").read_text(encoding="utf-8")
+        self.assertIn("Remove-StalePackageFiles", client_cache)
+        self.assertIn("Refusing to mirror a package onto itself", client_cache)
 
 
 if __name__ == "__main__":

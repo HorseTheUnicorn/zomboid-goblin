@@ -3,6 +3,8 @@ param(
     [string]$RemoteHost = "192.168.0.76",
     [string]$RemoteUser = "goblin",
     [string]$RemoteBridgeRoot = "/home/goblin/zomboid-goblin-local/bridge",
+    [ValidateRange(1, 65535)]
+    [int]$SshPort = 2222,
     [string]$BridgeRoot = "C:\Users\tomgr\Zomboid\Lua\goblin-bridge",
     [string]$SshKey = (Join-Path $env:USERPROFILE ".ssh\id_ed25519_goblin"),
     [string]$PythonExecutable = "python",
@@ -33,6 +35,7 @@ $env:GOBLIN_BRIDGE_ROOT = $BridgeRoot
 $env:GOBLIN_PZ_HOST = $RemoteHost
 $env:GOBLIN_PZ_SSH_USER = $RemoteUser
 $env:GOBLIN_PZ_BRIDGE_ROOT = $RemoteBridgeRoot
+$env:GOBLIN_PZ_SSH_PORT = [string]$SshPort
 $env:GOBLIN_PZ_SSH_KEY = (Resolve-Path -LiteralPath $SshKey).Path
 $env:GOBLIN_RELAY_REMOTE_ROLE = "agent"
 

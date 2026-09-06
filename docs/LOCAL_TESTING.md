@@ -40,7 +40,7 @@ tokens and it does not use a PZ/Steam client on `.76`. First verify that the
 
 ```powershell
 Test-NetConnection 192.168.0.76 -Port 22
-ssh -i "$env:USERPROFILE\.ssh\id_ed25519_goblin" goblin@192.168.0.76 true
+ssh -p 2222 -i "$env:USERPROFILE\.ssh\id_ed25519_goblin" goblin@192.168.0.76 true
 ```
 
 Then run the local relay in a separate PowerShell window while the `.76`
@@ -52,7 +52,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\Start-LocalGoblinRelay.ps1
 
 The helper defaults to the existing Windows key at
 `C:\Users\tomgr\.ssh\id_ed25519_goblin`; pass `-SshKey` only when the key is
-stored elsewhere. The private key itself must remain outside the repository.
+stored elsewhere. The `.76` SSH service uses port `2222`; pass `-SshPort 22`
+only when the host's SSH listener is configured on the standard port. The
+private key itself must remain outside the repository.
 
 For a one-pass connectivity check, use `-Once`. The helper's remote root is
 `/home/goblin/zomboid-goblin-local/bridge` by default because the `goblin`

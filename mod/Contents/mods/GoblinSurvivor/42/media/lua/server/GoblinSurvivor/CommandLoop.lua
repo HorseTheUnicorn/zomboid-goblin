@@ -28,7 +28,7 @@ local actions = {
     ATTACK = true, MELEE_ATTACK = true, DEFEND_PLAYER = true, DEFEND_AREA = true, GUARD = true,
     PATROL = true, RETURN_TO_BASE = true, CLEAR_BUILDING = true,
     JOIN_PARTY = true, LEAVE_PARTY = true, FORM_SQUAD = true, DISMISS_SQUAD = true,
-    ASSIGN_JOB = true, SET_MOVEMENT = true, SET_VEHICLE_RECOVERY = true,
+    ASSIGN_JOB = true, SEARCH_PLAYERS = true, SET_MOVEMENT = true, SET_VEHICLE_RECOVERY = true,
     SECURE_BASE = true, ENTER_VEHICLE = true, EXIT_VEHICLE = true,
     EAT = true, DRINK = true, BANDAGE = true, RELOAD = true, CLAIM_REWARD = true
 }
@@ -140,6 +140,23 @@ local immediateActions = {
     FORM_SQUAD = true, DISMISS_SQUAD = true, ASSIGN_JOB = true
 }
 
+-- These orders are intentionally open-ended.  A survivor that is following
+-- a player, defending the party, or hunting hostile zombies must not receive
+-- a synthetic TIMEOUT merely because the bridge acknowledgement window is
+-- shorter than the gameplay task.  The semantic server status remains the
+-- source of truth; bounded movement/search orders still use the deadline
+-- below so a genuinely stuck order can report a terminal result.
+local persistentActions = {
+    FOLLOW = true,
+    FOLLOW_PLAYER = true,
+    FOLLOW_GOBLIN = true,
+    JOIN_PARTY = true,
+    DEFEND_PLAYER = true,
+    ATTACK = true,
+    MELEE_ATTACK = true,
+    SEARCH_PLAYERS = true
+}
+
 local function terminalResult(requestId, status, detail)
     IPC.writeResponse(requestId, status, detail)
     IPC.acknowledge(requestId, status, detail, true)
@@ -162,7 +179,7 @@ local function updatePending()
         if status == "SUCCESS" or status == "FAILED" then
             terminalResult(requestId, status, detail)
             CommandLoop.pending[requestId] = nil
-        elseif now >= pending.deadline_ms then
+        elseif pending.deadline_ms ~= nil and now >= pending.deadline_ms then
             terminalResult(requestId, "TIMEOUT", "survivor task exceeded its bounded execution window")
             CommandLoop.pending[requestId] = nil
         end
@@ -236,7 +253,8 @@ local function process(stem)
         CommandLoop.pending[message.request_id] = {
             actor_id = message.npc_id,
             action = message.action,
-            deadline_ms = os.time() * 1000 + CommandLoop.pendingTimeoutMs
+            deadline_ms = persistentActions[message.action] == true
+                and nil or os.time() * 1000 + CommandLoop.pendingTimeoutMs
         }
     end
     IPC.archive("commands", stem, "NPC action admitted: " .. tostring(message.action))

@@ -8,6 +8,11 @@ param(
     [string]$PzDataRoot = "$env:USERPROFILE\Zomboid",
     [string]$CacheDir,
     [switch]$AllowMultiple,
+    [switch]$LocalAutoConnect,
+    [ValidatePattern('^[A-Za-z0-9_-]{1,32}$')]
+    [string]$LocalUsername = 'horse',
+    [ValidatePattern('^[A-Za-z0-9._-]{1,64}$')]
+    [string]$LocalAccountPassword = 'local-test-password',
     [string]$LogPrefix = "goblin-local-client"
 )
 
@@ -31,6 +36,9 @@ if ([string]::IsNullOrWhiteSpace($LogPrefix) -or
 $clientPath = Join-Path $PzInstallRoot "ProjectZomboid64.exe"
 if (-not (Test-Path -LiteralPath $clientPath -PathType Leaf)) {
     throw "Project Zomboid client was not found: $clientPath"
+}
+if ($LocalAutoConnect -and -not $Storm) {
+    throw "-LocalAutoConnect requires -Storm so the local-only Java shim is available."
 }
 
 $running = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -89,8 +97,13 @@ if ($Storm) {
         '-Djava.library.path=win64/;.;natives/;natives/win64/',
         "`"-javaagent:$bootstrap`"", '-DstormType=local', '-Dstorm.server=false',
         '-Dstorm.launcher.handoff=false',
-        '-cp', './;projectzomboid.jar', 'zombie.gameStates.MainScreenState'
+        "-Dgoblin.local.autoconnect=$($(if ($LocalAutoConnect) { 'true' } else { 'false' }))"
     )
+    if ($LocalAutoConnect) {
+        $vmArgs += "-Dgoblin.local.username=$LocalUsername"
+        $vmArgs += "-Dgoblin.local.password=$LocalAccountPassword"
+    }
+    $vmArgs += @('-cp', './;projectzomboid.jar', 'zombie.gameStates.MainScreenState')
     $stdout = Join-Path $logs "$LogPrefix.stdout.log"
     $stderr = Join-Path $logs "$LogPrefix.stderr.log"
     $process = Start-Process -FilePath (Join-Path $PzInstallRoot 'jre64\bin\java.exe') `
@@ -103,4 +116,5 @@ Write-Output "Started local PZ client in non-Steam mode."
 Write-Output "  pid: $($process.Id)"
 Write-Output "  Storm: $Storm"
 Write-Output "  Visible: $Visible"
+Write-Output "  LocalAutoConnect: $LocalAutoConnect"
 if ($cacheSpecified) { Write-Output "  CacheDir: $CacheDir" }
