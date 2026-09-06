@@ -2,7 +2,7 @@
 param(
     [string]$RemoteHost = "192.168.0.76",
     [string]$RemoteUser = "goblin",
-    [string]$RemoteBridgeRoot = "/mnt/goblin-zomboid-local",
+    [string]$RemoteBridgeRoot = "/home/goblin/zomboid-goblin-local/bridge",
     [string]$BridgeRoot = "C:\Users\tomgr\Zomboid\Lua\goblin-bridge",
     [string]$SshKey = (Join-Path $env:USERPROFILE ".ssh\id_ed25519_goblin"),
     [string]$PythonExecutable = "python",

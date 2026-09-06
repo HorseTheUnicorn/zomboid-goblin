@@ -55,10 +55,13 @@ The helper defaults to the existing Windows key at
 stored elsewhere. The private key itself must remain outside the repository.
 
 For a one-pass connectivity check, use `-Once`. The helper's remote root is
-`/mnt/goblin-zomboid-local` by default. A separate `.76` local-test agent
-must use that root; do not point the production `.76` relay at it or point
-the local relay at `/mnt/goblin-zomboid`, because that would mix `.03` and
-local events.
+`/home/goblin/zomboid-goblin-local/bridge` by default because the `goblin`
+account cannot create siblings beneath the root-owned `/mnt` directory. A
+separate `.76` local-test agent must use that root; do not point the
+production `.76` relay at it or point the local relay at
+`/mnt/goblin-zomboid`, because that would mix `.03` and local events. If a
+different user-owned path is used, pass the same path to both the helper's
+`-RemoteBridgeRoot` parameter and the agent's `GOBLIN_BRIDGE_ROOT` setting.
 For production, `.76` runs its existing relay toward `.03`, and `.03` still
 does not need direct access to port `8000`.
 

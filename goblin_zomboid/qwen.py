@@ -89,8 +89,53 @@ class QwenClient:
             "require a player target_id. Do not output coordinates, distances, routes, cells, chunks, "
             "building ids, PZ/Lua/Java APIs, shell commands, code, credentials, or raw packets. "
             "Java owns resolution, movement, combat, inventory, and persistence; you only choose the "
-            "semantic action. Keep say under 240 characters and every command field bounded."
+            "semantic action. Keep say under 240 characters and every command field bounded. For a "
+            "SAY command use the command field text; never put say inside a command object."
         )
+
+    @staticmethod
+    def _normalize_plan_compatibility(content: str) -> str:
+        """Repair one bounded, harmless shape drift seen in local Qwen output.
+
+        The plan validator deliberately stays strict.  Some instruction-tuned
+        models put a reply in ``commands[*].say`` even after being shown the
+        top-level ``say`` envelope.  Only a SAY command with no existing text
+        field is normalized; every other unknown field remains validator-fatal.
+        """
+
+        try:
+            raw = json.loads(content)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return content
+        if not isinstance(raw, dict) or not isinstance(raw.get("commands"), list):
+            return content
+        changed = False
+        commands: list[Any] = []
+        for command in raw["commands"]:
+            if (
+                isinstance(command, dict)
+                and isinstance(command.get("action"), str)
+                and command["action"].strip().upper() == "SAY"
+                and "say" in command
+                and "text" not in command
+            ):
+                command = dict(command)
+                command["text"] = command.pop("say")
+                changed = True
+            commands.append(command)
+        if not changed:
+            return content
+        normalized = dict(raw)
+        normalized["commands"] = commands
+        try:
+            return json.dumps(
+                normalized,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError, OverflowError):
+            return content
 
     def _request_json(self, system_prompt: str, payload: Mapping[str, Any], *, max_tokens: int) -> str:
         if not isinstance(payload, Mapping):
@@ -145,7 +190,9 @@ class QwenClient:
             content = self._request_json(
                 self._plan_system_prompt(), brain_view(context), max_tokens=384
             )
-            return self.validator.validate_plan_json(content)
+            return self.validator.validate_plan_json(
+                self._normalize_plan_compatibility(content)
+            )
         except (IntentError, ValueError) as exc:
             raise QwenError("Qwen response failed strict plan validation") from exc
 

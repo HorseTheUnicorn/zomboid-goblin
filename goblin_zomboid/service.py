@@ -531,8 +531,42 @@ class GoblinService:
                 if not isinstance(plan, ValidatedPlan):
                     raise QwenError("Qwen plan adapter returned an invalid plan")
             except (IntentError, QwenError, TypeError, ValueError):
+                # Keep direct player conversation available when a small local
+                # model follows the plan envelope imperfectly.  The speech
+                # adapter has its own exact one-field validator, so this does
+                # not admit an unvalidated command or alter the privileged
+                # command boundary.
+                fallback_speech = getattr(self.qwen, "propose_speech", None)
+                if callable(fallback_speech):
+                    try:
+                        speech = fallback_speech(context)
+                        intent = IntentValidator().validate({
+                            "intent": "SAY",
+                            "mode": self.current_body.mode,
+                            "npc_id": NPC_ID,
+                            "text": speech,
+                            "priority": 2,
+                        })
+                        ok, detail, _ = self._publish_intent(
+                            intent,
+                            self.current_body,
+                            authority_token=self._plan_authority_token,
+                        )
+                    except (IntentError, QwenError, TypeError, ValueError) as exc:
+                        ok, detail = False, str(exc)
+                    if ok:
+                        self._finish_planning(float(self.clock()), retry=False)
+                        self.last_status = "npc_speech_published"
+                        self.last_detail = (
+                            "validated speech fallback published after plan rejection"
+                        )
+                        return
                 self.last_status = "qwen_plan_rejected"
-                self.last_detail = "addressed chat plan failed strict validation"
+                self.last_detail = (
+                    "addressed chat plan failed strict validation"
+                    if not fallback_speech or not callable(fallback_speech)
+                    else f"addressed chat plan and speech fallback failed: {detail}"
+                )
                 return
 
             published = 0

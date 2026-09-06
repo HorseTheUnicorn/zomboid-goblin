@@ -72,6 +72,22 @@ class PlanQwen:
         )
 
 
+class PlanFailureSpeechQwen:
+    def __init__(self) -> None:
+        self.plan_calls = 0
+        self.speech_calls = 0
+
+    def propose_plan(self, _context: object) -> ValidatedPlan:
+        self.plan_calls += 1
+        from goblin_zomboid.qwen import QwenError
+
+        raise QwenError("test plan shape drift")
+
+    def propose_speech(self, _context: object) -> str:
+        self.speech_calls += 1
+        return "Goblin is still listening."
+
+
 
 
 class PrivilegedQwen:
@@ -425,6 +441,50 @@ class NpcServiceTests(unittest.TestCase):
             )
             self.assertEqual(follow.fields["npc_id"], "npc.0001")
             self.assertEqual(follow.fields["target"]["label"], "player.alice")
+        finally:
+            service.close()
+
+    def test_addressed_chat_falls_back_to_validated_speech_when_plan_is_rejected(self) -> None:
+        qwen = PlanFailureSpeechQwen()
+        service = GoblinService(
+            self.config,
+            memory_path=self.directory / "memory.sqlite3",
+            qwen=qwen,
+            clock=lambda: 2_000.0,
+        )
+        try:
+            service.store.publish_runtime(
+                "zomboid-state",
+                make_message(
+                    "runtime.state", timestamp_ms=2_000_000,
+                    alive=True, body_present=True, body_mode="client_survivor",
+                    npc_id="goblin.primary", control_ready=True,
+                    npc_engine_ready=True, mode="PARTY",
+                ),
+            )
+            service.store.publish(
+                "events",
+                make_message(
+                    "event.chat", timestamp_ms=2_000_000,
+                    speaker="Alice", text="Goblin, report.", authorized=False,
+                ),
+                stem="plan-fallback-chat",
+            )
+            result = service.run_once()
+            self.assertEqual(result.status, "npc_speech_published")
+            self.assertEqual(qwen.plan_calls, 1)
+            self.assertEqual(qwen.speech_calls, 1)
+            commands = [
+                service.store.read_ready(item)
+                for item in service.store.iter_ready("commands")
+            ]
+            self.assertTrue(
+                any(
+                    command.fields["action"] == "SAY"
+                    and command.fields["text"] == "Goblin is still listening."
+                    for command in commands
+                )
+            )
         finally:
             service.close()
 

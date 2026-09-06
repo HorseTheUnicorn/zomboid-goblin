@@ -27,6 +27,14 @@ class StubRunner:
         return subprocess.CompletedProcess(argv, 1, "", "")
 
 
+class RemoteNamesRunner(StubRunner):
+    def __call__(self, argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        command = argv[-1]
+        if argv[0] == "ssh" and command.startswith("find "):
+            return subprocess.CompletedProcess(argv, 0, "req-1.ready\n", "")
+        return super().__call__(argv, **kwargs)
+
+
 class RelayTests(unittest.TestCase):
     def test_path_and_stem_guards_are_fail_closed(self) -> None:
         self.assertTrue(_safe_path("/var/lib/goblin-zomboid"))
@@ -79,6 +87,17 @@ class RelayTests(unittest.TestCase):
             )
             self.assertFalse(invalid_relay._load_remote_command_index())
             self.assertIsNone(invalid_relay._remote_command_stems)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_reverse_relay_reads_remote_commands(self) -> None:
+        temp_dir = Path(tempfile.mkdtemp(prefix="goblin-relay-commands-"))
+        try:
+            relay = SshFileRelay(
+                RelayConfig(local_root=temp_dir, remote_role="agent"),
+                runner=RemoteNamesRunner(),
+            )
+            self.assertEqual(relay._remote_names("commands", ".ready"), ["req-1.ready"])
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

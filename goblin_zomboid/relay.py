@@ -24,6 +24,7 @@ _REMOTE_READ_CHANNELS = (
     "state",
     "events",
     "runtime",
+    "commands",
     "responses",
     "acks",
     "archive",
@@ -578,8 +579,8 @@ class SshFileRelay:
 
     def _push_to_agent(self) -> int:
         """Push local PZ events/results and state to the remote .76 agent."""
-        count = 0
-        for channel in ("events", "responses", "acks"):
+        def push_channel(channel: str) -> int:
+            pushed = 0
             self._prepare_local_json_fallback(channel)
             for ready_path in sorted(
                 (self.config.local_root / channel).glob("*.ready")
@@ -590,10 +591,20 @@ class SshFileRelay:
                 if not self._publish_remote(channel, stem):
                     continue
                 self._archive_local_item(channel, stem)
-                count += 1
+                pushed += 1
+            return pushed
+
+        # Keep the live chat/control signal and the PZ liveness state ahead of
+        # historical result queues.  A busy local test can accumulate many
+        # responses/acks, and draining those first would delay the event that
+        # should wake Qwen and the runtime state that tells it the PZ side is
+        # online.
+        count = push_channel("events")
         for name in _PZ_RUNTIME_NAMES:
             if self._publish_remote_runtime(name):
                 count += 1
+        for channel in ("responses", "acks"):
+            count += push_channel(channel)
         return count
 
     def _publish_remote(self, channel: str, stem: str) -> bool:
