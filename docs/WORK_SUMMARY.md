@@ -41,6 +41,8 @@ unload/rebind, reconnect, two distinct clients, `.76` chat/Qwen round-trip,
 and final package/release validation remain open. The repeatable June route
 failure must also be resolved or explicitly bounded.
 
-GitHub push is authorized for the development branch. Workshop publication
-and production `.03` installation remain blocked until local acceptance is
-complete.
+The development branch was pushed at commit `2238dd7`; the release metadata
+and normalized 256x256 preview are being published with the follow-up commit.
+The exact package is published as unlisted Steam Workshop item `3797127671`
+under `HorseTheUnicorn`. Production `.03` remains unchanged until the guarded
+deployment and post-restart verification are completed.

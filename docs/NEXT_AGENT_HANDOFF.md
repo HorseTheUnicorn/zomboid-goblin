@@ -4,10 +4,13 @@ Updated: 2026-09-06
 
 ## Objective
 
-Finish the standalone Build 42.20.4 human-survivor engine, validate all
-required behavior locally, push the development branch to GitHub, publish a
-self-contained unlisted Workshop package only after local gates pass, and
-install on production `.03` only after a separately guarded release review.
+Release the standalone Build 42.20.4 human-survivor engine after local
+validation. The development branch and unlisted Workshop package are now
+published; the remaining release action is the guarded `.03` rollout and
+post-restart verification.
+
+Current release identifiers: GitHub commit `2238dd7` plus the release metadata
+follow-up, and Workshop item `3797127671` owned by `HorseTheUnicorn`.
 
 ## Repository and environment
 
@@ -154,8 +157,8 @@ iterating where possible.
    the isolated Windows client is currently still in the title/video path and
    has not completed a multiplayer handshake, so no new end-to-end command
    evidence has been recorded.
-9. Workshop publication and `.03` installation are not complete and must not
-   be attempted until the local matrix passes.
+9. Workshop publication is complete as item `3797127671`. Production `.03`
+   still requires the guarded rollout and post-restart checks below.
 
 ## Local commands
 
@@ -193,7 +196,7 @@ work counters, or world effects prove the job works.
 
 ## Validation already run
 
-- Python contract suite: 108 tests passed.
+- Python contract suite: 121 tests passed before the release metadata update.
 - The live `.76` agent and relay remained active after switching to the current
   tested Python package; Qwen health returned `status=ok`.
 - The active `.76` Qwen adapter accepted a semantic-only plan with four
@@ -229,9 +232,9 @@ Do not claim a gameplay gate from static tests alone.
    multiplayer tests.
 3. Run companion/squad and `.76` chat/Qwen round-trip tests.
 4. Re-run package checks and the source scan; review the full diff.
-5. Commit and push the development branch to the requested GitHub remote.
-6. Publish the exact self-contained package as unlisted Workshop content and
-   record its real published ID only after local gates pass.
+5. Commit and push the release metadata and normalized Workshop preview.
+6. Verify Workshop item `3797127671` remains unlisted and matches the staged
+   package.
 7. Perform a separate guarded `.03` rollout with backup, no-player window,
    exact package, config review, restart, and post-restart log checks.
 
