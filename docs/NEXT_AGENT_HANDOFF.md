@@ -91,7 +91,10 @@ The latest local run established:
   package. The existing Qwen service remains loopback-only at `127.0.0.1:8000`
   with model alias `qwen3-8b-q4km`; the existing memory database and production
   bridge mount were preserved, and the previous package has a recoverable
-  rollback copy.
+  rollback copy. A direct semantic-only probe through the active Qwen adapter
+  now passes strict plan validation; the planner prompt explicitly documents
+  the required fields for `SAY`, `FOLLOW_PLAYER`, `DEFEND_PLAYER`,
+  `ASSIGN_JOB`, and `FORM_SQUAD`.
 
 The latest client cold load measured 278 seconds in the game-loading state.
 The dated PZ log shows the main wait in vanilla `WorldStreamer.isBusy()` /
@@ -123,9 +126,9 @@ iterating where possible.
    first username and was rejected. Repeat with two distinct non-Steam
    usernames; cache isolation alone is not a multiplayer pass.
 8. Companion/squad command behavior and the `.76` chat/Qwen round-trip remain
-   open. The live `.76` package is updated, but the isolated Windows client is
-   currently stopped at its PIN screen, so no new end-to-end command evidence
-   has been recorded.
+   open. The live `.76` package and direct semantic Qwen path are updated, but
+   the isolated Windows client is currently stopped at its PIN screen, so no
+   new end-to-end command evidence has been recorded.
 9. Workshop publication and `.03` installation are not complete and must not
    be attempted until the local matrix passes.
 
@@ -157,9 +160,12 @@ work counters, or world effects prove the job works.
 
 ## Validation already run
 
-- Python contract suite: 105 tests passed.
+- Python contract suite: 106 tests passed.
 - The live `.76` agent and relay remained active after switching to the current
   tested Python package; Qwen health returned `status=ok`.
+- The active `.76` Qwen adapter accepted a semantic-only plan with four
+  bounded commands; no exact coordinates were supplied to or returned by the
+  adapter.
 - Java route executable: 17 scenarios passed.
 - Java Storm package built against the installed game.
 - Client Kahlua retry harness passed.

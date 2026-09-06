@@ -8,6 +8,12 @@ from goblin_zomboid.validator import IntentValidator
 
 
 class QwenCompatibilityTests(unittest.TestCase):
+    def test_plan_prompt_describes_required_action_fields(self) -> None:
+        prompt = QwenClient._plan_system_prompt()
+        self.assertIn("ASSIGN_JOB requires", prompt)
+        self.assertIn("FORM_SQUAD", prompt)
+        self.assertIn("FOLLOW_PLAYER and DEFEND_PLAYER require", prompt)
+
     def test_normalizes_nested_say_only_for_say_command(self) -> None:
         raw = json.dumps(
             {

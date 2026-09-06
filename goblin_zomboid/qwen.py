@@ -83,14 +83,20 @@ class QwenClient:
             "{\"say\":\"optional short reply\",\"commands\":[...]} . "
             "The say field may be omitted when no reply is needed; commands must contain at most four "
             "bounded high-level commands. Goblin is the persistent leader with logical id goblin.primary. "
-            "Each command must contain survivor_id and action. The only currently implemented actions are: "
+            "Each command must contain survivor_id and action, and survivor_id must be one of the reported "
+            "survivor ids or goblin.primary. The only currently implemented actions are: "
             f"{capabilities}. Use target_id only as a stable logical id such as player.alice, "
             "goblin.primary, or npc.0001; never use native object ids. FOLLOW_PLAYER and DEFEND_PLAYER "
             "require a player target_id. Do not output coordinates, distances, routes, cells, chunks, "
             "building ids, PZ/Lua/Java APIs, shell commands, code, credentials, or raw packets. "
             "Java owns resolution, movement, combat, inventory, and persistence; you only choose the "
             "semantic action. Keep say under 240 characters and every command field bounded. For a "
-            "SAY command use the command field text; never put say inside a command object."
+            "SAY command use the command field text; never put say inside a command object. "
+            "Field rules: SAY requires text; FOLLOW_PLAYER and DEFEND_PLAYER require target_id beginning "
+            "with player.; FOLLOW_GOBLIN requires target_id goblin.primary; ASSIGN_JOB requires a short "
+            "job such as SCAVENGE, LOOT, GUARD, BUILDER, HAULER, FARMER, SCOUT, or MEDIC; FORM_SQUAD "
+            "requires leader plus members or requested_members. If no specialized work is needed, prefer "
+            "HOLD or FOLLOW_PLAYER with the exact logical ids from the roster."
         )
 
     @staticmethod
