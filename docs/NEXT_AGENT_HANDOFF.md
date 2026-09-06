@@ -1,6 +1,6 @@
 # GoblinSurvivor next-agent handoff
 
-Updated: 2026-09-05
+Updated: 2026-09-06
 
 ## Objective
 
@@ -86,6 +86,12 @@ The latest local run established:
 - one-shot/one-kill hostile-zombie fixture with no incoming hit; and
 - Goblin death/recreation from generation 1 to generation 2 with the human
   body mode and firearm re-established.
+- The live `.76` `goblin-zomboid-agent.service` and
+  `goblin-zomboid-relay.service` now run the current repository Python control
+  package. The existing Qwen service remains loopback-only at `127.0.0.1:8000`
+  with model alias `qwen3-8b-q4km`; the existing memory database and production
+  bridge mount were preserved, and the previous package has a recoverable
+  rollback copy.
 
 The latest client cold load measured 278 seconds in the game-loading state.
 The dated PZ log shows the main wait in vanilla `WorldStreamer.isBusy()` /
@@ -100,11 +106,12 @@ iterating where possible.
 ## Current limitations and open gates
 
 1. Melee combat and combat animation are not implemented or validated.
-2. Snapshot movement is functional but not smooth interpolation; collision
-   feel, doors, stairs, and cross-floor movement need validation.
-3. Goblin follow works in the tested area. June repeatedly reports an
-   `UNREACHABLE` route around a static obstacle; inspect the exact grid,
-   collision checks, and target selection rather than masking the result.
+2. Bounded client snapshot interpolation is implemented; collision feel, doors,
+   stairs, and cross-floor movement still need validation.
+3. Goblin follow works in the tested area. A companion route can still report
+   `UNREACHABLE` around a static obstacle (the latest captured log named
+   `npc.mike`; an earlier handoff named June); inspect the exact grid, collision
+   checks, and target selection rather than masking the result.
 4. Builder and the other jobs need in-game behavior tests with measurable
    work effects. A bridge-only job probe using a fabricated grant was
    correctly rejected and must not be bypassed.
@@ -116,7 +123,9 @@ iterating where possible.
    first username and was rejected. Repeat with two distinct non-Steam
    usernames; cache isolation alone is not a multiplayer pass.
 8. Companion/squad command behavior and the `.76` chat/Qwen round-trip remain
-   open.
+   open. The live `.76` package is updated, but the isolated Windows client is
+   currently stopped at its PIN screen, so no new end-to-end command evidence
+   has been recorded.
 9. Workshop publication and `.03` installation are not complete and must not
    be attempted until the local matrix passes.
 
@@ -148,7 +157,9 @@ work counters, or world effects prove the job works.
 
 ## Validation already run
 
-- Python contract suite: 80 tests passed.
+- Python contract suite: 105 tests passed.
+- The live `.76` agent and relay remained active after switching to the current
+  tested Python package; Qwen health returned `status=ok`.
 - Java route executable: 17 scenarios passed.
 - Java Storm package built against the installed game.
 - Client Kahlua retry harness passed.
