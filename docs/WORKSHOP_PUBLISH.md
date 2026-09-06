@@ -37,7 +37,8 @@ Add only the new GoblinSurvivor published-file ID to the dedicated server's
 `WorkshopItems=` value and `GoblinSurvivor` to `Mods=`. Joining clients then
 receive the same mod, including its chat-relay files. Restart only after the
 bounded server backup described in `docs/DEPLOYMENT.md`, with no players
-connected, and verify the bootstrap reports `adapter=native`.
+connected, and verify the bootstrap reports `selected_adapter=client_survivor`
+and the Storm log identifies `HumanSurvivor` with `isZombie=false`.
 
 Until publication, the synchronized direct Windows package is the
 authoritative local test path. `.76` must never run a native PZ client or

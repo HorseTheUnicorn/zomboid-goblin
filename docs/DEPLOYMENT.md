@@ -58,7 +58,9 @@ death-recovery checks:
    `WorkshopItems=`. Do not invent or reuse an unavailable published-file ID.
 4. Restart only the dedicated-server unit with no players connected.
 5. Verify the process and UDP query/game ports, inspect the newest
-   `DebugLog`, and confirm bootstrap reports `adapter=native`.
+   `DebugLog`, and confirm bootstrap reports
+   `selected_adapter=client_survivor`; the Storm log must identify
+   `HumanSurvivor` with `isZombie=false`.
 
 The `.03` migration is a separate guarded operation. A local test failure
 must never trigger a production restart or alter the production save.
