@@ -1,59 +1,79 @@
 # Zomboid Goblin
 
-Goblin is one persistent, server-authoritative Project Zomboid Build 42
-companion. The dedicated server owns a networked `IsoZombie`; the mod marks
-that body with Goblin identity, applies a human Survivor outfit, and selects
-the vanilla player `Bob_*` animation nodes through custom AnimSet conditions.
-Movement is native `PathFindBehavior2`, with a deterministic task/physical
-state controller and no coordinate interpolation or native fence-climb hacks.
+Goblin is a friendly Project Zomboid Build 42 companion system with **one Goblin per connected player**. Each companion is a normal networked `IsoZombie` managed by the dedicated server, identified independently as `goblin.primary.<player>`, rendered with the supplied Mystery Rig model, and kept out of the vanilla zombie bite/lunge AI.
 
-The normal world contains exactly one Goblin (`goblin.primary`). There is no
-external NPC framework dependency, `IsoSurvivor`, managed NPC roster, dev
-survivor, or client-side gameplay process. The body is created with the Build 42
-`VirtualZombieManager` path and is protected/friendly by the server-side
-invariant loop. If the body dies, the persisted generation and respawn
-cooldown prevent duplicates.
+The design deliberately follows the small, proven pattern used by working NPC-style zombie conversions: spawn a normal engine body, mark it, keep friendly/human movement invariants asserted, and let Project Zomboid own pathfinding and animation. The project does **not** depend on Bandits2 at runtime and does not copy Bandits2 source.
 
-## Runtime layout
+## What Goblin does
 
-- `.03`: dedicated PZ server, existing save, and the `GoblinSurvivor` mod.
-- `.76`: Qwen, Python agent/relay, memory, IPC bridge, and read-only tracker;
-  it has no Steam or Project Zomboid client.
-- `goblin.primary`: the sole stable companion identity. The first online
-  player becomes the persisted owner; an offline owner is not silently
-  replaced.
-- `common/media/AnimSets`: custom `Bob_Idle`, `Bob_Walk`, `Bob_Run`, melee,
-  face-target, hit-reaction, stagger, and get-up nodes selected only when
-  `GoblinNPC=true` and the corresponding Goblin state variables are present.
+Each online player gets exactly one companion. A Goblin follows its owner by default, can hold position, fight nearby ordinary zombies, collect real existing loot from the ground and nearby containers, carry it back to that player's saved base, and deposit it into a nearby base container (or onto the base square if no container is available).
 
-The Python process still owns Qwen/Discord orchestration, durable memory, and
-the file-based IPC protocol. It emits only typed high-level intents. Lua
-validates the envelope again, resolves semantic targets on the server, and
-hands tasks to the deterministic Goblin brain. Exact Goblin coordinates are
-published only on the tracker stream, never to Qwen.
+A player's base defaults to their position when their persistent Goblin record is first created. It can be changed in game with `/goblin base`, or naturally through Qwen with phrases such as `Goblin, this is our base. Remember it.`
+
+Useful in-game commands are:
+
+```text
+/goblin spawn
+/goblin follow
+/goblin wait
+/goblin loot [food|medical|tools|ammo|surprise]
+/goblin base
+/goblin home
+/goblin attack
+/goblin equip
+/goblin state
+```
+
+Ordinary chat also works when the player addresses Goblin by name, for example:
+
+```text
+Goblin, follow me.
+Goblin, stay here.
+Goblin, loot this place and bring it home.
+Goblin, this is our base. Remember it.
+Goblin, help me with these zombies.
+Goblin, what do you think of this dump?
+```
+
+## Qwen personality
+
+The local Qwen model is the semantic brain and conversational voice, not the movement engine. It is taught that there is one Goblin per player and receives the exact `controlled_npc_id` and `controlled_owner` for the player who spoke.
+
+Goblin's persona is feral, friendly, loyal, dry, argumentative, and theatrically inspired by Vladimir Lenin. He calls the player "comrade," turns mundane survival into absurd revolutionary rhetoric, uses occasional recognizable Lenin references, and prefers original Lenin-flavored jokes over falsely attributing invented lines as real quotes. This is fictional Project Zomboid roleplay; the prompt explicitly avoids advocacy of real-world political violence.
+
+Qwen emits only high-level intents. Lua resolves movement, targets, loot, base delivery, combat, spawning, and persistence deterministically on the dedicated server.
+
+## Runtime architecture
+
+- Dedicated PZ server: owns all Goblin bodies and all gameplay mutations.
+- Local Qwen/Python service: interprets addressed chat and generates in-character speech.
+- `GoblinSpawner.lua`: one `addZombiesInOutfit(... total=1 ...)` spawn path only; no `createRealZombieAlways`, `createRealZombieNow`, or manual body insertion fallbacks.
+- `GoblinBody.lua`: friendly/humanized invariants and supplied-model clothing registration.
+- `GoblinMovement.lua`: native `PathFindBehavior2`; no coordinate stepping or teleport movement.
+- `GoblinLoot.lua`: transfers real existing items and delivers cargo to the owner's base.
+- `GoblinClient.lua`: recognizes every replicated Goblin by its own online/NPC identity and keeps the custom model/human animation variables applied without forcing animation frames or `ZombieIdleState`.
+
+When a player disconnects, their live Goblin is removed but their persistent identity, base, and task record remain. When they return, their own Goblin is recreated/recovered. Ordinary zombies are never claimed as Goblins.
 
 ## Character asset
 
-The supplied Mystery Rig character handoff is preserved in
-[art/goblin](art/goblin/README.md), including the Blender scene, FBX export,
-build report, and source textures. The report validates the `Bip01` skeleton,
-weights, scale, and the native `Bob_Idle`/`Bob_Walk`/`Bob_Run` animation gate.
-The FBX is also packaged under
-`common/media/models_X/Goblin_PZ_MysteryRig.fbx`, with adjacent `.fbm`
-textures and a `Goblin_MysteryBody` `base:fullsuit` clothing definition. On
-spawn/restore the server adds that real item to the IsoZombie inventory and
-wears it through the normal replicated clothing path; the native Bob_* AnimSet
-still owns animation selection.
+The supplied source character is preserved under `art/goblin`, and the game package uses:
+
+```text
+common/media/models_X/Goblin_PZ_MysteryRig.fbx
+common/media/textures/Goblin_PZ_MysteryRig/Material_1_basecolor.png
+common/media/clothing/clothingItems/Goblin_MysteryBody.xml
+```
+
+The clothing XML references `Goblin_PZ_MysteryRig` **without** an `.fbx` suffix and resolves its texture relative to `media/textures`.
 
 ## Configuration
 
-The bridge provisioner writes `<cachedir>/Lua/goblin-bridge/config.ini` from
-`ops/server-options.example`. The important defaults are:
+The important defaults remain in `goblin-bridge/config.ini` / `ops/server-options.example`:
 
 ```ini
 GoblinEnabled=true
 GoblinNpcId=goblin.primary
-GoblinNpcOutfit=Survivor
 GoblinNpcVisualAsset=Goblin_PZ_MysteryRig
 GoblinWeapon=Base.Machete
 GoblinNpcProtected=true
@@ -63,9 +83,7 @@ GoblinFollowRunDistance=9
 GoblinSpawnOffset=4
 ```
 
-Keep `GoblinEnabled=true` for the ordinary one-Goblin test path. The optional
-Qwen/Discord bridge can be absent; in-game developer commands and the default
-FOLLOW behavior still run locally.
+`GoblinNpcId` is a prefix. Runtime identities are generated as `goblin.primary.<player>`.
 
 ## Development
 
@@ -74,11 +92,4 @@ python -m compileall -q goblin_zomboid tests
 python -m unittest discover -s tests -v
 ```
 
-The Python service is started with `python -m goblin_zomboid.daemon` through
-the example unit in `systemd/goblin-zomboid-agent.service.example`. It exposes
-loopback admin status on port `8781` and the read-only tracker API on `8782`.
-
-See [docs/NPC_ARCHITECTURE.md](docs/NPC_ARCHITECTURE.md),
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), and
-[docs/IPC_PROTOCOL.md](docs/IPC_PROTOCOL.md) for the current runtime and
-operator workflow.
+The repository also contains a GitHub Actions workflow that runs these checks on pushes and pull requests.
