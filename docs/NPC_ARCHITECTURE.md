@@ -1,48 +1,48 @@
 # NPC architecture
 
-`goblin.primary` is the sole required Goblin identity. `NPCRegistry` binds it
-to a Bandits2-created, networked `IsoZombie` body marked with this mod's own
-`getModData()` fields. It can also maintain a bounded roster of our own
-friendly companions (`npc.sarah`, `npc.bob`, and other configured roster
-entries) using the same adapter. It scans the loaded Bandits2 population after
-restarts and requests one replacement at a time through
-`BanditServer.Spawner.Individual` when an online player anchor exists.
-`GoblinNPC` exposes the narrow profile/state surface used by telemetry and
-commands.
+`goblin.primary` is the only gameplay NPC identity. `GoblinSpawner` creates a
+real Build 42 `IsoZombie` through `VirtualZombieManager.instance` and marks it
+immediately in `getModData()`. `OnZombieCreate` adopts only an already-marked
+Goblin, so ordinary population zombies can never be claimed accidentally.
+The persisted owner is selected once from the first online player; an offline
+owner leaves the body in a safe waiting state.
+
+Spawn requests carry a persisted reservation token and next generation before
+the native factory is called. On reconnect or reload, the server reconciles
+marked bodies by highest `GoblinGeneration` (native id breaks ties), retires
+the rest, and expires an abandoned reservation after a short bounded window.
+All server and client callbacks use the shared Goblin event registrar, so a
+reload cannot leave an older callback able to create or control another body.
 
 The execution path is:
 
 ```text
-ValidatedIntent -> SafetyController -> SafeAction -> NpcBodyDriver
--> command.npc_action -> CommandLoop -> ActionExecutor -> NpcAdapter
+Qwen intent -> Python safety gate -> NpcBodyDriver
+    -> command.npc_action -> GoblinBridge validation
+    -> GoblinBrain task controller -> GoblinMovement
+    -> PathFindBehavior2 -> networked IsoZombie
 ```
 
-`NpcAdapter` exposes the required Bandits2 implementation through
-`BanditsAdapter.lua`. Bandits2 owns the networked body and `Companion`
-behavior; GoblinSurvivor applies the Goblin profile, friendly/loyal/permanent
-policy, protection hooks, commands, chat, and persistence. The adapter proves
-the exact Bandits2 brain fields before the registry marks the body ready.
-Protection and the friendly brain policy are reapplied on every server tick.
-There is no vanilla fallback: if the verified Bandits2 API is unavailable, the
-mod remains in `sensor_only` and does not expose a normal zombie as Goblin.
-The adapter reports the actual Bandits2 task/follow mode and protection proof
-to telemetry. Goblin speech uses the framework body chat primitive because
-Bandits2's canned `Bandit.Say` helper cannot carry arbitrary Qwen text.
+`GoblinBody.lua` is the only module allowed to touch physical body policy. It
+sets humanized `Bob_*` animation variables, Survivor outfit, the packaged
+`Goblin_MysteryBody` clothing item, display name, friendly/protected flags,
+no-bite behavior, weapon identity, and replicated state sequence.
+`GoblinMovement.lua` starts/cancels `pathToLocationF` and `pathToCharacter`
+goals, uses a stable follow ring, applies walk/run hysteresis, and records
+native success/failure. It never writes coordinates each tick, calls
+`PlayAnim`, or enters fence/window climb states. Human-gated face-target,
+hit-reaction, stagger, and get-up nodes keep recognized transient states out
+of the vanilla zombie animation graph.
 
-The roster is configured with `GoblinManagedNpcCount` in the provisioned
-bridge config. It is bounded to eight entries, spawns only after Goblin has a
-verified body, and applies no immortal protection to companions. A dead or
-unloaded companion is recorded and replacement is delayed and retry-bounded.
+The task vocabulary is intentionally small: `FOLLOW`, `MOVE_TO`, `WAIT`,
+`GUARD`, `ATTACK`, `RETURN_TO_OWNER`, `EQUIP`, `SPEAK`, and `LOOT`. Semantic
+Qwen destinations are resolved by the server; exact coordinates are accepted
+only by authorized developer commands. `ATTACK` closes with native
+`PathFindBehavior2`, plays a conditional Bob melee node, and applies the real
+configured Machete through `IsoZombie:Hit()` at a bounded range. `LOOT` scans
+only a small loaded-square radius and transfers existing world items; it never
+fabricates requested inventory.
 
-The first combat primitive is deliberately narrow: an approved `ATTACK`
-intent can select only the nearest live hostile zombie inside a fixed radius.
-Players and friendly GoblinSurvivor bodies are excluded, and the adapter
-restores only that validated target while keeping Bandits2's friendly brain
-flags. Inventory, vehicle, and building primitives remain rejected until
-their exact Build 42 contracts are verified.
-
-The client half of this same downloaded mod forwards only local player chat
-that mentions Goblin through `OnClientCommand`; the server verifies the
-sender's username and emits a bounded, coordinate-redacted chat event. This
-is the input path for Qwen replies and does not create a player/account for
-Goblin.
+The client half only reapplies replicated identity variables and forwards a
+local player's addressed chat or `/goblin` developer command. It does not
+spawn, move, animate, or own a second body.

@@ -1,9 +1,9 @@
 """Server-side Goblin NPC orchestration.
 
 The service owns decisions and durable memory. The dedicated PZ server owns
-the NPC, exact world resolution, movement, and persistence of the Bandits2
-body through GoblinSurvivor's adapter. No client or Steam lifecycle is part of
-this runtime.
+the NPC, exact world resolution, movement, and persistence of the native
+IsoZombie body through GoblinSurvivor's controller. No client or Steam
+lifecycle is part of this runtime.
 """
 
 from __future__ import annotations
@@ -533,7 +533,7 @@ class GoblinService:
                 )
                 # Resolve high-level requests to actual server-reported NPC
                 # ids before the typed command reaches Lua.  Qwen may ask for
-                # a count; it never needs to know Bandits2 references.
+                # a count; it never needs to know server entity references.
                 data["members"] = list(squad.members)
             except (KeyError, TypeError, ValueError) as exc:
                 return str(exc)
@@ -581,9 +581,9 @@ class GoblinService:
             self.last_detail = "waiting for the persistent server-side NPC contract"
             return ServiceResult(self.last_status, self.last_detail)
 
-        # Run deterministic reflexes before any model call.  An ongoing
-        # Bandits2 task continues locally; only an immediate reflex may
-        # publish on an ordinary heartbeat.
+        # Run deterministic reflexes before any model call. An ongoing native
+        # Goblin task continues locally; only an immediate reflex may publish
+        # on an ordinary heartbeat.
         reflex_result = self._run_deterministic_fallback(
             body, "deterministic reflex check"
         )
@@ -594,7 +594,7 @@ class GoblinService:
         now = float(self.clock())
         if not self._planning_due(now):
             self.last_status = "npc_steady"
-            self.last_detail = "Bandits2 task continues; no model planning trigger is pending"
+            self.last_detail = "native Goblin task continues; no model planning trigger is pending"
             return ServiceResult(self.last_status, self.last_detail)
         try:
             intent = self.qwen.propose_intent(self._planning_context())

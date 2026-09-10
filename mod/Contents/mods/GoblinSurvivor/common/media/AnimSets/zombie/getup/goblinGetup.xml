@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recovery fallback if the native state asks an IsoZombie to get up. -->
+<animNode>
+    <m_Name>goblinGetup</m_Name>
+    <m_Priority>25</m_Priority>
+    <m_AnimName>Bob_ScrambleFloorToWalk</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_BlendTime>0.20</m_BlendTime>
+    <m_EarlyTransitionOut>true</m_EarlyTransitionOut>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_SyncTrackingEnabled>false</m_SyncTrackingEnabled>
+    <m_Conditions x_name="c70c5e03-c94c-4480-bc83-4e5ca14beed7">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+</animNode>

@@ -11,7 +11,7 @@ from typing import Any
 MAX_INTENT_BYTES = 16 * 1024
 MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
-    "WAIT", "SAY", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
+    "WAIT", "SAY", "EQUIP", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
     "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
     "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
@@ -153,7 +153,7 @@ def _id_list(value: Any, field: str) -> list[str]:
 
 def _member_request(value: Any, field: str) -> int | list[str]:
     # A commander can ask for a bounded number of additional NPCs without
-    # needing to know Bandits2 entity ids.  The deterministic squad manager
+    # needing to know server entity ids.  The deterministic policy manager
     # resolves that count to actual available NPCs.
     if field == "requested_members" and isinstance(value, int) and not isinstance(value, bool):
         if not 1 <= value <= 15:
@@ -208,6 +208,8 @@ class IntentValidator:
             raise IntentError("SAY requires text")
         if intent == "SAY" and "target" in raw:
             raise IntentError("SAY does not accept a target")
+        if intent == "EQUIP" and "item" not in raw:
+            raise IntentError("EQUIP requires an item")
         priority = raw.get("priority", 1)
         if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 3:
             raise IntentError("priority must be between 0 and 3")
@@ -230,6 +232,10 @@ class IntentValidator:
             result["target"] = _target(raw["target"])
         if "item" in raw:
             result["item"] = _item(raw["item"])
+        if intent == "EQUIP":
+            item = result.get("item")
+            if not isinstance(item, dict) or item.get("name") != "Base.Machete":
+                raise IntentError("EQUIP only permits Base.Machete")
         if "candidate" in raw:
             result["candidate"] = _candidate(raw["candidate"])
         if intent == "HUNT_RELOCATE" and "candidate" not in result:

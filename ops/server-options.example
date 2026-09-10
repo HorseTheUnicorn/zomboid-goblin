@@ -4,13 +4,34 @@
 # Build 42 ignores unknown server-option keys. Place this file at:
 #   <cachedir>/Lua/goblin-bridge/config.ini
 # The bridge provisioner creates this file automatically with the safe values.
-# Keep the master switch false until the server-side NPC and bridge checks pass.
-GoblinEnabled=false
+# The rebuilt runtime defaults to one Goblin. Set false only to disable it.
+GoblinEnabled=true
 GoblinBridgeRoot=goblin-bridge
 GoblinNpcId=goblin.primary
 GoblinNpcName=Goblin
-GoblinNpcProgram=Companion
+GoblinNpcOutfit=Survivor
+GoblinNpcOutfitId=4101
+GoblinNpcVisualAsset=Goblin_PZ_MysteryRig
+GoblinWeapon=Base.Machete
 GoblinNpcProtected=true
 GoblinCommanders=
-MinimumBaseGuards=1
+GoblinFollowDistance=3
+GoblinFollowWalkDistance=4
+GoblinFollowRunDistance=9
+GoblinFollowHysteresis=1.5
+GoblinRepathSeconds=1.25
+GoblinBlockedRetrySeconds=3
+GoblinRespawnSeconds=15
+GoblinSpawnOffset=4
 GoblinTrackerExact=true
+GoblinCombatRadius=16
+GoblinMeleeRange=2.25
+GoblinMeleeCooldownSeconds=1
+GoblinMeleePoseSeconds=0.7
+GoblinMeleeImpactDelaySeconds=0.325
+GoblinRecoverySeconds=0.8
+GoblinStuckTimeoutSeconds=8
+GoblinMaxRecoveryAttempts=3
+GoblinLootRadius=6
+GoblinLootScanSeconds=2
+GoblinLootMaxItemsPerTask=4

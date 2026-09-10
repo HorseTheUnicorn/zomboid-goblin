@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinRunStumble</m_Name>
+    <m_Priority>10</m_Priority>
+    <m_AnimName>Bob_RunStumble</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_BlendTime>0.20</m_BlendTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="e10ce4a6-faa2-4ce0-9a18-6f099b1e9c33">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="3dcb3bdb-d7e9-425a-8b0d-99ab8d8401d8">
+        <m_Name>BumpType</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>trippingFromSprint</m_Value>
+    </m_Conditions>
+    <m_Events x_name="43737d0d-7f6c-41bc-b72f-3f62d2a43b31">
+        <m_EventName>SetVariable</m_EventName>
+        <m_Time>End</m_Time>
+        <m_ParameterValue>BumpAnimFinished=true</m_ParameterValue>
+    </m_Events>
+</animNode>

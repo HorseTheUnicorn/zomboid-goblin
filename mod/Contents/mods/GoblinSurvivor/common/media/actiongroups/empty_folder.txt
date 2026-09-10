@@ -1,0 +1,1 @@
+This file keeps the shared actiongroups directory present for Build 42's AdvancedAnimator loader.

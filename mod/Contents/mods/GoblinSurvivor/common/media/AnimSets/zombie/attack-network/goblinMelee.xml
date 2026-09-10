@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinMelee</m_Name>
+    <m_Priority>20</m_Priority>
+    <m_AnimName>Bob_Attack1Hand01_Hit</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_BlendTime>0.15</m_BlendTime>
+    <m_BlendOutTime>0.25</m_BlendOutTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="5edcc0e3-17ab-4a32-a841-88a0fca3f57c">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="58467870-3ee8-4e46-88ce-cf3f8531eb61">
+        <m_Name>GoblinCombatState</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>ATTACKING</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="b7f0678e-fcae-4ad9-a5e3-2c7b8c355d94">
+        <m_Name>isAttacking</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+</animNode>

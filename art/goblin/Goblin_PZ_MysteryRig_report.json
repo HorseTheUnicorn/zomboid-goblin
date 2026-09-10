@@ -1,0 +1,281 @@
+{
+  "export": {
+    "animation_source": "PZ native Bob_* AnimSet",
+    "bake_animation": false,
+    "blend": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\Goblin_PZ_MysteryRig.blend",
+    "fbx": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\Goblin_PZ_MysteryRig.fbx",
+    "leaf_bones": false,
+    "scale": 0.01,
+    "selected_bone_axis": {
+      "primary": "Y",
+      "secondary": "X"
+    },
+    "selected_objects": [
+      "Dummy01",
+      "Bip01",
+      "Goblin_Mesh",
+      "Translation_Data"
+    ],
+    "validation_sequence": "Bob_Idle -> Bob_Walk -> Bob_Run -> Bob_Walk -> Bob_Idle",
+    "bind_space_normalized": true,
+    "bind_space_note": "Armature rest/bind matrices are emitted in native ~1.0 PZ units; the former .01 Dummy parent scale is folded into the armature before export."
+  },
+  "mesh": {
+    "bounds": {
+      "max": [
+        0.21688,
+        0.133767,
+        0.980706
+      ],
+      "min": [
+        -0.21688,
+        -0.146937,
+        -0.0
+      ],
+      "size": [
+        0.43376,
+        0.280705,
+        0.980706
+      ]
+    },
+    "evaluated_rest_bounds": {
+      "max": [
+        0.21688,
+        0.133767,
+        0.980706
+      ],
+      "min": [
+        -0.21688,
+        -0.146937,
+        -0.0
+      ],
+      "size": [
+        0.43376,
+        0.280705,
+        0.980706
+      ]
+    },
+    "materials": [
+      "Material_1"
+    ],
+    "name": "Goblin_Mesh",
+    "object_rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "object_scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "triangles": 31149,
+    "uv_layers": [
+      "uv"
+    ],
+    "vertex_groups": {
+      "max_influences": 12,
+      "required_bones_missing": [],
+      "source_groups": [
+        "Head",
+        "Hips",
+        "LeftArm",
+        "LeftFoot",
+        "LeftForeArm",
+        "LeftHand",
+        "LeftLeg",
+        "LeftShoulder",
+        "LeftToeBase",
+        "LeftUpLeg",
+        "RightArm",
+        "RightFoot",
+        "RightForeArm",
+        "RightHand",
+        "RightLeg",
+        "RightShoulder",
+        "RightToeBase",
+        "RightUpLeg",
+        "Spine",
+        "Spine01",
+        "Spine02",
+        "neck"
+      ],
+      "target_groups": [
+        "Bip01_Head",
+        "Bip01_L_Calf",
+        "Bip01_L_Clavicle",
+        "Bip01_L_Foot",
+        "Bip01_L_Forearm",
+        "Bip01_L_Hand",
+        "Bip01_L_Thigh",
+        "Bip01_L_Toe0",
+        "Bip01_L_UpperArm",
+        "Bip01_Neck",
+        "Bip01_Pelvis",
+        "Bip01_R_Calf",
+        "Bip01_R_Clavicle",
+        "Bip01_R_Foot",
+        "Bip01_R_Forearm",
+        "Bip01_R_Hand",
+        "Bip01_R_Thigh",
+        "Bip01_R_Toe0",
+        "Bip01_R_UpperArm",
+        "Bip01_Spine",
+        "Bip01_Spine1"
+      ],
+      "unmapped_groups": [],
+      "zero_weight_vertices": 0
+    },
+    "vertices": 15557
+  },
+  "reference_rig": {
+    "armature_object": "Bip01",
+    "dummy_matrix_world": [
+      [
+        0.01,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -0.0,
+        -0.01,
+        0.0
+      ],
+      [
+        0.0,
+        0.01,
+        -0.0,
+        -0.007607
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "dummy_scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "fit_scale": 1.73345393,
+    "runtime_scale_factor": 0.57688294,
+    "runtime_target_height": 0.980701,
+    "path": "C:\\Users\\tomgr\\Documents\\Codex\\2026-09-01\\new-chat\\work\\remote-stage1-tree\\zomboid-goblin\\art\\reference\\Mystery_Rig.blend",
+    "reference_body_bounds_after_fit": {
+      "expected_height": 1.7,
+      "size": [
+        0.535644,
+        0.289563,
+        1.7
+      ]
+    },
+    "reference_body_bounds_before_fit": {
+      "max": [
+        0.152594,
+        0.107102,
+        0.985089
+      ],
+      "min": [
+        -0.15641,
+        -0.059943,
+        0.004388
+      ],
+      "size": [
+        0.309004,
+        0.167044,
+        0.980701
+      ]
+    },
+    "required_bones_missing": [],
+    "stripped_controller_constraints": 80
+  },
+  "source": {
+    "bounds_after_detach": {
+      "max": [
+        0.375951,
+        0.254709,
+        1.7
+      ],
+      "min": [
+        -0.375951,
+        -0.254709,
+        0.0
+      ],
+      "size": [
+        0.751903,
+        0.509419,
+        1.7
+      ]
+    },
+    "bounds_before_detach": {
+      "max": [
+        0.375951,
+        0.25471,
+        1.699999
+      ],
+      "min": [
+        -0.375951,
+        -0.254709,
+        -0.0
+      ],
+      "size": [
+        0.751903,
+        0.509419,
+        1.699999
+      ]
+    },
+    "object_rotation": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "object_scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "path": "C:\\Users\\tomgr\\Documents\\Codex\\2026-09-01\\new-chat\\work\\remote-stage1-tree\\zomboid-goblin\\art\\source\\meshy_rigging\\xhvh3BPNBCr20wV19ciT6_rigged_character.fbx",
+    "triangles": 31149,
+    "vertices": 15557
+  },
+  "textures": [
+    {
+      "name": "Material_1_basecolor.export",
+      "path": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\textures\\Material_1_basecolor.png",
+      "size": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "Material_1_basecolor.001.export",
+      "path": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\textures\\Material_1_basecolor.001.png",
+      "size": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "Goblin_Body_Atlas.png",
+      "path": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\textures\\Goblin_Body_Atlas.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "role": "supplied reference atlas; retained for future UV remap (not assigned directly because its islands do not match the current mesh UVs)"
+    },
+    {
+      "name": "Goblin_Head_Atlas.png",
+      "path": "C:\\Users\\tomgr\\.codex\\worktrees\\321e\\zomboid-goblin\\art\\goblin\\textures\\Goblin_Head_Atlas.png",
+      "size": [
+        1254,
+        1254
+      ],
+      "role": "supplied reference atlas; retained for future UV remap (not assigned directly because its islands do not match the current mesh UVs)"
+    }
+  ]
+}

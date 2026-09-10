@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run on the PZ guest as root. This repairs only the empty Build 42 media
-# directories that AdvancedAnimator expects for a mod without custom assets.
+# Run on the PZ guest as root. This repairs only the Build 42 media
+# directories that AdvancedAnimator expects before it scans the mod's
+# vanilla-compatible AnimSets and action groups.
 # It never replaces files, follows symlinks, or restarts the server.
 
 die() {
@@ -75,6 +76,9 @@ done
 directories=(
     "$mod_root/common/media/AnimSets"
     "$mod_root/common/media/actiongroups"
+    "$mod_root/common/media/clothing/clothingItems"
+    "$mod_root/common/media/models_X"
+    "$mod_root/common/media/textures"
     "$mod_root/42/media/AnimSets"
     "$mod_root/42/media/actiongroups"
 )

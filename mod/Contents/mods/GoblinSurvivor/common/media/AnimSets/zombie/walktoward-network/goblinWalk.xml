@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinWalktowardNetwork</m_Name>
+    <m_Priority>10</m_Priority>
+    <m_AnimName>Bob_Walk</m_AnimName>
+    <m_BlendTime>0.20</m_BlendTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="ea70f709-bf09-4a47-af9a-9a7c3aa5a995">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="3e15bc2f-a74a-48b3-baa1-10ce07774954">
+        <m_Name>GoblinMoveType</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>WALK</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="0f77e541-cd35-45dc-b5ff-54eb8e369e55">
+        <m_Name>intrees</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>false</m_Value>
+    </m_Conditions>
+</animNode>

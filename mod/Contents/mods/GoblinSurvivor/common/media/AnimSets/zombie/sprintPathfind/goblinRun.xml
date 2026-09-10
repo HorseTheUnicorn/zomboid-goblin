@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinSprintPathfind</m_Name>
+    <m_Priority>10</m_Priority>
+    <m_AnimName>Bob_Run</m_AnimName>
+    <m_BlendTime>0.20</m_BlendTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="225f3939-b6b4-4c70-9e0e-39bb01f7e2c5">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="02dd710f-cb90-4b7c-b452-246a0a451ae2">
+        <m_Name>GoblinMoveType</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>RUN</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="f9833ea8-f2db-4f7c-bb1b-8734ea2fa4a2">
+        <m_Name>bMoving</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="036d0a39-0d2b-4e8a-94b8-16f8ddb36c12">
+        <m_Name>intrees</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>false</m_Value>
+    </m_Conditions>
+    <m_Events x_name="a104d759-b58b-4c29-a2a1-2b55db77c986">
+        <m_EventName>Footstep</m_EventName>
+        <m_TimePc>0.15</m_TimePc>
+        <m_ParameterValue>sprint</m_ParameterValue>
+    </m_Events>
+    <m_Events x_name="fbe84887-7155-4a4f-875e-2769c5f529f1">
+        <m_EventName>Footstep</m_EventName>
+        <m_TimePc>0.60</m_TimePc>
+        <m_ParameterValue>sprint</m_ParameterValue>
+    </m_Events>
+</animNode>

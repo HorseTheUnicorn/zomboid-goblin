@@ -1,49 +1,71 @@
 # Zomboid Goblin
 
-Goblin is a persistent, server-side Project Zomboid NPC. The dedicated Build
-42 server owns a friendly Bandits2 body running Bandits2's `Companion`
-behavior; GoblinSurvivor adds Goblin identity, safety, chat, high-level
-commands, and persistence around that body. The Python service on `.76`
-supplies bounded decisions and a read-only tracker. No Steam/PZ client is
-installed or required on `.76`.
+Goblin is one persistent, server-authoritative Project Zomboid Build 42
+companion. The dedicated server owns a networked `IsoZombie`; the mod marks
+that body with Goblin identity, applies a human Survivor outfit, and selects
+the vanilla player `Bob_*` animation nodes through custom AnimSet conditions.
+Movement is native `PathFindBehavior2`, with a deterministic task/physical
+state controller and no coordinate interpolation or native fence-climb hacks.
 
-This repository is the own Goblin mod built on top of Bandits2. Bandits2 is a
-required framework dependency, not a replacement for GoblinSurvivor and not a
-source tree copied into this project. GoblinSurvivor calls the verified
-Bandits2 server APIs to create and drive the networked body, then owns the
-Goblin-specific identity, friendly/protection policy, persistence, chat, and
-command rules.
+The normal world contains exactly one Goblin (`goblin.primary`). There is no
+external NPC framework dependency, `IsoSurvivor`, managed NPC roster, dev
+survivor, or client-side gameplay process. The body is created with the Build 42
+`VirtualZombieManager` path and is protected/friendly by the server-side
+invariant loop. If the body dies, the persisted generation and respawn
+cooldown prevent duplicates.
 
 ## Runtime layout
 
-- `.03` (`192.168.0.3`): dedicated PZ server, existing save, Bandits2
-  Workshop item `3268487204`, and the server-side GoblinSurvivor package.
-- `.76` (`192.168.0.76`): local Qwen, Python agent/relay, memory, and tracker
-  website/API. It has no Goblin gameplay client. The website is served by the
-  same read-only tracker process and renders the current B42 map tiles copied
-  from the server's installed map cache.
-- `goblin.primary`: stable NPC identity. Death or unload is handled by the
-  server-side registry and recovery loop.
-- `GoblinManagedNpcCount`: bounded optional roster size for our own friendly
-  companions. The default live setting is `3`; set it to `0` for Goblin-only
-  operation. Companions use Bandits2 bodies but are owned, named, persisted,
-  and squad-controlled by GoblinSurvivor.
+- `.03`: dedicated PZ server, existing save, and the `GoblinSurvivor` mod.
+- `.76`: Qwen, Python agent/relay, memory, IPC bridge, and read-only tracker;
+  it has no Steam or Project Zomboid client.
+- `goblin.primary`: the sole stable companion identity. The first online
+  player becomes the persisted owner; an offline owner is not silently
+  replaced.
+- `common/media/AnimSets`: custom `Bob_Idle`, `Bob_Walk`, `Bob_Run`, melee,
+  face-target, hit-reaction, stagger, and get-up nodes selected only when
+  `GoblinNPC=true` and the corresponding Goblin state variables are present.
 
-The model sees `brain_view` only: named targets, coarse threat/distance
-signals, and bounded events. Exact coordinates are stored separately in the
-tracker telemetry path for the map and never enter Qwen context.
+The Python process still owns Qwen/Discord orchestration, durable memory, and
+the file-based IPC protocol. It emits only typed high-level intents. Lua
+validates the envelope again, resolves semantic targets on the server, and
+hands tasks to the deterministic Goblin brain. Exact Goblin coordinates are
+published only on the tracker stream, never to Qwen.
 
-The GoblinSurvivor package includes the small client relay needed for
-multiplayer conversation, while Bandits2 supplies the networked NPC body and
-behavior. Joining clients therefore need the same Workshop dependencies that
-the server advertises; Steam can download them as part of the server's
-`WorkshopItems=` loadout. The relay forwards only a local player's chat when
-the message mentions Goblin; the server verifies the sender, redacts
-coordinate-like text, and sends the event to Python/Qwen. Authorized chat
-requests also carry a one-use server-minted capability for squad/job/base
-mutations; the capability is never included in the Qwen prompt and is
-validated again by the server command loop. Goblin is still a server-side
-NPC, not a Steam account or player client.
+## Character asset
+
+The supplied Mystery Rig character handoff is preserved in
+[art/goblin](art/goblin/README.md), including the Blender scene, FBX export,
+build report, and source textures. The report validates the `Bip01` skeleton,
+weights, scale, and the native `Bob_Idle`/`Bob_Walk`/`Bob_Run` animation gate.
+The FBX is also packaged under
+`common/media/models_X/Goblin_PZ_MysteryRig.fbx`, with adjacent `.fbm`
+textures and a `Goblin_MysteryBody` `base:fullsuit` clothing definition. On
+spawn/restore the server adds that real item to the IsoZombie inventory and
+wears it through the normal replicated clothing path; the native Bob_* AnimSet
+still owns animation selection.
+
+## Configuration
+
+The bridge provisioner writes `<cachedir>/Lua/goblin-bridge/config.ini` from
+`ops/server-options.example`. The important defaults are:
+
+```ini
+GoblinEnabled=true
+GoblinNpcId=goblin.primary
+GoblinNpcOutfit=Survivor
+GoblinNpcVisualAsset=Goblin_PZ_MysteryRig
+GoblinWeapon=Base.Machete
+GoblinNpcProtected=true
+GoblinFollowDistance=3
+GoblinFollowWalkDistance=4
+GoblinFollowRunDistance=9
+GoblinSpawnOffset=4
+```
+
+Keep `GoblinEnabled=true` for the ordinary one-Goblin test path. The optional
+Qwen/Discord bridge can be absent; in-game developer commands and the default
+FOLLOW behavior still run locally.
 
 ## Development
 
@@ -56,24 +78,7 @@ The Python service is started with `python -m goblin_zomboid.daemon` through
 the example unit in `systemd/goblin-zomboid-agent.service.example`. It exposes
 loopback admin status on port `8781` and the read-only tracker API on `8782`.
 
-## Tracker API
-
-The tracker serves the read-only map website at `/` and provides
-`GET /api/state`, `/api/events`, `/api/stream`, `/api/history/goblin`,
-`/api/map/manifest`, and `/api/health`. B42 `biomemap` tiles are exposed only
-through bounded `/map/biomemap_<x>_<y>.png` paths. It intentionally has no
-gameplay command, spawn, move, attack, chat, or admin mutation endpoint.
-
-## Safety boundary
-
-Qwen emits one strict JSON intent. Python validates it, deterministic safety
-and entity/job/squad gates inspect it, and `NpcBodyDriver` writes a typed
-`command.npc_action` message. Lua validates the message again and resolves
-semantic targets locally before calling the Bandits2-backed friendly NPC
-adapter.
-Unsupported engine capabilities fail closed.
-
 See [docs/NPC_ARCHITECTURE.md](docs/NPC_ARCHITECTURE.md),
-[docs/BANDITS_API_NOTES.md](docs/BANDITS_API_NOTES.md), and
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the current design and live
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), and
+[docs/IPC_PROTOCOL.md](docs/IPC_PROTOCOL.md) for the current runtime and
 operator workflow.

@@ -42,15 +42,17 @@ class QwenClient:
         return (
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
             "Goblin is the persistent server-side NPC goblin.primary; never refer to a Steam/PZ client "
-            "or create a character. Allowed intents include WAIT, SAY, MOVE_TO, FOLLOW, FOLLOW_GOBLIN, "
-            "HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, GO_HOME, JOIN_PARTY, "
-            "LEAVE_PARTY, FORM_SQUAD, DISMISS_SQUAD, ASSIGN_JOB, SECURE_BASE, RETURN_TO_BASE, "
-            "CLEAR_BUILDING, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, ENTER_VEHICLE, "
-            "EXIT_VEHICLE, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
+            "or create a character. Allowed intents include WAIT, SAY, EQUIP, MOVE_TO, FOLLOW, "
+            "FOLLOW_GOBLIN, HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, "
+            "GO_HOME, RETURN_TO_BASE, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, "
+            "CLEAR_BUILDING, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
             "Allowed modes are SAFE, ROAM, PARTY, and HUNT. Use only coarse named targets such as a "
             "nearby building, area, player, home base, escape route, squad, vehicle, candidate, or "
             "current position. Never output coordinates, routes, cells, chunks, IDs for buildings, Lua, "
-            "shell, eval, exec, raw packets, paths, or code. Deterministic server controllers handle "
+            "shell, eval, exec, raw packets, paths, or code. EQUIP must include an item object whose "
+            "name is exactly Base.Machete. LOOT_AREA may request only a coarse focus "
+            "(food, medical, tools, ammo, or surprise); the server transfers existing world "
+            "items and never fabricates inventory. Deterministic server controllers handle "
             "movement, combat, inventory, survival, cooldowns, and persistence."
         )
 

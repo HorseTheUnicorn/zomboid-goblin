@@ -2,7 +2,7 @@
 
 The Python process never drives a Steam/PZ client. It emits one typed,
 high-level command for the dedicated server, where the Lua mod resolves the
-stable NPC id through the Bandits2-backed friendly NPC adapter. This module
+stable NPC id through the native IsoZombie companion controller. This module
 intentionally contains no game coordinates and no Lua/script escape hatch.
 """
 
@@ -118,6 +118,8 @@ class NpcBodyDriver:
             }
         if action.text is not None:
             fields["text"] = action.text[:240]
+        if action.loot_focus is not None:
+            fields["loot_focus"] = action.loot_focus
         for key, value in (
             ("leader", action.leader),
             ("job", action.job),

@@ -62,6 +62,14 @@ class DeterministicActionGate:
                 return DriverResult(False, "rejected", "unsafe target label")
         if action.item_count is not None and not 1 <= action.item_count <= 10:
             return DriverResult(False, "rejected", "unsafe item count")
+        if action.loot_focus is not None and action.loot_focus not in {
+            "food", "medical", "tools", "ammo", "surprise"
+        }:
+            return DriverResult(False, "rejected", "unsafe loot focus")
+        if action.action is Action.EQUIP and (
+            not action.item_name or action.item_name != "Base.Machete"
+        ):
+            return DriverResult(False, "rejected", "EQUIP requires the configured preferred weapon")
         if action.action not in set(Action):
             return DriverResult(False, "rejected", "unknown action")
         if action.reason and len(action.reason) > 240:

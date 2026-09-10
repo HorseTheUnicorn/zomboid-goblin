@@ -12,6 +12,7 @@ from .validator import ValidatedIntent
 class Action(str, Enum):
     NOOP = "NOOP"
     SAY = "SAY"
+    EQUIP = "EQUIP"
     MOVE_TO = "MOVE_TO"
     FOLLOW = "FOLLOW"
     SEARCH = "SEARCH"
@@ -115,6 +116,7 @@ class SafeAction:
     formation: str | None = None
     text: str | None = None
     squad_id: str | None = None
+    loot_focus: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -145,6 +147,8 @@ class SafeAction:
             result["text"] = self.text
         if self.squad_id is not None:
             result["squad_id"] = self.squad_id
+        if self.loot_focus is not None:
+            result["loot_focus"] = self.loot_focus
         return result
 
 
@@ -223,6 +227,7 @@ class TacticalController:
     _mapping = {
         "WAIT": Action.NOOP,
         "SAY": Action.SAY,
+        "EQUIP": Action.EQUIP,
         "MOVE_TO": Action.MOVE_TO,
         "FOLLOW": Action.FOLLOW,
         "FLEE": Action.FLEE,
@@ -325,6 +330,11 @@ class TacticalController:
             squad_id=(
                 str(intent.data["squad_id"])
                 if isinstance(intent.data.get("squad_id"), str)
+                else None
+            ),
+            loot_focus=(
+                str(intent.data["loot_focus"])
+                if isinstance(intent.data.get("loot_focus"), str)
                 else None
             ),
         )

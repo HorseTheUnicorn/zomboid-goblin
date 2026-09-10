@@ -1,39 +1,56 @@
 local Config = {
     protocol = 1,
-    enabled = false,
+    -- The rebuilt companion is self-contained.  The bridge is optional: when
+    -- it is absent, /goblin debug commands and FOLLOW still work locally.
+    enabled = true,
     bridgeRootOverride = "",
     npcId = "goblin.primary",
     npcName = "Goblin",
-    -- Companion is the verified friendly Bandits2 program used for Goblin.
-    -- The Bandits2 adapter ignores arbitrary program names and fails closed
-    -- to this known-safe program.
-    npcProgram = "Companion",
     npcRole = "companion",
-    -- These are additional managed friendly bodies created by our own mod
-    -- through the Bandits2 adapter. Set GoblinManagedNpcCount=0 to run only
-    -- Goblin, or raise it up to the bounded roster limit for followers and
-    -- base workers.
-    managedNpcCount = 3,
+    npcOutfit = "Survivor",
+    npcOutfitId = 4101,
+    -- Explicit vanilla pieces keep the companion's visible outfit stable
+    -- across clients.  The list is applied after the named Survivor outfit
+    -- and replaces its random clothing selection.
+    npcOutfitItems = {
+        "Base.Shirt_Priest",
+        "Base.Hat_Beret",
+        "Base.Shoes_BlackBoots",
+        "Base.Trousers_Black"
+    },
+    npcVisualAsset = "Goblin_PZ_MysteryRig",
+    npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody",
+    weaponType = "Base.Machete",
     protected = true,
-    gameBuildOverride = "",
     fileOptions = {},
     configFileName = "config.ini",
-    -- PZ's supported file API resolves paths below its Lua cache directory.
-    -- The SSH relay maps this relative root to the corresponding guest path.
     defaultBridgeRoot = "goblin-bridge",
     heartbeatSeconds = 5,
     maxMessageBytes = 262144,
     trackerExactTelemetry = true,
-    minimumBaseGuards = 1,
-    -- Server-side command authority.  The list is intentionally empty by
-    -- default; PZ admins/moderators are accepted by isAuthorizedPlayer(),
-    -- and operators may add exact usernames with GoblinCommanders= in the
-    -- provisioned bridge config.
     commanders = {},
-    -- Keep the first server-side body request out of the player's square.
-    -- This is a safety margin around the point passed to Bandits2's individual
-    -- spawner while its new networked body receives its friendly state.
-    npcSpawnOffsetTiles = 16
+    spawnOffsetTiles = 4,
+    followPreferredDistance = 3,
+    followWalkDistance = 4,
+    followRunDistance = 9,
+    followHysteresis = 1.5,
+    repathSeconds = 1.25,
+    blockedRetrySeconds = 3.0,
+    emergencyDistance = 80,
+    respawnSeconds = 15,
+    combatRadius = 16,
+    meleeRange = 2.25,
+    meleeCooldownSeconds = 1.0,
+    meleePoseSeconds = 0.70,
+    meleeImpactDelaySeconds = 0.325,
+    combatTargetRefreshSeconds = 0.50,
+    recoverySeconds = 0.80,
+    recoveryHitPulseSeconds = 0.15,
+    stuckTimeoutSeconds = 8.0,
+    maxRecoveryAttempts = 3,
+    lootRadius = 6,
+    lootScanSeconds = 2.0,
+    lootMaxItemsPerTask = 4
 }
 
 local function parseBoolean(value, defaultValue)
@@ -164,6 +181,15 @@ local function parseBoundedInteger(value, defaultValue, minimum, maximum)
     return number
 end
 
+local function parseBoundedNumber(value, defaultValue, minimum, maximum)
+    local number = tonumber(value)
+    if number == nil or number ~= number or number == math.huge or number == -math.huge
+        or number < minimum or number > maximum then
+        return defaultValue
+    end
+    return number
+end
+
 function Config.refresh()
     -- Build 42 ignores unknown keys in Server/<name>.ini.  Read the
     -- integration's own config from the fixed, provisioned Lua bridge root
@@ -182,8 +208,8 @@ function Config.refresh()
         return readServerOption(name, defaultValue)
     end
 
-    local optionEnabled = readOption("GoblinEnabled", false)
-    Config.enabled = parseBoolean(optionEnabled, false)
+    local optionEnabled = readOption("GoblinEnabled", true)
+    Config.enabled = parseBoolean(optionEnabled, true)
     local root = readOption("GoblinBridgeRoot", "")
     if safeBridgeRoot(root) then
         Config.bridgeRootOverride = root
@@ -201,27 +227,123 @@ function Config.refresh()
     if type(npcName) == "string" and #npcName >= 1 and #npcName <= 32 then
         Config.npcName = npcName
     end
-    local npcProgram = readOption("GoblinNpcProgram", Config.npcProgram)
-    if type(npcProgram) == "string" and #npcProgram >= 1 and #npcProgram <= 32 then
-        Config.npcProgram = npcProgram
+    local outfit = readOption("GoblinNpcOutfit", Config.npcOutfit)
+    if type(outfit) == "string" and #outfit >= 1 and #outfit <= 64
+        and string.find(outfit, "^[A-Za-z0-9_%-]+$") then
+        Config.npcOutfit = outfit
     end
-    local build = readOption("GoblinGameBuild", Config.gameBuildOverride)
-    if type(build) == "string"
-        and #build >= 1
-        and #build <= 64
-        and string.find(build, "^[A-Za-z0-9][A-Za-z0-9%._%+%- ]*$") then
-        Config.gameBuildOverride = build
+    Config.npcOutfitId = parseBoundedInteger(
+        readOption("GoblinNpcOutfitId", Config.npcOutfitId),
+        Config.npcOutfitId, 0, 1000000
+    )
+    local visualAsset = readOption("GoblinNpcVisualAsset", Config.npcVisualAsset)
+    if type(visualAsset) == "string" and #visualAsset >= 1 and #visualAsset <= 96
+        and string.find(visualAsset, "^[A-Za-z0-9_%-]+$") then
+        Config.npcVisualAsset = visualAsset
+    end
+    local weapon = readOption("GoblinWeapon", Config.weaponType)
+    if type(weapon) == "string" and #weapon >= 1 and #weapon <= 96
+        and string.find(weapon, "^[A-Za-z0-9_%.%-]+$") then
+        Config.weaponType = weapon
     end
     Config.protected = parseBoolean(readOption("GoblinNpcProtected", true), true)
     Config.trackerExactTelemetry = parseBoolean(readOption("GoblinTrackerExact", true), true)
-    Config.minimumBaseGuards = parseBoundedInteger(
-        readOption("MinimumBaseGuards", Config.minimumBaseGuards),
-        Config.minimumBaseGuards, 0, 16
+    Config.followPreferredDistance = parseBoundedInteger(
+        readOption("GoblinFollowDistance", Config.followPreferredDistance),
+        Config.followPreferredDistance, 2, 8
     )
-    Config.managedNpcCount = parseBoundedInteger(
-        readOption("GoblinManagedNpcCount", Config.managedNpcCount),
-        Config.managedNpcCount, 0, 8
+    Config.followWalkDistance = parseBoundedInteger(
+        readOption("GoblinFollowWalkDistance", Config.followWalkDistance),
+        Config.followWalkDistance, 3, 16
     )
+    Config.followRunDistance = parseBoundedInteger(
+        readOption("GoblinFollowRunDistance", Config.followRunDistance),
+        Config.followRunDistance, 6, 32
+    )
+    Config.spawnOffsetTiles = parseBoundedInteger(
+        readOption("GoblinSpawnOffset", Config.spawnOffsetTiles),
+        Config.spawnOffsetTiles, 2, 16
+    )
+    Config.followHysteresis = parseBoundedNumber(
+        readOption("GoblinFollowHysteresis", Config.followHysteresis),
+        Config.followHysteresis, 0, 8
+    )
+    Config.repathSeconds = parseBoundedNumber(
+        readOption("GoblinRepathSeconds", Config.repathSeconds),
+        Config.repathSeconds, 0.25, 10
+    )
+    Config.blockedRetrySeconds = parseBoundedNumber(
+        readOption("GoblinBlockedRetrySeconds", Config.blockedRetrySeconds),
+        Config.blockedRetrySeconds, 1, 60
+    )
+    Config.emergencyDistance = parseBoundedNumber(
+        readOption("GoblinEmergencyDistance", Config.emergencyDistance),
+        Config.emergencyDistance, 16, 1000
+    )
+    Config.respawnSeconds = parseBoundedNumber(
+        readOption("GoblinRespawnSeconds", Config.respawnSeconds),
+        Config.respawnSeconds, 0, 3600
+    )
+    Config.combatRadius = parseBoundedNumber(
+        readOption("GoblinCombatRadius", Config.combatRadius),
+        Config.combatRadius, 4, 64
+    )
+    Config.meleeRange = parseBoundedNumber(
+        readOption("GoblinMeleeRange", Config.meleeRange),
+        Config.meleeRange, 1, 4
+    )
+    Config.meleeCooldownSeconds = parseBoundedNumber(
+        readOption("GoblinMeleeCooldownSeconds", Config.meleeCooldownSeconds),
+        Config.meleeCooldownSeconds, 0.25, 5
+    )
+    Config.meleePoseSeconds = parseBoundedNumber(
+        readOption("GoblinMeleePoseSeconds", Config.meleePoseSeconds),
+        Config.meleePoseSeconds, 0.2, 2
+    )
+    Config.meleeImpactDelaySeconds = parseBoundedNumber(
+        readOption("GoblinMeleeImpactDelaySeconds", Config.meleeImpactDelaySeconds),
+        Config.meleeImpactDelaySeconds, 0.05, 1.5
+    )
+    Config.combatTargetRefreshSeconds = parseBoundedNumber(
+        readOption("GoblinCombatTargetRefreshSeconds", Config.combatTargetRefreshSeconds),
+        Config.combatTargetRefreshSeconds, 0.1, 5
+    )
+    Config.recoverySeconds = parseBoundedNumber(
+        readOption("GoblinRecoverySeconds", Config.recoverySeconds),
+        Config.recoverySeconds, 0.1, 10
+    )
+    Config.recoveryHitPulseSeconds = parseBoundedNumber(
+        readOption("GoblinRecoveryHitPulseSeconds", Config.recoveryHitPulseSeconds),
+        Config.recoveryHitPulseSeconds, 0.05, 1
+    )
+    Config.stuckTimeoutSeconds = parseBoundedNumber(
+        readOption("GoblinStuckTimeoutSeconds", Config.stuckTimeoutSeconds),
+        Config.stuckTimeoutSeconds, 2, 60
+    )
+    Config.maxRecoveryAttempts = parseBoundedInteger(
+        readOption("GoblinMaxRecoveryAttempts", Config.maxRecoveryAttempts),
+        Config.maxRecoveryAttempts, 0, 8
+    )
+    Config.lootRadius = parseBoundedNumber(
+        readOption("GoblinLootRadius", Config.lootRadius),
+        Config.lootRadius, 1, 16
+    )
+    Config.lootScanSeconds = parseBoundedNumber(
+        readOption("GoblinLootScanSeconds", Config.lootScanSeconds),
+        Config.lootScanSeconds, 0.5, 30
+    )
+    Config.lootMaxItemsPerTask = parseBoundedInteger(
+        readOption("GoblinLootMaxItemsPerTask", Config.lootMaxItemsPerTask),
+        Config.lootMaxItemsPerTask, 1, 16
+    )
+    -- Keep the hysteresis thresholds ordered even when an operator edits the
+    -- bridge file by hand.  This avoids an oscillating walk/run controller.
+    if Config.followWalkDistance <= Config.followPreferredDistance then
+        Config.followWalkDistance = math.min(16, Config.followPreferredDistance + 1)
+    end
+    if Config.followRunDistance <= Config.followWalkDistance then
+        Config.followRunDistance = math.min(32, Config.followWalkDistance + 1)
+    end
     Config.commanders = parseCommanders(readOption("GoblinCommanders", ""))
     return Config
 end

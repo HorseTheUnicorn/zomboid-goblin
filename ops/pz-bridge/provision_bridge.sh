@@ -115,22 +115,42 @@ elif [[ ! -e "$config_file" ]]; then
     umask 007
     printf '%s\n' \
         '# GoblinSurvivor integration configuration.' \
-        '# Keep the master switch false until the NPC and bridge checks pass.' \
-        'GoblinEnabled=false' \
+        '# One persistent native IsoZombie Goblin; set false to disable.' \
+        'GoblinEnabled=true' \
         'GoblinBridgeRoot=goblin-bridge' \
         'GoblinNpcId=goblin.primary' \
         'GoblinNpcName=Goblin' \
-        'GoblinNpcProgram=Companion' \
+        'GoblinNpcOutfit=Survivor' \
+        'GoblinNpcOutfitId=4101' \
+        'GoblinNpcVisualAsset=Goblin_PZ_MysteryRig' \
+        'GoblinWeapon=Base.Machete' \
         'GoblinNpcProtected=true' \
-        'GoblinManagedNpcCount=3' \
         'GoblinCommanders=' \
-        'MinimumBaseGuards=1' \
-        'GoblinTrackerExact=true' > "$config_file"
+        'GoblinFollowDistance=3' \
+        'GoblinFollowWalkDistance=4' \
+        'GoblinFollowRunDistance=9' \
+        'GoblinFollowHysteresis=1.5' \
+        'GoblinRepathSeconds=1.25' \
+        'GoblinBlockedRetrySeconds=3' \
+        'GoblinRespawnSeconds=15' \
+        'GoblinSpawnOffset=4' \
+        'GoblinTrackerExact=true' \
+        'GoblinCombatRadius=16' \
+        'GoblinMeleeRange=2.25' \
+        'GoblinMeleeCooldownSeconds=1' \
+        'GoblinMeleePoseSeconds=0.7' \
+        'GoblinMeleeImpactDelaySeconds=0.325' \
+        'GoblinRecoverySeconds=0.8' \
+        'GoblinStuckTimeoutSeconds=8' \
+        'GoblinMaxRecoveryAttempts=3' \
+        'GoblinLootRadius=6' \
+        'GoblinLootScanSeconds=2' \
+        'GoblinLootMaxItemsPerTask=4' > "$config_file"
 fi
 chown root:goblinbridge "$config_file"
 chmod 0660 "$config_file"
 
 printf 'bridge provisioned at %s\n' "$bridge_root"
 printf 'accounts granted through group goblinbridge: zomboid, goblin\n'
-printf 'Goblin config: %s (master switch defaults to false)\n' "$config_file"
+printf 'Goblin config: %s (one native IsoZombie companion)\n' "$config_file"
 printf '%s\n' 'Restart the PZ service before testing so its supplementary group is active.'

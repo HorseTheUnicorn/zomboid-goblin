@@ -1,0 +1,17 @@
+module GoblinSurvivor
+{
+	item Goblin_MysteryBody
+	{
+		ItemType = base:clothing,
+		DisplayCategory = Clothing,
+		DisplayName = Goblin Mystery Body,
+		BodyLocation = base:underwear,
+		ClothingItem = Goblin_MysteryBody,
+		Weight = 0.0,
+		Insulation = 0.0,
+		WindResistance = 0.0,
+		CanHaveHoles = false,
+		RunSpeedModifier = 1.0,
+		Tags = base:noragdoll,
+	}
+}

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinIdleToWalk</m_Name>
+    <m_Priority>10</m_Priority>
+    <m_AnimName>Bob_IdleToWalk</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_BlendTime>0.12</m_BlendTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="7dd72e5a-4d33-42ec-9a20-5a5f21e31a17">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="6d2f173c-24d1-4faf-8796-4adbbcf45f88">
+        <m_Name>GoblinMoveType</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>WALK</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="b88987e0-d4e1-466d-8fa9-8915efb00b47">
+        <m_Name>bMoving</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Transitions>
+        <m_Target>goblinWalk</m_Target>
+        <m_blendInTime>0.12</m_blendInTime>
+        <m_blendOutTime>0.12</m_blendOutTime>
+    </m_Transitions>
+</animNode>

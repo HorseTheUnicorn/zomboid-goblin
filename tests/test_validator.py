@@ -21,6 +21,46 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(result.mode, "PARTY")
         self.assertEqual(result.data["text"], "Stay close, meatbags.")
 
+    def test_equip_requires_the_preferred_weapon(self) -> None:
+        result = self.validator.validate(
+            {
+                "intent": "EQUIP",
+                "mode": "SAFE",
+                "item": {"name": "Base.Machete"},
+            }
+        )
+        self.assertEqual(result.intent, "EQUIP")
+        with self.assertRaises(IntentError):
+            self.validator.validate({"intent": "EQUIP", "mode": "SAFE"})
+        with self.assertRaises(IntentError):
+            self.validator.validate(
+                {
+                    "intent": "EQUIP",
+                    "mode": "SAFE",
+                    "item": {"name": "Base.Axe"},
+                }
+            )
+
+    def test_loot_focus_remains_a_bounded_high_level_field(self) -> None:
+        result = self.validator.validate(
+            {
+                "intent": "LOOT_AREA",
+                "mode": "ROAM",
+                "target": {"kind": "area", "name": "the nearby block"},
+                "loot_focus": "medical",
+            }
+        )
+        self.assertEqual(result.data["loot_focus"], "medical")
+        with self.assertRaises(IntentError):
+            self.validator.validate(
+                {
+                    "intent": "LOOT_AREA",
+                    "mode": "ROAM",
+                    "target": {"kind": "area", "name": "the nearby block"},
+                    "loot_focus": "lua",
+                }
+            )
+
     def test_rejects_unknown_fields_and_code(self) -> None:
         with self.assertRaises(IntentError):
             self.validator.validate(

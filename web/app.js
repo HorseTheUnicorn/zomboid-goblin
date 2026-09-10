@@ -238,7 +238,7 @@
     if (goblin && safeNumber(goblin.x) !== null && safeNumber(goblin.y) !== null) {
       ui.mapCoordinates.textContent = `x ${Math.round(goblin.x)} · y ${Math.round(goblin.y)}${safeNumber(goblin.z) !== null ? ` · z ${Math.round(goblin.z)}` : ""}`;
     } else ui.mapCoordinates.textContent = "Goblin position not reported";
-    ui.goblinNote.textContent = alive ? "Bandits2 body is present; GoblinSurvivor policy controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
+    ui.goblinNote.textContent = alive ? "Native IsoZombie body is present; GoblinSurvivor policy controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
   }
 
   function renderRoster() {
@@ -264,13 +264,13 @@
     ui.rosterList.replaceChildren();
     if (!roster.length) {
       const row = document.createElement("li"); row.className = "empty-row";
-      row.textContent = "No managed bodies reported."; ui.rosterList.append(row); return;
+      row.textContent = "Goblin body telemetry is unavailable."; ui.rosterList.append(row); return;
     }
     for (const entry of roster) {
       const row = document.createElement("li"); row.className = "roster-row";
       const heading = document.createElement("div"); heading.className = "roster-heading";
       const name = document.createElement("strong"); name.className = "roster-name";
-      name.textContent = String(entry.name || entry.npc_id || entry.id || "managed NPC");
+      name.textContent = String(entry.name || entry.npc_id || entry.id || "Goblin companion");
       const stateLabel = document.createElement("span"); stateLabel.className = "roster-state";
       const present = entry.body_present !== false && entry.alive !== false && entry.active !== false;
       stateLabel.textContent = present ? "ONLINE" : entry.active === false ? "DISABLED" : "OFFLINE";
@@ -278,7 +278,7 @@
       heading.append(name, stateLabel);
       const meta = document.createElement("div"); meta.className = "roster-meta";
       const details = [entry.role, entry.mode || entry.task, entry.squad_id ? `squad ${entry.squad_id}` : null].filter(Boolean);
-      meta.textContent = details.join(" · ") || "managed Bandits2 body";
+      meta.textContent = details.join(" · ") || "persistent IsoZombie companion";
       row.append(heading, meta); ui.rosterList.append(row);
     }
   }
