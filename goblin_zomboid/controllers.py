@@ -1,4 +1,4 @@
-"""Deterministic, typed controller decisions for the Goblin body."""
+"""Deterministic typed controller decisions for per-player Goblin bodies."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ class Action(str, Enum):
     RETREAT = "RETREAT"
     REST = "REST"
     GO_HOME = "GO_HOME"
+    SET_BASE = "SET_BASE"
     JOIN_PARTY = "JOIN_PARTY"
     LEAVE_PARTY = "LEAVE_PARTY"
     ATTACK = "ATTACK"
@@ -49,8 +50,6 @@ class Action(str, Enum):
 
 @dataclass(frozen=True)
 class BodyState:
-    """Coarse state only; exact world coordinates never belong here."""
-
     alive: bool = True
     body_present: bool = False
     hunger: float = 0.0
@@ -85,18 +84,10 @@ class BodyState:
 
     @property
     def body_ready(self) -> bool:
-        """A body is executable after the server-computed control contract."""
-
-        return (
-            self.body_present
-            and self.control_ready
-            and self.npc_engine_ready
-        )
+        return self.body_present and self.control_ready and self.npc_engine_ready
 
     @property
     def creation_ready(self) -> bool:
-        """Character creation may start before the first player body exists."""
-
         return self.control_ready
 
 
@@ -126,15 +117,9 @@ class SafeAction:
             "npc_id": self.npc_id,
         }
         if self.target_kind is not None:
-            result["target"] = {
-                "kind": self.target_kind,
-                "label": self.target_label or "",
-            }
+            result["target"] = {"kind": self.target_kind, "label": self.target_label or ""}
         if self.item_name is not None:
-            result["item"] = {
-                "name": self.item_name,
-                "count": self.item_count or 1,
-            }
+            result["item"] = {"name": self.item_name, "count": self.item_count or 1}
         if self.leader is not None:
             result["leader"] = self.leader
         if self.members:
@@ -160,70 +145,47 @@ class ControllerResult:
 
 
 class ReflexController:
-    """Emergency survival always outranks social, party, and hunt behavior."""
-
     def decide(self, state: BodyState) -> SafeAction | None:
         if not state.alive:
             return None
         if state.thirst >= 0.85 and state.has_water:
-            return SafeAction(Action.DRINK, 3, "critical thirst")
+            return SafeAction(Action.DRINK, 3, "critical thirst", npc_id=state.npc_id)
         if state.hunger >= 0.9 and state.has_food:
-            return SafeAction(Action.EAT, 3, "critical hunger")
+            return SafeAction(Action.EAT, 3, "critical hunger", npc_id=state.npc_id)
         if state.injury >= 0.8 and state.has_medical:
-            return SafeAction(Action.BANDAGE, 3, "critical injury")
-        if state.threat_level == "overwhelming":
+            return SafeAction(Action.BANDAGE, 3, "critical injury", npc_id=state.npc_id)
+        if state.threat_level == "overwhelming" or state.panic >= 0.9:
             return SafeAction(
-                Action.FLEE,
-                3,
-                "overwhelming threat",
-                target_kind="escape_route",
-                target_label="nearest safe route",
-            )
-        if state.panic >= 0.9:
-            return SafeAction(
-                Action.RETREAT,
-                3,
-                "panic threshold",
-                target_kind="escape_route",
-                target_label="nearest safe route",
+                Action.FLEE, 3, "unsafe threat", target_kind="escape_route",
+                target_label="nearest safe route", npc_id=state.npc_id,
             )
         return None
 
 
 class CombatController:
-    """Chooses bounded combat actions without exposing attack coordinates."""
-
     def decide(self, state: BodyState) -> SafeAction | None:
         if not state.alive or state.threat_level == "none":
             return None
         if state.threat_level == "overwhelming":
             return SafeAction(
-                Action.FLEE,
-                3,
-                "combat threat exceeds safe threshold",
-                target_kind="escape_route",
-                target_label="nearest safe route",
+                Action.FLEE, 3, "combat threat exceeds safe threshold",
+                target_kind="escape_route", target_label="nearest safe route",
+                npc_id=state.npc_id,
             )
         if state.weapon_ready:
             return SafeAction(
-                Action.ATTACK,
-                2,
-                "nearest visible threat within deterministic combat range",
-                target_kind="nearby_threat",
-                target_label="nearest visible threat",
+                Action.ATTACK, 2, "nearby hostile",
+                target_kind="nearby_threat", target_label="nearest visible threat",
+                npc_id=state.npc_id,
             )
         return SafeAction(
-            Action.FLEE,
-            2,
-            "no ready weapon",
-            target_kind="escape_route",
-            target_label="nearest safe route",
+            Action.FLEE, 2, "no ready weapon",
+            target_kind="escape_route", target_label="nearest safe route",
+            npc_id=state.npc_id,
         )
 
 
 class TacticalController:
-    """Translates a validated intent to a finite typed action."""
-
     _mapping = {
         "WAIT": Action.NOOP,
         "SAY": Action.SAY,
@@ -236,6 +198,7 @@ class TacticalController:
         "RETREAT": Action.RETREAT,
         "REST": Action.REST,
         "GO_HOME": Action.GO_HOME,
+        "SET_BASE": Action.SET_BASE,
         "JOIN_PARTY": Action.JOIN_PARTY,
         "LEAVE_PARTY": Action.LEAVE_PARTY,
         "HUNT_START": Action.NOOP,
@@ -272,39 +235,25 @@ class TacticalController:
         candidate = intent.data.get("candidate")
         if intent.intent == "HUNT_RELOCATE":
             target = candidate
-        if intent.intent in {
-            "MOVE_TO",
-            "FOLLOW",
-            "SEARCH",
-            "SCAVENGE",
-            "JOIN_PARTY",
-            "TRADE",
-            "HELP",
-            "FOLLOW_GOBLIN",
-            "LOOT_AREA",
-            "DEFEND_PLAYER",
-            "DEFEND_AREA",
-            "GUARD",
-            "PATROL",
-            "CLEAR_BUILDING",
-            "ENTER_VEHICLE",
-            "FLEE",
-            "RETREAT",
-            "REGROUP",
-            "GO_HOME",
+        target_required = {
+            "MOVE_TO", "FOLLOW", "SEARCH", "SCAVENGE", "JOIN_PARTY", "TRADE", "HELP",
+            "FOLLOW_GOBLIN", "LOOT_AREA", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL",
+            "CLEAR_BUILDING", "ENTER_VEHICLE", "FLEE", "RETREAT", "REGROUP", "GO_HOME",
             "RETURN_TO_BASE",
-        } and not isinstance(target, dict):
+        }
+        if intent.intent in target_required and not isinstance(target, dict):
             return ControllerResult(False, None, "intent target is missing")
         target_kind = target.get("kind") if isinstance(target, dict) else None
         target_label = None
         if isinstance(target, dict):
             target_label = target.get("name") or target.get("label") or target.get("player")
-        if intent.intent == "SAY":
+        if intent.intent in {"SAY", "SET_BASE"}:
             target_kind = None
             target_label = None
         item = intent.data.get("item")
         members_value = intent.data.get("members", intent.data.get("requested_members", []))
         members = members_value if isinstance(members_value, (list, tuple)) else []
+        npc_id = str(intent.data.get("npc_id", state.npc_id))
         result = SafeAction(
             action=action,
             priority=intent.data.get("priority", 1),
@@ -313,31 +262,17 @@ class TacticalController:
             target_label=target_label,
             item_name=item.get("name") if isinstance(item, dict) else None,
             item_count=item.get("count") if isinstance(item, dict) else None,
-            npc_id=str(intent.data.get("npc_id", "goblin.primary")),
-            leader=(
-                str(intent.data["leader"])
-                if isinstance(intent.data.get("leader"), str)
-                else None
-            ),
+            npc_id=npc_id,
+            leader=str(intent.data["leader"]) if isinstance(intent.data.get("leader"), str) else None,
             members=tuple(str(member) for member in members if isinstance(member, str)),
-            job=(str(intent.data["job"]) if isinstance(intent.data.get("job"), str) else None),
-            formation=(
-                str(intent.data["formation"])
-                if isinstance(intent.data.get("formation"), str)
-                else None
-            ),
-            text=(str(intent.data["text"]) if isinstance(intent.data.get("text"), str) else None),
-            squad_id=(
-                str(intent.data["squad_id"])
-                if isinstance(intent.data.get("squad_id"), str)
-                else None
-            ),
-            loot_focus=(
-                str(intent.data["loot_focus"])
-                if isinstance(intent.data.get("loot_focus"), str)
-                else None
-            ),
+            job=str(intent.data["job"]) if isinstance(intent.data.get("job"), str) else None,
+            formation=str(intent.data["formation"]) if isinstance(intent.data.get("formation"), str) else None,
+            text=str(intent.data["text"]) if isinstance(intent.data.get("text"), str) else None,
+            squad_id=str(intent.data["squad_id"]) if isinstance(intent.data.get("squad_id"), str) else None,
+            loot_focus=str(intent.data["loot_focus"]) if isinstance(intent.data.get("loot_focus"), str) else None,
         )
+        if result.npc_id != state.npc_id:
+            return ControllerResult(False, None, "intent attempted to control a different Goblin")
         return ControllerResult(True, result, "accepted by tactical controller")
 
 
@@ -347,11 +282,7 @@ class SafetyController:
         self.combat = CombatController()
         self.tactical = TacticalController()
 
-    def decide(
-        self,
-        intent: ValidatedIntent | None,
-        state: BodyState,
-    ) -> ControllerResult:
+    def decide(self, intent: ValidatedIntent | None, state: BodyState) -> ControllerResult:
         if not state.body_ready:
             if intent is None:
                 return ControllerResult(True, None, "NPC body driver is unavailable")
@@ -366,11 +297,6 @@ class SafetyController:
             return ControllerResult(True, combat, "combat controller precedence")
         if intent is None:
             return ControllerResult(True, None, "no social or tactical intent")
-        if not state.body_ready and self.tactical._mapping[intent.intent] not in {
-            Action.SAY,
-            Action.NOOP,
-        }:
-            return ControllerResult(False, None, "body driver is not available")
         return self.tactical.decide(intent, state)
 
 
@@ -382,19 +308,14 @@ class InventoryReservation:
 
 
 class InventoryController:
-    """Small reservation ledger preventing duplicate loot/item consumption."""
-
     def __init__(self) -> None:
         self._reservations: dict[str, InventoryReservation] = {}
 
     def reserve(self, item_name: str, count: int, available: int, token: str) -> bool:
-        if not item_name or not 1 <= count <= 10 or available < count:
-            return False
-        if token in self._reservations:
+        if not item_name or not 1 <= count <= 10 or available < count or token in self._reservations:
             return False
         reserved = sum(
-            item.count
-            for item in self._reservations.values()
+            item.count for item in self._reservations.values()
             if item.item_name.casefold() == item_name.casefold()
         )
         if reserved + count > available:
@@ -410,7 +331,6 @@ class InventoryController:
 
     def reserved_count(self, item_name: str) -> int:
         return sum(
-            item.count
-            for item in self._reservations.values()
+            item.count for item in self._reservations.values()
             if item.item_name.casefold() == item_name.casefold()
         )
