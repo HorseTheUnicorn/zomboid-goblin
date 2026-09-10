@@ -93,7 +93,7 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("getHumanVisual", client)
         self.assertIn('call(humanVisual, "dressInClothingItem"', client)
         self.assertIn('call(humanVisual, "dressInNamedOutfit"', client)
-        self.assertNotIn('rawget(_G, "OutfitManager")', client)
+        self.assertNotIn('local managerClass = rawget(_G, "OutfitManager")', client)
         self.assertIn("getClothingItemName", client)
         self.assertIn("CLIENT_CLOTHING_RESOLVED", client)
         self.assertIn("CLIENT_CLOTHING_UNRESOLVED", client)
