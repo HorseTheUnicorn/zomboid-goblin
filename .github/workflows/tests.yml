@@ -1,0 +1,19 @@
+name: tests
+
+on:
+  push:
+    branches: [main, goblin-rescue-2026-09-10]
+  pull_request:
+
+jobs:
+  python-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Python
+        run: python -m compileall -q goblin_zomboid tests
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
