@@ -5,7 +5,7 @@ module GoblinSurvivor
 		ItemType = base:clothing,
 		DisplayCategory = Clothing,
 		DisplayName = Goblin Mystery Body,
-		BodyLocation = base:underwear,
+		BodyLocation = base:body_costume,
 		ClothingItem = Goblin_MysteryBody,
 		Weight = 0.0,
 		Insulation = 0.0,
