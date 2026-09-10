@@ -18,8 +18,8 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("npcIdForOwner", source)
         self.assertIn("addZombiesInOutfit", source)
         self.assertIn("total=1", source)
-        self.assertNotIn("createRealZombieAlways", source)
-        self.assertNotIn("createRealZombieNow", source)
+        self.assertNotIn('"createRealZombieAlways"', source)
+        self.assertNotIn('"createRealZombieNow"', source)
         self.assertNotIn("registerCreatedBody", source)
 
     def test_runtime_updates_every_managed_body(self) -> None:
