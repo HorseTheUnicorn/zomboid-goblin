@@ -8,6 +8,8 @@ MOD = ROOT / "mod" / "Contents" / "mods" / "GoblinSurvivor"
 SERVER = MOD / "42" / "media" / "lua" / "server" / "GoblinSurvivor"
 CLIENT = MOD / "42" / "media" / "lua" / "client" / "GoblinSurvivor"
 SHARED = MOD / "42" / "media" / "lua" / "shared" / "GoblinSurvivor"
+COMMON_MEDIA = MOD / "common" / "media"
+VISUAL_GUID = "6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1"
 
 
 class GoblinCompanionContractTests(unittest.TestCase):
@@ -29,13 +31,20 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("Body.clearNativeTargets", runtime)
         self.assertNotIn("Spawner.ensure(false)", runtime)
 
-    def test_model_registration_uses_pz_clothing_paths(self) -> None:
-        clothing = MOD / "common" / "media" / "clothing" / "clothingItems" / "Goblin_MysteryBody.xml"
-        texture = MOD / "common" / "media" / "textures" / "Goblin_PZ_MysteryRig" / "Material_1_basecolor.png"
-        model = MOD / "common" / "media" / "models_X" / "Goblin_PZ_MysteryRig.fbx"
+    def test_model_registration_uses_one_common_media_layer(self) -> None:
+        clothing = COMMON_MEDIA / "clothing" / "clothingItems" / "Goblin_MysteryBody.xml"
+        guid_table = COMMON_MEDIA / "fileGuidTable.xml"
+        outfit_file = COMMON_MEDIA / "clothing" / "clothing.xml"
+        texture = COMMON_MEDIA / "textures" / "Goblin_PZ_MysteryRig" / "Material_1_basecolor.png"
+        model = COMMON_MEDIA / "models_X" / "Goblin_PZ_MysteryRig.fbx"
         self.assertTrue(texture.is_file())
         self.assertTrue(model.is_file())
+        self.assertTrue(guid_table.is_file())
+        self.assertTrue(outfit_file.is_file())
+        self.assertFalse((MOD / "42" / "media" / "fileGuidTable.xml").exists())
+
         root = ET.parse(clothing).getroot()
+        self.assertEqual(root.findtext("m_GUID"), VISUAL_GUID)
         self.assertEqual(root.findtext("m_MaleModel"), "Goblin_PZ_MysteryRig")
         self.assertEqual(root.findtext("m_FemaleModel"), "Goblin_PZ_MysteryRig")
         self.assertIsNone(root.find("m_AltMaleModel"))
@@ -45,18 +54,51 @@ class GoblinCompanionContractTests(unittest.TestCase):
             "Goblin_PZ_MysteryRig/Material_1_basecolor",
         )
 
-    def test_client_applies_registered_goblin_visual_without_outfit_cycling(self) -> None:
+        guid_root = ET.parse(guid_table).getroot()
+        entry = guid_root.find("files")
+        self.assertIsNotNone(entry)
+        self.assertEqual(
+            entry.findtext("path"),
+            "media/clothing/clothingItems/Goblin_MysteryBody.xml",
+        )
+        self.assertEqual(entry.findtext("guid"), VISUAL_GUID)
+
+    def test_named_outfit_contains_only_goblin_body(self) -> None:
+        root = ET.parse(COMMON_MEDIA / "clothing" / "clothing.xml").getroot()
+        for tag in ("m_MaleOutfits", "m_FemaleOutfits"):
+            outfits = root.findall(tag)
+            self.assertEqual(len(outfits), 1)
+            outfit = outfits[0]
+            self.assertEqual(outfit.findtext("m_Name"), "GoblinCompanion")
+            self.assertEqual(outfit.findtext("m_Top"), "false")
+            self.assertEqual(outfit.findtext("m_Pants"), "false")
+            item_guids = [node.text for node in outfit.findall("./m_items/item/itemGUID")]
+            self.assertEqual(item_guids, [VISUAL_GUID])
+
+    def test_script_item_uses_full_body_costume_slot(self) -> None:
+        source = (MOD / "42" / "media" / "scripts" / "goblin_items.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("BodyLocation = base:body_costume", source)
+        self.assertNotIn("BodyLocation = base:underwear", source)
+
+    def test_client_verifies_real_goblin_itemvisual_not_void_method_success(self) -> None:
         client = (CLIENT / "GoblinClient.lua").read_text(encoding="utf-8")
+        self.assertIn("GoblinCompanion", client)
+        self.assertIn("dressInNamedOutfit", client)
         self.assertIn("dressInClothingItem", client)
-        self.assertIn("6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1", client)
+        self.assertIn("OutfitManager", client)
+        self.assertIn("getClothingItem", client)
+        self.assertIn("getItemVisuals", client)
+        self.assertIn("getClothingItemName", client)
+        self.assertIn("CLIENT_CLOTHING_RESOLVED", client)
+        self.assertIn("CLIENT_CLOTHING_UNRESOLVED", client)
+        self.assertIn("CLIENT_VISUAL_CONFIRMED", client)
+        self.assertIn("CLIENT_VISUAL_FAILED", client)
         self.assertIn('call(zombie, "setDressInRandomOutfit", false)', client)
         self.assertIn('call(zombie, "clearWornItems")', client)
-        self.assertIn('call(visuals, "clear")', client)
-        self.assertIn("visualPrepared", client)
         self.assertNotIn("npcOutfitItems", client)
-        # The top-level zombie AnimSet override removed vanilla states such as
-        # turning180 in the live B42 test.  Never restore that global override.
-        self.assertFalse((MOD / "common" / "media" / "AnimSets" / "zombie.xml").exists())
+        self.assertFalse((COMMON_MEDIA / "AnimSets" / "zombie.xml").exists())
 
     def test_body_and_client_do_not_force_animation_frames_or_idle_states(self) -> None:
         body = (SERVER / "GoblinBody.lua").read_text(encoding="utf-8")
