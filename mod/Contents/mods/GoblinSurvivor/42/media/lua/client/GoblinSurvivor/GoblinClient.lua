@@ -1,18 +1,26 @@
--- Client visual/animation fence for every managed Goblin.
+-- Client-side presentation and chat relay for every managed Goblin.
 --
--- The server owns spawning, movement and tasks.  The client only recognizes
--- each networked Goblin, suppresses vanilla zombie aggression, selects the
--- human Goblin animation variables, and keeps the registered clothing-model
--- rendered.  It never teleports or directly plays animation frames.
+-- The server owns spawning/tasks.  This file only keeps the replicated
+-- IsoZombie friendly, applies the one registered Goblin body visual, and
+-- forwards local chat addressed to Goblin.  Do not repeatedly call
+-- setAsSurvivor(): Build 42 may rebuild/randomize survivor visuals when that
+-- happens, which is what caused Goblin to visibly cycle through outfits.
 local Config = require("GoblinSurvivor/Config")
 local EventHooks = require("GoblinSurvivor/EventHooks")
+
+-- This is Goblin_MysteryBody.xml:m_GUID and fileGuidTable.xml:guid.
+-- IsoZombie:dressInClothingItem expects the clothing GUID, not the script item
+-- type.  Using the GUID drives the actual ClothingItem model/texture path.
+local VISUAL_GUID = "6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1"
 
 local Client = {
     statesById = {},
     statesByOnline = {},
     lastRequestAt = 0,
     lastScanAt = 0,
-    lastVisualAt = setmetatable({}, { __mode = "k" })
+    visualReady = setmetatable({}, { __mode = "k" }),
+    visualPrepared = setmetatable({}, { __mode = "k" }),
+    nextVisualAttemptAt = setmetatable({}, { __mode = "k" })
 }
 
 local function call(object, method, ...)
@@ -28,7 +36,7 @@ local function nowMs()
         local ok, value = pcall(getTimestampMs)
         if ok and type(value) == "number" then return value end
     end
-    return os.time() * 1000
+    return 0
 end
 
 local function log(text)
@@ -51,22 +59,6 @@ local function requestState()
     local ok = pcall(modData.request, "GoblinCompanions")
     if ok then Client.lastRequestAt = nowMs() end
     return ok
-end
-
-local function values(collection)
-    local result = {}
-    if collection == nil then return result end
-    if type(collection) == "table" then
-        for _, value in ipairs(collection) do result[#result + 1] = value end
-        if #result > 0 then return result end
-    end
-    local okSize, size = call(collection, "size")
-    size = okSize and tonumber(size) or 0
-    for index = 0, size - 1 do
-        local ok, value = call(collection, "get", index)
-        if ok and value ~= nil then result[#result + 1] = value end
-    end
-    return result
 end
 
 local function rebuildState(data)
@@ -101,59 +93,51 @@ local function stateFor(zombie)
     return id ~= nil and Client.statesByOnline[id] or nil
 end
 
-local function findInventoryItem(inventory, fullType)
-    local okItems, items = call(inventory, "getItems")
-    if not okItems or items == nil then return nil end
-    local okSize, size = call(items, "size")
-    size = okSize and tonumber(size) or 0
-    for index = 0, size - 1 do
-        local okItem, item = call(items, "get", index)
-        if okItem and item ~= nil then
-            local okType, value = call(item, "getFullType")
-            if okType and value == fullType then return item end
-        end
-    end
-    return nil
-end
-
-local function ensureWorn(zombie, inventory, fullType)
-    local item = findInventoryItem(inventory, fullType)
-    if item == nil then
-        local okAdd, added = call(inventory, "AddItem", fullType)
-        if okAdd then item = added end
-    end
-    if item == nil and type(instanceItem) == "function" then
-        local okInstance, instance = pcall(instanceItem, fullType)
-        if okInstance then item = instance end
-    end
-    if item == nil then return false end
-    local okLocation, location = call(item, "getBodyLocation")
-    if not okLocation or location == nil then return false end
-    local okWorn, result = call(zombie, "setWornItem", location, item)
-    return okWorn and result ~= false
+local function clearItemVisuals(zombie)
+    -- Remove the Naked1/Survivor generated wardrobe from the render state.
+    -- clearWornItems is the supported clothing API; getItemVisuals():clear()
+    -- also clears visual-only outfit entries that do not have inventory items.
+    call(zombie, "clearWornItems")
+    local okVisuals, visuals = call(zombie, "getItemVisuals")
+    if okVisuals and visuals ~= nil then call(visuals, "clear") end
 end
 
 local function ensureVisual(zombie, state)
+    if Client.visualReady[zombie] == true then return true end
     local timestamp = nowMs()
-    if timestamp - (Client.lastVisualAt[zombie] or 0) < 3000 then return end
-    Client.lastVisualAt[zombie] = timestamp
-    call(zombie, "setAsSurvivor")
-    call(zombie, "setFemaleEtc", false)
-    call(zombie, "setSkeleton", false)
-    local okInventory, inventory = call(zombie, "getInventory")
-    if not okInventory or inventory == nil then return end
+    if timestamp > 0 and timestamp < (Client.nextVisualAttemptAt[zombie] or 0) then return false end
+    Client.nextVisualAttemptAt[zombie] = timestamp + 2000
 
-    local custom = ensureWorn(zombie, inventory, Config.npcVisualItemType)
-    for _, fullType in ipairs(Config.npcOutfitItems or {}) do
-        ensureWorn(zombie, inventory, fullType)
+    -- Prepare the IsoZombie as a survivor exactly once.  Random outfit dressing
+    -- is disabled before and after this call because setAsSurvivor can otherwise
+    -- schedule another random wardrobe pass in Build 42 multiplayer.
+    if Client.visualPrepared[zombie] ~= true then
+        call(zombie, "setDressInRandomOutfit", false)
+        call(zombie, "setAsSurvivor")
+        call(zombie, "setDressInRandomOutfit", false)
+        call(zombie, "setFemaleEtc", false)
+        call(zombie, "setSkeleton", false)
+        call(zombie, "setCrawler", false)
+        clearItemVisuals(zombie)
+        Client.visualPrepared[zombie] = true
     end
-    if custom then
-        call(zombie, "resetModel")
-        call(zombie, "resetModelNextFrame")
-    else
+
+    -- Apply the registered ClothingItem directly by GUID.  This is the path
+    -- that tells PZ to render Goblin_PZ_MysteryRig with its textureChoices;
+    -- merely putting a script item in the zombie inventory is not sufficient.
+    local okDress = call(zombie, "dressInClothingItem", VISUAL_GUID)
+    if not okDress then
         log("CLIENT_MODEL_MISSING npc_id=" .. tostring(state.npc_id)
-            .. " item=" .. tostring(Config.npcVisualItemType))
+            .. " guid=" .. VISUAL_GUID)
+        return false
     end
+
+    call(zombie, "resetModel")
+    call(zombie, "resetModelNextFrame")
+    Client.visualReady[zombie] = true
+    log("CLIENT_VISUAL_APPLIED npc_id=" .. tostring(state.npc_id)
+        .. " asset=" .. tostring(Config.npcVisualAsset))
+    return true
 end
 
 local function clearZombieAI(zombie)
@@ -168,6 +152,7 @@ local function clearZombieAI(zombie)
     call(zombie, "setFakeDead", false)
     call(zombie, "setSkeleton", false)
     call(zombie, "setZombiesDontAttack", true)
+    call(zombie, "setDressInRandomOutfit", false)
     call(zombie, "setUseless", false)
     call(zombie, "setSpeedMod", 1.0)
     call(zombie, "setVoiceSoundName", "")
@@ -262,16 +247,16 @@ local function onMessage(message, tabId)
     local lower = string.lower(text)
     local command = string.match(lower, "^%s*[/!]goblin%s*(.*)$")
     if command ~= nil then
-        send("debug", { text = "/goblin " .. command })
+        local sent = send("debug", { text = "/goblin " .. command })
+        log("CHAT_RELAY kind=debug speaker=" .. tostring(localName) .. " sent=" .. tostring(sent))
         return
     end
-    -- Natural conversation/action requests go to Qwen whenever the player
-    -- explicitly addresses Goblin by name.
     if string.find(lower, "goblin", 1, true) ~= nil then
-        send("chat", {
+        local sent = send("chat", {
             text = text,
             tab_id = type(tabId) == "number" and tabId or 0
         })
+        log("CHAT_RELAY kind=natural speaker=" .. tostring(localName) .. " sent=" .. tostring(sent))
     end
 end
 
@@ -284,14 +269,16 @@ local function onTick()
     if timestamp - Client.lastRequestAt >= 5000 then requestState() end
 end
 
+local chatHook = false
 if Events ~= nil then
     EventHooks.install("client.global_data_init", Events.OnInitGlobalModData, requestState)
     EventHooks.install("client.global_data_receive", Events.OnReceiveGlobalModData, onReceiveGlobalModData)
     EventHooks.install("client.zombie_create", Events.OnZombieCreate, apply)
     EventHooks.install("client.zombie_update", Events.OnZombieUpdate, apply)
     EventHooks.install("client.tick", Events.OnTick, onTick)
-    EventHooks.install("client.chat_message", Events.OnAddMessage, onMessage)
+    chatHook = EventHooks.install("client.chat_message", Events.OnAddMessage, onMessage) == true
 end
 
+log("CLIENT_READY chat_hook=" .. tostring(chatHook) .. " visual_guid=" .. VISUAL_GUID)
 requestState()
 return Client

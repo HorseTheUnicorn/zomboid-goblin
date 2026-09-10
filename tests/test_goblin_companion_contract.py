@@ -45,6 +45,19 @@ class GoblinCompanionContractTests(unittest.TestCase):
             "Goblin_PZ_MysteryRig/Material_1_basecolor",
         )
 
+    def test_client_applies_registered_goblin_visual_without_outfit_cycling(self) -> None:
+        client = (CLIENT / "GoblinClient.lua").read_text(encoding="utf-8")
+        self.assertIn("dressInClothingItem", client)
+        self.assertIn("6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1", client)
+        self.assertIn('call(zombie, "setDressInRandomOutfit", false)', client)
+        self.assertIn('call(zombie, "clearWornItems")', client)
+        self.assertIn('call(visuals, "clear")', client)
+        self.assertIn("visualPrepared", client)
+        self.assertNotIn("npcOutfitItems", client)
+        # The top-level zombie AnimSet override removed vanilla states such as
+        # turning180 in the live B42 test.  Never restore that global override.
+        self.assertFalse((MOD / "common" / "media" / "AnimSets" / "zombie.xml").exists())
+
     def test_body_and_client_do_not_force_animation_frames_or_idle_states(self) -> None:
         body = (SERVER / "GoblinBody.lua").read_text(encoding="utf-8")
         client = (CLIENT / "GoblinClient.lua").read_text(encoding="utf-8")
@@ -90,6 +103,22 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("getTimestampMs", event_log)
         self.assertIn("getRandomUUID", event_log)
         self.assertNotIn("math.random", event_log)
+
+    def test_addressed_chat_has_direct_core_commands_and_qwen_event(self) -> None:
+        chat = (SERVER / "ChatBridge.lua").read_text(encoding="utf-8")
+        self.assertIn("directIntent", chat)
+        self.assertIn('contains(lower, "follow me")', chat)
+        self.assertIn("Constants.TASK.LOOT", chat)
+        self.assertIn("Constants.TASK.RETURN_TO_BASE", chat)
+        self.assertIn("Spawner.setBaseForPlayer", chat)
+        self.assertIn("Spawner.ensureForPlayer", chat)
+        self.assertIn("Spawner.setTask", chat)
+        self.assertIn('EventLog.emit("chat"', chat)
+        self.assertIn("getTimestampMs", chat)
+        self.assertNotIn("os.time", chat)
+        client = (CLIENT / "GoblinClient.lua").read_text(encoding="utf-8")
+        self.assertIn("CHAT_RELAY", client)
+        self.assertIn("CLIENT_READY", client)
 
     def test_qwen_knows_interaction_rules_and_lenin_persona(self) -> None:
         qwen = (ROOT / "goblin_zomboid" / "qwen.py").read_text(encoding="utf-8")

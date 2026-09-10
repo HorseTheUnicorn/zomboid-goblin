@@ -1,12 +1,13 @@
--- Minimal managed IsoZombie body used by every player's Goblin companion.
+-- Managed IsoZombie body used by every player's Goblin companion.
 --
--- The important rule here is that we do not replace Project Zomboid's native
--- moving-object lifecycle.  A normal IsoZombie is marked as a Goblin and this
--- module only keeps the small set of friendly/human-like invariants asserted.
+-- Project Zomboid still owns the moving-object lifecycle.  We mark a normal
+-- IsoZombie, suppress hostile zombie behavior, and apply one skinned full-body
+-- ClothingItem for Goblin.  No random survivor wardrobe is allowed.
 local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
 
 local Body = {}
+local VISUAL_GUID = "6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1"
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -21,7 +22,7 @@ local function nowMs()
         local ok, value = pcall(getTimestampMs)
         if ok and type(value) == "number" then return value end
     end
-    return os.time() * 1000
+    return 0
 end
 
 local function log(message)
@@ -58,73 +59,57 @@ local function ensureInventoryItem(inventory, fullType)
     return nil
 end
 
-local function wear(body, inventory, fullType)
-    local item = ensureInventoryItem(inventory, fullType)
-    if item == nil then return false, tostring(fullType) .. ":not-registered" end
-    local okLocation, location = call(item, "getBodyLocation")
-    if not okLocation or location == nil then
-        return false, tostring(fullType) .. ":no-body-location"
-    end
-    local okWorn, result = call(body, "setWornItem", location, item)
-    if not okWorn or result == false then
-        return false, tostring(fullType) .. ":setWornItem-failed"
-    end
-    return true, nil
+local function clearItemVisuals(body)
+    call(body, "clearWornItems")
+    local okVisuals, visuals = call(body, "getItemVisuals")
+    if okVisuals and visuals ~= nil then call(visuals, "clear") end
 end
 
 local function applyVisual(body, data)
-    local timestamp = nowMs()
     if data.GoblinVisualApplied == true and data.GoblinVisualDirty ~= true then
         return true
     end
-    if timestamp < (tonumber(data.GoblinNextVisualAttemptAt) or 0) then return false end
-    data.GoblinNextVisualAttemptAt = timestamp + 2000
 
-    -- setAsSurvivor is the human visual path on the IsoZombie shell.  The
-    -- supplied Goblin FBX is then worn through a normal ClothingItem, so the
-    -- model replicates through the same system as ordinary clothing.
-    call(body, "setAsSurvivor")
-    call(body, "setFemaleEtc", false)
-    call(body, "setSkeleton", false)
-    call(body, "setCrawler", false)
-    call(body, "setFakeDead", false)
-
-    local okInventory, inventory = call(body, "getInventory")
-    if not okInventory or inventory == nil then
-        data.GoblinVisualError = "inventory unavailable"
+    local timestamp = nowMs()
+    if timestamp > 0 and timestamp < (tonumber(data.GoblinNextVisualAttemptAt) or 0) then
         return false
     end
+    data.GoblinNextVisualAttemptAt = timestamp + 2000
 
-    local okWorn, worn = call(body, "getWornItems")
-    if okWorn and worn ~= nil then call(worn, "clear") end
-
-    local customOk, customError = wear(body, inventory, Config.npcVisualItemType)
-    local errors = {}
-    if not customOk then errors[#errors + 1] = customError end
-    local outfitOk = true
-    for _, fullType in ipairs(Config.npcOutfitItems or {}) do
-        local ok, detail = wear(body, inventory, fullType)
-        if not ok then
-            outfitOk = false
-            errors[#errors + 1] = detail
-        end
+    -- setAsSurvivor is needed for the human visual/model path, but it must be
+    -- done once only.  Repeating it makes Build 42 regenerate survivor looks.
+    if data.GoblinVisualPrepared ~= true then
+        call(body, "setDressInRandomOutfit", false)
+        call(body, "setAsSurvivor")
+        call(body, "setDressInRandomOutfit", false)
+        call(body, "setFemaleEtc", false)
+        call(body, "setSkeleton", false)
+        call(body, "setCrawler", false)
+        call(body, "setFakeDead", false)
+        clearItemVisuals(body)
+        data.GoblinVisualPrepared = true
     end
 
+    -- dressInClothingItem takes the ClothingItem GUID.  This directly drives
+    -- Goblin_MysteryBody.xml -> Goblin_PZ_MysteryRig -> textureChoices.
+    local customOk = call(body, "dressInClothingItem", VISUAL_GUID)
     data.GoblinMeshAsset = Config.npcVisualAsset
     data.GoblinMeshApplied = customOk == true
-    data.GoblinOutfitApplied = outfitOk == true
+    data.GoblinOutfitApplied = customOk == true
     data.GoblinVisualApplied = customOk == true
-    data.GoblinVisualDirty = false
-    data.GoblinVisualError = #errors > 0 and table.concat(errors, ",") or nil
-    call(body, "resetModel")
-    call(body, "resetModelNextFrame")
+    data.GoblinVisualDirty = customOk ~= true
+    data.GoblinVisualError = customOk and nil or "dressInClothingItem failed"
 
     if customOk then
+        call(body, "resetModel")
+        call(body, "resetModelNextFrame")
         log("MESH_APPLY owner=" .. tostring(data.GoblinOwner)
             .. " npc_id=" .. tostring(data.GoblinID)
-            .. " asset=" .. tostring(Config.npcVisualAsset))
+            .. " asset=" .. tostring(Config.npcVisualAsset)
+            .. " method=clothing-guid")
         return true
     end
+
     log("MESH_APPLY_FAILED owner=" .. tostring(data.GoblinOwner)
         .. " detail=" .. tostring(data.GoblinVisualError))
     return false
@@ -192,6 +177,7 @@ function Body.mark(body, generation, owner, npcId)
     local data = Body.data(body)
     if data == nil then return false, "IsoZombie ModData unavailable" end
     if type(owner) ~= "string" or owner == "" then return false, "owner is missing" end
+
     data.GoblinNPC = true
     data.goblin_owned = true
     data.goblin_friendly = true
@@ -206,8 +192,12 @@ function Body.mark(body, generation, owner, npcId)
     data.GoblinCombatState = Constants.COMBAT.NONE
     data.GoblinHumanized = true
     data.GoblinVisualDirty = true
+    data.GoblinVisualPrepared = false
+    data.GoblinVisualApplied = false
     data.GoblinStateSequence = 0
     data.GoblinTaskSequence = 0
+
+    call(body, "setDressInRandomOutfit", false)
     Body.applyInvariants(body)
     return true, "Goblin body marked"
 end
@@ -252,9 +242,6 @@ function Body.applyInvariants(body)
     local data = Body.data(body)
     if data == nil then return false end
 
-    -- These are intentionally the same small class of controls a working
-    -- Bandits-style client update asserts: keep the shell non-hostile, mobile,
-    -- quiet and on a normal walk type while native pathfinding does the work.
     Body.clearNativeTargets(body)
     call(body, "setNoTeeth", true)
     call(body, "setCanWalk", true)
@@ -262,6 +249,7 @@ function Body.applyInvariants(body)
     call(body, "setFakeDead", false)
     call(body, "setSkeleton", false)
     call(body, "setZombiesDontAttack", true)
+    call(body, "setDressInRandomOutfit", false)
     call(body, "setSpeedMod", 1.0)
     call(body, "setTurnAlertedValues", -5, 5)
     call(body, "setVoiceSoundName", "")
