@@ -1,24 +1,16 @@
 -- Client-side presentation and chat relay for every managed Goblin.
---
--- The server owns spawning/tasks. This file keeps the replicated IsoZombie
--- friendly and applies one deterministic custom full-body visual. Build 42's
--- HumanVisual API owns ItemVisual creation, so use it directly instead of
--- assuming IsoZombie convenience dress calls populated the render list.
+-- The custom FBX renderer is intentionally gone. The server dresses each
+-- Goblin in normal vanilla PZ clothing and this client only maintains friendly
+-- zombie invariants, native movement assist and player chat routing.
 local Config = require("GoblinSurvivor/Config")
 local EventHooks = require("GoblinSurvivor/EventHooks")
-
-local VISUAL_GUID = "6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1"
-local VISUAL_OUTFIT = "GoblinCompanion"
 
 local Client = {
     statesById = {},
     statesByOnline = {},
     lastRequestAt = 0,
     lastScanAt = 0,
-    visualReady = setmetatable({}, { __mode = "k" }),
-    visualPrepared = setmetatable({}, { __mode = "k" }),
-    nextVisualAttemptAt = setmetatable({}, { __mode = "k" }),
-    clothingDiagnosticDone = false
+    nextFollowAt = setmetatable({}, { __mode = "k" })
 }
 
 local function call(object, method, ...)
@@ -67,9 +59,7 @@ local function rebuildState(data)
     for _, state in ipairs(companions) do
         if type(state) == "table" and type(state.npc_id) == "string" then
             Client.statesById[state.npc_id] = state
-            if type(state.online_id) == "number" and state.online_id >= 0 then
-                Client.statesByOnline[state.online_id] = state
-            end
+            if type(state.online_id) == "number" and state.online_id >= 0 then Client.statesByOnline[state.online_id] = state end
         end
     end
 end
@@ -91,170 +81,46 @@ local function stateFor(zombie)
     return id ~= nil and Client.statesByOnline[id] or nil
 end
 
-local function clearItemVisuals(zombie)
-    call(zombie, "clearWornItems")
-    local okVisuals, visuals = call(zombie, "getItemVisuals")
-    if okVisuals and visuals ~= nil then call(visuals, "clear") end
+local function position(object)
+    local okX, x = call(object, "getX")
+    local okY, y = call(object, "getY")
+    local okZ, z = call(object, "getZ")
+    if not okX or not okY or not okZ then return nil end
+    return { x = tonumber(x), y = tonumber(y), z = tonumber(z) }
 end
 
-local function readField(object, field)
-    if object == nil then return nil end
-    local ok, value = pcall(function() return object[field] end)
-    return ok and value or nil
+local function dist2(a, b)
+    if a == nil or b == nil or a.x == nil or b.x == nil then return math.huge end
+    return (a.x-b.x)^2 + (a.y-b.y)^2 + (a.z-b.z)^2
 end
 
-local function clothingAssetInfo()
-    -- Do not use rawget(_G, "OutfitManager"). Kahlua can expose Java classes
-    -- through global lookup without storing them as raw Lua table entries.
-    local manager = nil
-    local okManager = pcall(function() manager = OutfitManager.instance end)
-    if not okManager or manager == nil then
-        return nil, "OutfitManager.instance unavailable through Lua bridge"
-    end
-
-    local okItem, clothing = call(manager, "getClothingItem", VISUAL_GUID)
-    if not okItem or clothing == nil then
-        return nil, "GUID not registered"
-    end
-
-    local _, hasModel = call(clothing, "hasModel")
-    local _, maleModel = call(clothing, "getModel", false)
-    local _, femaleModel = call(clothing, "getModel", true)
-    local _, texture = call(clothing, "GetATexture")
-    local guid = readField(clothing, "guid")
-    return clothing,
-        "guid=" .. tostring(guid)
-        .. " has_model=" .. tostring(hasModel)
-        .. " male_model=" .. tostring(maleModel)
-        .. " female_model=" .. tostring(femaleModel)
-        .. " texture=" .. tostring(texture)
-end
-
-local function diagnoseClothingAsset()
-    if Client.clothingDiagnosticDone then return end
-    Client.clothingDiagnosticDone = true
-    local clothing, detail = clothingAssetInfo()
-    if clothing == nil then
-        log("CLIENT_CLOTHING_UNRESOLVED guid=" .. VISUAL_GUID .. " detail=" .. tostring(detail))
-    else
-        log("CLIENT_CLOTHING_RESOLVED " .. tostring(detail))
-    end
-end
-
-local function visualContainsGoblin(zombie)
-    local okVisuals, visuals = call(zombie, "getItemVisuals")
-    if not okVisuals or visuals == nil then return false, "ItemVisuals unavailable" end
-    local okSize, size = call(visuals, "size")
-    size = okSize and tonumber(size) or 0
-
-    for index = 0, size - 1 do
-        local okVisual, visual = call(visuals, "get", index)
-        if okVisual and visual ~= nil then
-            local _, clothing = call(visual, "getClothingItem")
-            local _, clothingName = call(visual, "getClothingItemName")
-            local _, itemType = call(visual, "getItemType")
-            if clothing ~= nil then
-                local guid = readField(clothing, "guid")
-                local _, model = call(clothing, "getModel", false)
-                local _, texture = call(clothing, "GetATexture")
-                if guid == VISUAL_GUID or model == Config.npcVisualAsset then
-                    return true,
-                        "index=" .. tostring(index)
-                        .. " clothing=" .. tostring(clothingName)
-                        .. " item_type=" .. tostring(itemType)
-                        .. " model=" .. tostring(model)
-                        .. " texture=" .. tostring(texture)
-                end
-            end
-            if clothingName == "Goblin_MysteryBody" then
-                return true, "index=" .. tostring(index) .. " clothing=Goblin_MysteryBody"
+local function players()
+    local result = {}
+    if type(getOnlinePlayers) == "function" then
+        local ok, list = pcall(getOnlinePlayers)
+        if ok and list ~= nil then
+            local okSize, size = call(list, "size")
+            size = okSize and tonumber(size) or 0
+            for i = 0, size - 1 do
+                local okPlayer, player = call(list, "get", i)
+                if okPlayer and player ~= nil then result[#result + 1] = player end
             end
         end
     end
-    return false, "Goblin ItemVisual absent count=" .. tostring(size)
+    if #result == 0 and type(getPlayer) == "function" then
+        local ok, player = pcall(getPlayer)
+        if ok and player ~= nil then result[1] = player end
+    end
+    return result
 end
 
-local function getVisualContext(zombie)
-    local okHuman, humanVisual = call(zombie, "getHumanVisual")
-    if not okHuman or humanVisual == nil then
-        return nil, nil, "HumanVisual unavailable"
+local function playerForOwner(owner)
+    local wanted = string.lower(tostring(owner or ""))
+    for _, player in ipairs(players()) do
+        local okName, name = call(player, "getUsername")
+        if okName and type(name) == "string" and string.lower(name) == wanted then return player end
     end
-    local okVisuals, visuals = call(zombie, "getItemVisuals")
-    if not okVisuals or visuals == nil then
-        return nil, nil, "ItemVisuals unavailable"
-    end
-    return humanVisual, visuals, nil
-end
-
-local function applyThroughHumanVisual(zombie)
-    local humanVisual, visuals, contextError = getVisualContext(zombie)
-    if humanVisual == nil or visuals == nil then
-        return false, contextError
-    end
-
-    -- HumanVisual owns the overload that explicitly receives the target
-    -- ItemVisuals collection. This is the authoritative Build 42 path for
-    -- creating the render entry from a clothing GUID.
-    call(visuals, "clear")
-    local okGuid = call(humanVisual, "dressInClothingItem", VISUAL_GUID, visuals, true)
-    local present, detail = visualContainsGoblin(zombie)
-    if present then
-        return true, "humanvisual-guid " .. tostring(detail)
-    end
-
-    -- A named-outfit fallback uses the same HumanVisual + ItemVisuals path,
-    -- not the IsoZombie convenience wrapper that produced zero visuals in the
-    -- live 42.20.4 test.
-    call(visuals, "clear")
-    local okOutfit = call(humanVisual, "dressInNamedOutfit", VISUAL_OUTFIT, visuals, true)
-    present, detail = visualContainsGoblin(zombie)
-    if present then
-        return true, "humanvisual-outfit " .. tostring(detail)
-    end
-
-    return false,
-        "HumanVisual produced no Goblin ItemVisual"
-        .. " guid_call=" .. tostring(okGuid)
-        .. " outfit_call=" .. tostring(okOutfit)
-        .. " detail=" .. tostring(detail)
-end
-
-local function ensureVisual(zombie, state)
-    if Client.visualReady[zombie] == true then return true end
-    local timestamp = nowMs()
-    if timestamp > 0 and timestamp < (Client.nextVisualAttemptAt[zombie] or 0) then return false end
-    Client.nextVisualAttemptAt[zombie] = timestamp + 2000
-
-    diagnoseClothingAsset()
-
-    if Client.visualPrepared[zombie] ~= true then
-        call(zombie, "setDressInRandomOutfit", false)
-        call(zombie, "setAsSurvivor")
-        call(zombie, "setDressInRandomOutfit", false)
-        call(zombie, "setFemaleEtc", false)
-        call(zombie, "setSkeleton", false)
-        call(zombie, "setCrawler", false)
-        clearItemVisuals(zombie)
-        Client.visualPrepared[zombie] = true
-    end
-
-    local present, detail = applyThroughHumanVisual(zombie)
-    call(zombie, "onWornItemsChanged")
-    call(zombie, "resetModel")
-    call(zombie, "resetModelNextFrame")
-
-    if not present then
-        log("CLIENT_VISUAL_FAILED npc_id=" .. tostring(state.npc_id)
-            .. " outfit=" .. VISUAL_OUTFIT
-            .. " detail=" .. tostring(detail))
-        return false
-    end
-
-    Client.visualReady[zombie] = true
-    log("CLIENT_VISUAL_CONFIRMED npc_id=" .. tostring(state.npc_id)
-        .. " asset=" .. tostring(Config.npcVisualAsset)
-        .. " detail=" .. tostring(detail))
-    return true
+    return nil
 end
 
 local function clearZombieAI(zombie)
@@ -276,10 +142,26 @@ local function clearZombieAI(zombie)
     call(zombie, "setBiteSoundName", "")
 end
 
+local function followAssist(zombie, state)
+    if state.task ~= "FOLLOW" then return end
+    local owner = playerForOwner(state.owner)
+    if owner == nil then return end
+    local gap2 = dist2(position(zombie), position(owner))
+    local preferred = tonumber(Config.followPreferredDistance) or 3
+    if gap2 <= preferred * preferred then return end
+    local timestamp = nowMs()
+    if timestamp < (Client.nextFollowAt[zombie] or 0) then return end
+    Client.nextFollowAt[zombie] = timestamp + 1000
+    local ok = select(1, call(zombie, "pathToCharacter", owner))
+    if not ok then
+        local target = position(owner)
+        if target ~= nil then call(zombie, "pathToLocationF", target.x, target.y, target.z) end
+    end
+end
+
 local function apply(zombie)
     local state = stateFor(zombie)
     if state == nil or state.body_present == false then return false end
-
     clearZombieAI(zombie)
     local moveType = state.move_type or "IDLE"
     local physical = state.physical_state or "IDLE"
@@ -301,13 +183,12 @@ local function apply(zombie)
     call(zombie, "setVariable", "ZombieHitReaction", "Chainsaw")
     call(zombie, "setVariable", "bMoving", moving)
     call(zombie, "setVariable", "isAttacking", attacking)
-    call(zombie, "setVariable", "isMelee", attacking)
+    call(zombie, "setVariable", "isMelee", false)
     call(zombie, "setRunning", running)
     call(zombie, "setSprinting", false)
     call(zombie, "setWalkType", running and "sprint" or "Walk")
     call(zombie, "setSpeedTypeFromWalkType")
-
-    ensureVisual(zombie, state)
+    followAssist(zombie, state)
     return true
 end
 
@@ -319,8 +200,8 @@ local function scanZombies()
     if not okList or list == nil then return end
     local okSize, size = call(list, "size")
     size = okSize and tonumber(size) or 0
-    for index = 0, size - 1 do
-        local okZombie, zombie = call(list, "get", index)
+    for i = 0, size - 1 do
+        local okZombie, zombie = call(list, "get", i)
         if okZombie and zombie ~= nil then apply(zombie) end
     end
 end
@@ -341,8 +222,7 @@ end
 
 local function send(command, args)
     if type(sendClientCommand) ~= "function" then return false end
-    local ok = pcall(sendClientCommand, "GoblinSurvivor", command, args or {})
-    return ok
+    return pcall(sendClientCommand, "GoblinSurvivor", command, args or {})
 end
 
 local function cleanText(value)
@@ -358,9 +238,7 @@ local function onMessage(message, tabId)
     if not okAuthor or not okText then return end
     local localName = localUsername()
     text = cleanText(text)
-    if localName == nil or text == nil
-        or string.lower(tostring(author)) ~= string.lower(localName) then return end
-
+    if localName == nil or text == nil or string.lower(tostring(author)) ~= string.lower(localName) then return end
     local lower = string.lower(text)
     local command = string.match(lower, "^%s*[/!]goblin%s*(.*)$")
     if command ~= nil then
@@ -369,10 +247,7 @@ local function onMessage(message, tabId)
         return
     end
     if string.find(lower, "goblin", 1, true) ~= nil then
-        local sent = send("chat", {
-            text = text,
-            tab_id = type(tabId) == "number" and tabId or 0
-        })
+        local sent = send("chat", { text = text, tab_id = type(tabId) == "number" and tabId or 0 })
         log("CHAT_RELAY kind=natural speaker=" .. tostring(localName) .. " sent=" .. tostring(sent))
     end
 end
@@ -397,8 +272,6 @@ if Events ~= nil then
 end
 
 log("CLIENT_READY chat_hook=" .. tostring(chatHook)
-    .. " visual_outfit=" .. VISUAL_OUTFIT
-    .. " visual_guid=" .. VISUAL_GUID
-    .. " visual_method=humanvisual")
+    .. " visual=vanilla-wardrobe custom_model=false movement=native")
 requestState()
 return Client
