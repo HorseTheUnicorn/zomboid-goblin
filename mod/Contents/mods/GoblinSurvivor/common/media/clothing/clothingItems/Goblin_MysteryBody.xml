@@ -1,19 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <clothingItem>
+	<m_MaleModel>Skinned/Goblin/Goblin</m_MaleModel>
+	<m_FemaleModel>Skinned/Goblin/Goblin</m_FemaleModel>
 	<m_GUID>6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1</m_GUID>
-	<!-- Skinned full-character model. Model paths are relative to media/models_X
-	     and intentionally omit the .fbx extension. -->
-	<m_MaleModel>Goblin_PZ_MysteryRig</m_MaleModel>
-	<m_FemaleModel>Goblin_PZ_MysteryRig</m_FemaleModel>
 	<m_Static>false</m_Static>
 	<m_AllowRandomHue>false</m_AllowRandomHue>
 	<m_AllowRandomTint>false</m_AllowRandomTint>
 	<m_AttachBone></m_AttachBone>
+	<m_Shader>basicEffect</m_Shader>
 
-	<!-- Goblin_PZ_MysteryRig is a complete body, not a shirt layered over Bob.
-	     Hide every vanilla body-mask region underneath it so no human limbs or
-	     torso can poke through the custom mesh. Values 0-15 are PZ's body-mask
-	     region range. -->
+	<!-- Goblin is one complete skinned body. Hide the vanilla body beneath it. -->
 	<m_Masks>0</m_Masks>
 	<m_Masks>1</m_Masks>
 	<m_Masks>2</m_Masks>
@@ -34,6 +30,5 @@
 	<m_UnderlayMasksFolder>media/textures/Body/UnderlayMasks</m_UnderlayMasksFolder>
 	<m_HatCategory>nohairnobeard</m_HatCategory>
 
-	<!-- Texture path is relative to media/textures and omits .png. -->
-	<textureChoices>Goblin_PZ_MysteryRig/Material_1_basecolor</textureChoices>
+	<textureChoices>Goblin/Goblin</textureChoices>
 </clothingItem>
