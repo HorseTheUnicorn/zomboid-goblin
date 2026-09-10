@@ -1,9 +1,8 @@
-"""Server-side Goblin NPC orchestration.
+"""Qwen orchestration for one friendly Goblin companion per connected player.
 
-The service owns decisions and durable memory. The dedicated PZ server owns
-the NPC, exact world resolution, movement, and persistence of the native
-IsoZombie body through GoblinSurvivor's controller. No client or Steam
-lifecycle is part of this runtime.
+The Project Zomboid server owns bodies and deterministic gameplay.  This
+process only turns addressed player chat into a short in-character reply and a
+validated semantic action for that same player's Goblin.
 """
 
 from __future__ import annotations
@@ -16,24 +15,19 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .agent import AgentRuntime, AgentStatus
+from .agent import AgentRuntime
 from .config import AgentConfig
-from .controllers import BodyState, SafetyController
-from .entities import BaseManager, EntityRegistry, JobManager, SquadManager
+from .controllers import Action, BodyState, SafeAction, SafetyController
 from .events import EventGate
-from .hunt import HuntManager
 from .ipc import EventConsumer, RequestLedger, ResponseConsumer
 from .memory import MemoryStore
-from .modes import Mode, ModeController
-from .npc import NPC_ID, NpcBodyDriver
-from .npc import PRIVILEGED_ACTIONS
-from .party import PartyManager
+from .npc import NPC_ID, NpcBodyDriver, npc_id_for_owner
 from .protocol import Message
 from .qwen import QwenClient, QwenError
 from .social import ChatterGovernor
 from .state import brain_view, public_view
 from .tracker import TrackerStore
-from .validator import IntentError, IntentValidator
+from .validator import IntentError
 
 
 @dataclass(frozen=True)
@@ -44,28 +38,7 @@ class ServiceResult:
 
 
 class GoblinService:
-    """Coordinates Qwen proposals while preserving deterministic server gates."""
-
-    _PLAN_EVENTS = frozenset(
-        {
-            "player_joined",
-            "player_left",
-            "goblin_spotted",
-            "threat_changed",
-            "injury",
-            "loot_found",
-            "hunt_started",
-            "hunt_clue",
-            "death",
-            "respawn",
-            "npc_ready",
-            "npc_spawned",
-            "npc_recovered",
-            "squad_changed",
-            "base_job_changed",
-            "base_changed",
-        }
-    )
+    """Route a player's words to that player's server-owned Goblin."""
 
     def __init__(
         self,
@@ -82,19 +55,9 @@ class GoblinService:
         self.memory = MemoryStore(memory_path)
         self.qwen = qwen
         self.safety = SafetyController()
-        self.hunt = HuntManager(self.memory)
-        self.party = PartyManager()
         self.chatter = ChatterGovernor(self.memory)
         memory_file = Path(memory_path)
         self.tracker = TrackerStore(memory_file.with_suffix(".tracker.sqlite3"))
-        self.entity_registry = EntityRegistry(npc_ids=(NPC_ID,))
-        self.squads = SquadManager(
-            self.entity_registry,
-            minimum_base_guards=config.minimum_base_guards,
-        )
-        self.base_manager = BaseManager()
-        self.jobs = JobManager(self.entity_registry)
-        self.npc_driver = NpcBodyDriver(self.store, npc_id=NPC_ID)
         self.event_gate = EventGate()
         self.event_consumer = EventConsumer(
             self.store,
@@ -106,24 +69,17 @@ class GoblinService:
             RequestLedger(memory_file.with_suffix(".responses.json"), max_entries=4096),
             max_age_ms=max(30_000, int(config.pz_timeout_seconds * 1000)),
         )
-        self.mode_controller = ModeController(now=int(self.clock()))
+        self.npc_driver = NpcBodyDriver(self.store, npc_id=NPC_ID)
         self.paused = config.start_paused
+        self.pending_chats: list[dict[str, object]] = []
         self.last_events: list[dict[str, object]] = []
         self.last_response: dict[str, object] | None = None
-        self.event_overlay: dict[str, object] = {}
+        self.last_state: dict[str, object] = {}
         self.current_body: BodyState | None = None
+        self.current_owner: str | None = None
+        self.last_action: dict[str, object] | None = None
         self.last_status = "starting"
         self.last_detail = ""
-        self.last_action: dict[str, object] | None = None
-        self.last_state: dict[str, object] = {}
-        self._plan_pending = True
-        self._plan_reason: str | None = "startup"
-        self._plan_event: dict[str, object] | None = None
-        self._last_plan_at: float | None = None
-        self._plan_cooldown_until = 0.0
-        self._last_planning_signature: tuple[Any, ...] | None = None
-        self._plan_authority_token: str | None = None
-        self._plan_authorized = False
 
     def close(self) -> None:
         self.tracker.close()
@@ -133,301 +89,31 @@ class GoblinService:
         now_ms = int(self.clock() * 1000)
         for response in self.response_consumer.poll(limit=32, now=now_ms):
             fields = response.message.fields
-            status = fields.get("status")
-            detail = fields.get("detail", "")
             self.last_response = {
                 "request_id": response.message.request_id,
-                "status": status,
-                "detail": detail,
+                "status": fields.get("status"),
+                "detail": fields.get("detail", ""),
                 "timestamp_ms": response.message.timestamp_ms,
             }
-            if isinstance(status, str) and isinstance(detail, str):
-                try:
-                    self.memory.record_memory(
-                        "command_response", detail or status,
-                        subject=response.message.request_id,
-                        metadata={"status": status},
-                        created_at=response.message.timestamp_ms // 1000,
-                    )
-                except ValueError:
-                    pass
             try:
                 self.response_consumer.finalize(response, detail="response consumed")
             except OSError:
                 pass
 
-    def _register_player(self, player: object) -> None:
-        if isinstance(player, str) and player:
-            try:
-                self.entity_registry.register_player(player)
-            except ValueError:
-                pass
-        elif isinstance(player, Mapping):
-            value = player.get("id", player.get("player"))
-            self._register_player(value)
-
-    def _register_npc(self, npc: object) -> None:
-        if not isinstance(npc, Mapping):
-            return
-        npc_id = npc.get("npc_id", npc.get("id"))
-        if not isinstance(npc_id, str) or not npc_id:
-            return
-        try:
-            if not self.entity_registry.known_npc(npc_id):
-                self.entity_registry.register_npc(npc_id)
-            entity = self.entity_registry.npcs[npc_id]
-            name = npc.get("name")
-            role = npc.get("role", npc.get("job"))
-            if isinstance(name, str) and name:
-                entity.name = name[:32]
-            if isinstance(role, str) and role:
-                entity.role = role.casefold()[:32]
-            if isinstance(npc.get("alive"), bool):
-                entity.alive = npc["alive"]
-            if isinstance(npc.get("active"), bool):
-                entity.active = npc["active"]
-            if isinstance(npc.get("incapacitated"), bool):
-                entity.incapacitated = npc["incapacitated"]
-            if isinstance(npc.get("critical_worker"), bool):
-                entity.critical_worker = npc["critical_worker"]
-        except (KeyError, ValueError):
-            return
-
-    def _sync_npcs(self, fields: Mapping[str, object]) -> None:
-        npcs = fields.get("npcs", fields.get("managed_npcs", []))
-        if isinstance(npcs, list):
-            for npc in npcs:
-                self._register_npc(npc)
-
     @staticmethod
     def _chat_is_addressed(fields: Mapping[str, object]) -> bool:
         text = fields.get("text")
         return isinstance(text, str) and (
-            "goblin" in text.casefold() or text.startswith("!goblin")
+            "goblin" in text.casefold() or text.lstrip().casefold().startswith("!goblin")
         )
-
-    def _request_plan(
-        self, reason: str, fields: Mapping[str, object] | None = None
-    ) -> None:
-        self._plan_pending = True
-        self._plan_reason = reason[:96]
-        self._plan_authority_token = None
-        self._plan_authorized = False
-        if fields is None:
-            self._plan_event = None
-            return
-        event = {"type": reason}
-        for key, value in fields.items():
-            if key == "authority_token":
-                if isinstance(value, str) and value:
-                    self._plan_authority_token = value
-                continue
-            event[key] = value
-        self._plan_authorized = fields.get("authorized") is True
-        # EventGate has already removed exact coordinates, and this second
-        # redaction keeps the invariant local to the model-boundary code.
-        self._plan_event = brain_view(event)
-
-    @staticmethod
-    def _planning_signature(
-        body: BodyState, fields: Mapping[str, object]
-    ) -> tuple[Any, ...]:
-        def band(value: float) -> str:
-            if value >= 0.8:
-                return "high"
-            if value >= 0.4:
-                return "medium"
-            return "low"
-
-        labels: list[str] = []
-        players = fields.get("nearby_players", fields.get("players", []))
-        if isinstance(players, (list, tuple)):
-            for player in players:
-                if isinstance(player, str):
-                    label = player
-                elif isinstance(player, Mapping):
-                    value = player.get(
-                        "name", player.get("id", player.get("player"))
-                    )
-                    label = value if isinstance(value, str) else ""
-                else:
-                    label = ""
-                if label:
-                    labels.append(label[:96].casefold())
-        return (
-            body.alive,
-            body.body_present,
-            body.body_mode,
-            body.control_ready,
-            body.npc_engine_ready,
-            body.mode,
-            body.threat_level,
-            band(body.injury),
-            band(body.panic),
-            band(body.hunger),
-            band(body.thirst),
-            body.weapon_ready,
-            body.has_food,
-            body.has_water,
-            body.has_medical,
-            tuple(sorted(set(labels))),
-        )
-
-    def _planning_due(self, now: float) -> bool:
-        if now < self._plan_cooldown_until:
-            return False
-        return (
-            self._plan_pending
-            or self._last_plan_at is None
-            or now - self._last_plan_at >= self.config.planning_interval_seconds
-        )
-
-    def _finish_planning(self, now: float, *, retry: bool) -> None:
-        self._last_plan_at = now
-        if retry:
-            self._plan_pending = True
-            self._plan_cooldown_until = now + max(
-                self.config.planning_interval_seconds, 30.0
-            )
-            return
-        self._plan_pending = False
-        self._plan_reason = None
-        self._plan_event = None
-        self._plan_authority_token = None
-        self._plan_authorized = False
-        self._plan_cooldown_until = now
-
-    def _planning_context(self) -> dict[str, object]:
-        context = dict(self.last_state)
-        if self._plan_reason is not None:
-            context["planning_reason"] = self._plan_reason
-        if self._plan_event is not None:
-            context["event"] = dict(self._plan_event)
-        return brain_view(context)
-
-    def _apply_event(self, kind: str, fields: Mapping[str, object], timestamp_ms: int) -> None:
-        created_at = timestamp_ms // 1000
-        subject_value = fields.get("player") or fields.get("speaker")
-        subject = subject_value if isinstance(subject_value, str) else ""
-        if subject:
-            self._register_player(subject)
-        content = kind.replace("_", " ")
-        if subject:
-            content = f"{content}: {subject}"
-        # Authority tokens are one-shot private bridge capabilities.  Keep
-        # them out of memory, tracker history, admin snapshots, and the
-        # event list; _request_plan retains one only long enough to echo it
-        # to the server-side command validator.
-        safe_fields = {
-            key: value for key, value in fields.items()
-            if key != "authority_token"
-        }
-        text = safe_fields.get("text")
-        if isinstance(text, str):
-            content = f"{content} — {text}"
-        try:
-            self.memory.record_memory(
-                f"event.{kind}", content[:4000], subject=subject,
-                metadata=dict(safe_fields), created_at=created_at,
-            )
-        except ValueError:
-            pass
-
-        if subject and kind in {"player_joined", "player_left", "goblin_spotted", "chat"}:
-            relationship = self.memory.relationship(subject) or {
-                "trust": 0.5, "fear": 0.0, "affinity": 0.0, "tags": [],
-            }
-            trust = float(relationship.get("trust", 0.5))
-            fear = float(relationship.get("fear", 0.0))
-            affinity = float(relationship.get("affinity", 0.0))
-            if kind == "player_joined":
-                affinity += 0.03
-                trust += 0.01
-            elif kind == "player_left":
-                affinity -= 0.01
-            elif kind == "goblin_spotted":
-                fear += 0.01
-            else:
-                affinity += 0.01
-            try:
-                self.memory.upsert_relationship(
-                    subject, trust=trust, fear=fear, affinity=affinity,
-                    tags=list(relationship.get("tags", [])), last_seen=created_at,
-                )
-            except (TypeError, ValueError):
-                pass
-
-        if kind == "threat_changed" and isinstance(fields.get("threat_level"), str):
-            self.event_overlay["threat_level"] = fields["threat_level"]
-        elif kind == "injury":
-            severity = fields.get("severity")
-            self.event_overlay["injury"] = {
-                "critical": 1.0, "moderate": 0.6, "minor": 0.25,
-            }.get(severity, self.event_overlay.get("injury", 0.0))
-        elif kind == "death":
-            self.mode_controller.transition(Mode.SAFE, emergency=True, now=created_at)
-            self.event_overlay["alive"] = False
-        elif kind in {"npc_ready", "npc_spawned", "npc_recovered"}:
-            self.event_overlay["alive"] = True
-
-        self.last_events.append({"kind": kind, "timestamp_ms": timestamp_ms, "fields": dict(safe_fields)})
-        self.last_events = self.last_events[-32:]
-        if kind in self._PLAN_EVENTS or (
-            kind == "chat" and self._chat_is_addressed(fields)
-        ):
-            self._request_plan(kind, fields)
-        try:
-            self.tracker.record_event(kind, safe_fields, observed_at=created_at)
-        except (OSError, TypeError, ValueError):
-            pass
-
-    def _reply_to_chat(self, fields: Mapping[str, object], *, event_request_id: str) -> None:
-        if self.paused or self.current_body is None or not self.current_body.body_ready:
-            return
-        text = fields.get("text")
-        speaker = fields.get("speaker")
-        if not isinstance(text, str) or not isinstance(speaker, str):
-            return
-        if "goblin" not in text.casefold() and not text.startswith("!goblin"):
-            return
-        propose_speech = getattr(self.qwen, "propose_speech", None)
-        if not callable(propose_speech):
-            return
-        context = {
-            "event": {"speaker": speaker, "text": text},
-            "mode": self.current_body.mode,
-            "threat_level": self.current_body.threat_level,
-            "recent_memories": self.memory.recent_memories(8),
-        }
-        try:
-            speech = propose_speech(context)
-            intent = IntentValidator().validate({
-                "intent": "SAY", "mode": self.current_body.mode,
-                "text": speech, "priority": 2,
-            })
-        except (IntentError, QwenError, TypeError, ValueError):
-            return
-        decision = self.safety.decide(intent, self.current_body)
-        if not decision.accepted or decision.action is None:
-            return
-        chatter = self.chatter.record(
-            f"reply:{event_request_id}", "game", speech,
-            now=int(self.clock()), priority=2,
-        )
-        if not chatter.allowed:
-            return
-        result = self.npc_driver.execute(decision.action)
-        if result.accepted:
-            self.last_action = decision.action.as_dict()
-            self.last_status = "npc_speech_published"
-            self.last_detail = "addressed chat reply sent to the server-side NPC"
 
     def _poll_events(self) -> None:
         now_ms = int(self.clock() * 1000)
         for event in self.event_consumer.poll(limit=32, now=now_ms):
-            suffix = event.message.type.removeprefix("event.")
+            kind = event.message.type.removeprefix("event.")
             decision = self.event_gate.make(
-                suffix, event.message.fields,
+                kind,
+                event.message.fields,
                 now=event.message.timestamp_ms // 1000,
                 request_id=event.message.request_id,
             )
@@ -437,11 +123,42 @@ class GoblinService:
                 except OSError:
                     pass
                 continue
-            self._apply_event(suffix, decision.message.fields, event.message.timestamp_ms)
-            if suffix == "chat":
-                self._reply_to_chat(
-                    decision.message.fields, event_request_id=event.message.request_id
-                )
+
+            fields = dict(decision.message.fields)
+            safe_fields = {key: value for key, value in fields.items() if key != "authority_token"}
+            self.last_events.append({
+                "kind": kind,
+                "timestamp_ms": event.message.timestamp_ms,
+                "fields": safe_fields,
+            })
+            self.last_events = self.last_events[-32:]
+            try:
+                self.tracker.record_event(kind, safe_fields, observed_at=event.message.timestamp_ms // 1000)
+            except (OSError, TypeError, ValueError):
+                pass
+
+            if kind == "chat" and self._chat_is_addressed(fields):
+                queued = dict(fields)
+                queued["event_request_id"] = event.message.request_id
+                self.pending_chats.append(queued)
+                self.pending_chats = self.pending_chats[-32:]
+
+            speaker = fields.get("speaker", fields.get("player"))
+            text = safe_fields.get("text")
+            if isinstance(speaker, str) or isinstance(text, str):
+                content = f"{kind}: {speaker or ''}"
+                if isinstance(text, str):
+                    content += f" — {text}"
+                try:
+                    self.memory.record_memory(
+                        f"event.{kind}", content[:4000],
+                        subject=speaker if isinstance(speaker, str) else "",
+                        metadata=safe_fields,
+                        created_at=event.message.timestamp_ms // 1000,
+                    )
+                except (TypeError, ValueError):
+                    pass
+
             try:
                 self.event_consumer.finalize(event, detail="event consumed")
             except OSError:
@@ -481,10 +198,12 @@ class GoblinService:
         threat = fields.get("threat_level", "none")
         mode = fields.get("mode", "SAFE")
         return BodyState(
-            alive=bool(fields.get("alive", fields.get("npc_alive", True))),
-            body_present=bool(fields.get("body_present", fields.get("npc_alive", False))),
-            hunger=cls._number(fields, "hunger"), thirst=cls._number(fields, "thirst"),
-            fatigue=cls._number(fields, "fatigue"), panic=cls._number(fields, "panic"),
+            alive=bool(fields.get("alive", True)),
+            body_present=bool(fields.get("body_present", False)),
+            hunger=cls._number(fields, "hunger"),
+            thirst=cls._number(fields, "thirst"),
+            fatigue=cls._number(fields, "fatigue"),
+            panic=cls._number(fields, "panic"),
             injury=cls._number(fields, "injury"),
             threat_level=threat if threat in {"none", "near", "overwhelming"} else "none",
             weapon_ready=bool(fields.get("weapon_ready", False)),
@@ -494,59 +213,141 @@ class GoblinService:
             mode=mode if mode in {"SAFE", "ROAM", "PARTY", "HUNT"} else "SAFE",
             control_ready=bool(fields.get("control_ready", False)),
             npc_engine_ready=bool(fields.get("npc_engine_ready", False)),
-            npc_id=(fields.get("npc_id") if isinstance(fields.get("npc_id"), str) else NPC_ID),
-            body_mode=(fields.get("body_mode") if fields.get("body_mode") in {"disabled", "sensor_only", "npc"} else "sensor_only"),
+            npc_id=fields.get("npc_id") if isinstance(fields.get("npc_id"), str) else NPC_ID,
+            body_mode=fields.get("body_mode") if fields.get("body_mode") in {"disabled", "sensor_only", "npc"} else "sensor_only",
         )
 
-    def _sync_players(self, fields: Mapping[str, object]) -> None:
-        players = fields.get("nearby_players", fields.get("players", []))
-        if isinstance(players, list):
-            for player in players:
-                self._register_player(player)
+    @staticmethod
+    def _companions(fields: Mapping[str, object]) -> list[Mapping[str, object]]:
+        raw = fields.get("companions", [])
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, Mapping)]
 
-    def _validate_references(self, intent: Any) -> str | None:
-        data = intent.data
-        npc_id = data.get("npc_id", NPC_ID)
-        if npc_id != NPC_ID:
-            return "unknown NPC id"
-        if intent.intent in PRIVILEGED_ACTIONS and not self._plan_authorized:
-            return "privileged action requires an authorized in-game commander request"
-        target = data.get("target")
-        if isinstance(target, Mapping) and target.get("kind") == "player":
-            player = target.get("player", target.get("name", target.get("label")))
-            if isinstance(player, str) and not self.entity_registry.known_player(player):
-                return "player is not in the server-reported allowlist"
-        if intent.intent == "ASSIGN_JOB":
-            try:
-                self.jobs.assign(NPC_ID, str(data.get("job", "")))
-            except ValueError as exc:
-                return str(exc)
-        if intent.intent == "FORM_SQUAD":
-            try:
-                members = data.get("requested_members", data.get("members", []))
-                squad = self.squads.form(
-                    data.get("squad_id", "squad.primary"),
-                    leader=str(data["leader"]), requested=members,
-                    formation=data.get("formation", "loose"),
-                    mission=str(data.get("mission", "general expedition")),
-                    created_at=int(self.clock()),
-                )
-                # Resolve high-level requests to actual server-reported NPC
-                # ids before the typed command reaches Lua.  Qwen may ask for
-                # a count; it never needs to know server entity references.
-                data["members"] = list(squad.members)
-            except (KeyError, TypeError, ValueError) as exc:
-                return str(exc)
-        return None
+    @classmethod
+    def _companion_for_owner(
+        cls, fields: Mapping[str, object], owner: str | None
+    ) -> Mapping[str, object] | None:
+        companions = cls._companions(fields)
+        if isinstance(owner, str):
+            wanted = owner.casefold()
+            for companion in companions:
+                value = companion.get("owner")
+                if isinstance(value, str) and value.casefold() == wanted:
+                    return companion
+        for companion in companions:
+            if companion.get("body_present") is True:
+                return companion
+        return companions[0] if companions else None
 
-    def _run_npc_once(self, state_message: Message) -> ServiceResult:
+    def _configure_driver(self, companion: Mapping[str, object]) -> BodyState:
+        body = self._body_state(companion)
+        self.current_body = body
+        owner = companion.get("owner")
+        self.current_owner = owner if isinstance(owner, str) else None
+        self.npc_driver.npc_id = body.npc_id
+        self.npc_driver.update_contract(
+            control_ready=body.control_ready,
+            npc_engine_ready=body.npc_engine_ready,
+        )
+        return body
+
+    def _publish_reply(
+        self,
+        chat: Mapping[str, object],
+        companion: Mapping[str, object],
+    ) -> str | None:
+        if self.qwen is None:
+            return None
+        speaker = chat.get("speaker")
+        text = chat.get("text")
+        if not isinstance(speaker, str) or not isinstance(text, str):
+            return None
+        body = self._configure_driver(companion)
+        if not body.body_ready:
+            return None
+        context = {
+            "event": {"speaker": speaker, "text": text},
+            "controlled_npc_id": body.npc_id,
+            "controlled_owner": speaker,
+            "companion": brain_view(companion),
+            "recent_memories": self.memory.recent_memories(8),
+        }
+        try:
+            speech = self.qwen.propose_speech(context)
+        except (QwenError, TypeError, ValueError):
+            return None
+        event_key = f"reply:{chat.get('event_request_id', 'chat')}"
+        decision = self.chatter.record(
+            event_key, "game", speech, now=int(self.clock()), priority=3
+        )
+        if not decision.allowed:
+            return None
+        action = SafeAction(
+            Action.SAY, 3, "addressed player reply", text=speech, npc_id=body.npc_id
+        )
+        result = self.npc_driver.execute(action, owner=speaker)
+        return speech if result.accepted else None
+
+    def _handle_chat(
+        self,
+        chat: Mapping[str, object],
+        companion: Mapping[str, object],
+    ) -> ServiceResult:
+        speaker = chat.get("speaker")
+        text = chat.get("text")
+        if not isinstance(speaker, str) or not isinstance(text, str):
+            return ServiceResult("chat_ignored", "chat event was malformed")
+        body = self._configure_driver(companion)
+        if not body.body_ready:
+            return ServiceResult("sensor_only", f"{speaker}'s Goblin body is not ready")
+
+        speech = self._publish_reply(chat, companion)
+        if self.qwen is None:
+            detail = "Qwen is unavailable; deterministic slash commands still work"
+            return ServiceResult("no_qwen", detail)
+
+        context = brain_view(dict(companion))
+        context.update({
+            "controlled_npc_id": body.npc_id,
+            "controlled_owner": speaker,
+            "event": {"type": "chat", "speaker": speaker, "text": text},
+        })
+        try:
+            intent = self.qwen.propose_intent(context)
+        except QwenError as exc:
+            return ServiceResult("qwen_failed", f"speech={bool(speech)}; intent failed: {exc}")
+
+        decision = self.safety.decide(intent, body)
+        if not decision.accepted or decision.action is None:
+            return ServiceResult("controller_rejected", decision.reason)
+        if decision.action.action is Action.SAY:
+            return ServiceResult(
+                "npc_spoke" if speech else "npc_steady",
+                "addressed conversation handled without a gameplay action",
+            )
+
+        authority_token = chat.get("authority_token")
+        result = self.npc_driver.execute(
+            decision.action,
+            authority_token=authority_token if isinstance(authority_token, str) else None,
+            owner=speaker,
+        )
+        self.last_action = decision.action.as_dict()
+        if not result.accepted:
+            return ServiceResult(result.status, result.detail)
+        return ServiceResult(
+            "npc_command_published",
+            f"{speaker}'s {body.npc_id} received {decision.action.action.value}",
+            result.detail,
+        )
+
+    def _record_state(self, state_message: Message) -> None:
         self.last_state = brain_view(state_message.fields)
-        self._sync_players(state_message.fields)
-        self._sync_npcs(state_message.fields)
         tracker_state = dict(state_message.fields)
-        exact_message = self._read_exact_state()
-        if exact_message is not None and exact_message.type == "runtime.exact_state":
-            entities = exact_message.fields.get("entities")
+        exact = self._read_exact_state()
+        if exact is not None and exact.type == "runtime.exact_state":
+            entities = exact.fields.get("entities")
             if isinstance(entities, list):
                 tracker_state["entities"] = entities
         try:
@@ -555,113 +356,9 @@ class GoblinService:
             )
         except (OSError, TypeError, ValueError):
             pass
-        body = self._body_state(state_message.fields)
-        self.current_body = body
-        self.last_state.update(self.event_overlay)
-        self.last_state.update({
-            "body_mode": body.body_mode,
-            "npc_id": body.npc_id,
-            "control_ready": body.control_ready,
-            "npc_engine_ready": body.npc_engine_ready,
-        })
-        planning_signature = self._planning_signature(body, state_message.fields)
-        if (
-            self._last_planning_signature is not None
-            and planning_signature != self._last_planning_signature
-        ):
-            self._request_plan("state_changed")
-        self._last_planning_signature = planning_signature
-        self.npc_driver.npc_id = body.npc_id
-        self.npc_driver.update_contract(
-            control_ready=body.control_ready,
-            npc_engine_ready=body.npc_engine_ready,
-        )
-        if not body.body_ready:
-            self.last_status = "sensor_only"
-            self.last_detail = "waiting for the persistent server-side NPC contract"
-            return ServiceResult(self.last_status, self.last_detail)
-
-        # Run deterministic reflexes before any model call. An ongoing native
-        # Goblin task continues locally; only an immediate reflex may publish
-        # on an ordinary heartbeat.
-        reflex_result = self._run_deterministic_fallback(
-            body, "deterministic reflex check"
-        )
-        if reflex_result.status != "fallback_safe":
-            return reflex_result
-        if self.qwen is None:
-            return self._run_deterministic_fallback(body, "no Qwen adapter configured")
-        now = float(self.clock())
-        if not self._planning_due(now):
-            self.last_status = "npc_steady"
-            self.last_detail = "native Goblin task continues; no model planning trigger is pending"
-            return ServiceResult(self.last_status, self.last_detail)
-        try:
-            intent = self.qwen.propose_intent(self._planning_context())
-        except QwenError as exc:
-            self._finish_planning(now, retry=True)
-            return self._run_deterministic_fallback(body, f"Qwen unavailable: {exc}")
-        reference_error = self._validate_references(intent)
-        if reference_error is not None:
-            self._finish_planning(now, retry=True)
-            self.last_status = "controller_rejected"
-            self.last_detail = reference_error
-            return ServiceResult(self.last_status, self.last_detail)
-        decision = self.safety.decide(intent, body)
-        if not decision.accepted or decision.action is None:
-            self._finish_planning(now, retry=False)
-            self.last_status = "controller_rejected"
-            self.last_detail = decision.reason
-            self.last_action = None
-            return ServiceResult(self.last_status, self.last_detail)
-        result = self.npc_driver.execute(
-            decision.action, authority_token=self._plan_authority_token
-        )
-        if not result.accepted:
-            self._finish_planning(now, retry=True)
-            self.last_status = result.status
-            self.last_detail = result.detail
-            return ServiceResult(self.last_status, self.last_detail)
-        self.last_action = decision.action.as_dict()
-        self._finish_planning(now, retry=False)
-        self.last_status = "npc_command_published"
-        self.last_detail = "validated action sent to the dedicated server NPC executor"
-        return ServiceResult(self.last_status, self.last_detail, result.detail)
-
-    def _run_deterministic_fallback(
-        self, body: BodyState, reason: str
-    ) -> ServiceResult:
-        """Keep immediate survival behavior alive without a model call.
-
-        The fallback deliberately receives no intent.  ``SafetyController``
-        can therefore emit only its deterministic reflex/combat decision, and
-        the normal typed gate and NPC driver still protect the bridge boundary.
-        A calm body produces no command rather than a guessed high-level plan.
-        """
-        decision = self.safety.decide(None, body)
-        if not decision.accepted:
-            self.last_status = "fallback_rejected"
-            self.last_detail = f"{reason}; deterministic fallback rejected: {decision.reason}"
-            self.last_action = None
-            return ServiceResult(self.last_status, self.last_detail)
-        if decision.action is None:
-            self.last_status = "fallback_safe"
-            self.last_detail = f"{reason}; no immediate reflex was required"
-            self.last_action = None
-            return ServiceResult(self.last_status, self.last_detail)
-        result = self.npc_driver.execute(decision.action)
-        if not result.accepted:
-            self.last_status = "fallback_failed"
-            self.last_detail = f"{reason}; fallback action failed: {result.detail}"
-            self.last_action = decision.action.as_dict()
-            return ServiceResult(self.last_status, self.last_detail)
-        self.last_action = decision.action.as_dict()
-        self.last_status = "fallback_command_published"
-        self.last_detail = f"{reason}; deterministic {decision.action.action.value} sent"
-        return ServiceResult(self.last_status, self.last_detail, result.detail)
 
     def run_once(self) -> ServiceResult:
-        agent_status: AgentStatus = self.agent.run_once()
+        self.agent.run_once()
         if not self.config.enabled:
             self.last_status = "disabled"
             self.last_detail = "master feature flag is false"
@@ -670,18 +367,41 @@ class GoblinService:
         self._poll_events()
         if self.paused:
             self.last_status = "paused"
-            self.last_detail = "service requires an explicit safe-stage resume"
+            self.last_detail = "service requires resume"
             return ServiceResult(self.last_status, self.last_detail)
+
         state_message = self._read_state()
-        if state_message is None:
+        if state_message is None or state_message.type != "runtime.state":
             self.last_status = "waiting_for_pz"
-            self.last_detail = "PZ state heartbeat is missing or stale"
+            self.last_detail = "PZ state heartbeat is missing, stale, or invalid"
             return ServiceResult(self.last_status, self.last_detail)
-        if state_message.type != "runtime.state":
-            self.last_status = "waiting_for_pz"
-            self.last_detail = "PZ state heartbeat has an unexpected type"
-            return ServiceResult(self.last_status, self.last_detail)
-        return self._run_npc_once(state_message)
+        self._record_state(state_message)
+
+        if self.pending_chats:
+            chat = self.pending_chats.pop(0)
+            speaker = chat.get("speaker")
+            companion = self._companion_for_owner(
+                state_message.fields, speaker if isinstance(speaker, str) else None
+            )
+            if companion is None:
+                self.last_status = "waiting_for_goblin"
+                self.last_detail = f"no companion telemetry for {speaker}"
+                return ServiceResult(self.last_status, self.last_detail)
+            result = self._handle_chat(chat, companion)
+            self.last_status, self.last_detail = result.status, result.detail
+            return result
+
+        companion = self._companion_for_owner(state_message.fields, None)
+        if companion is not None:
+            self._configure_driver(companion)
+            self.last_status = "npc_steady"
+            self.last_detail = f"{len(self._companions(state_message.fields))} Goblin companion(s) online"
+        else:
+            self.current_body = None
+            self.current_owner = None
+            self.last_status = "waiting_for_goblin"
+            self.last_detail = "no Goblin companions are online"
+        return ServiceResult(self.last_status, self.last_detail)
 
     def run_forever(self, stop_event: threading.Event | None = None) -> None:
         stop_event = stop_event or threading.Event()
@@ -695,7 +415,7 @@ class GoblinService:
             return {"ok": True, "status": "paused"}
         if action == "resume":
             if not self.config.enabled:
-                return {"ok": False, "status": "disabled", "detail": "GoblinEnabled is false"}
+                return {"ok": False, "status": "disabled", "detail": "GOBLIN_ENABLED is false"}
             self.paused = False
             return {"ok": True, "status": "resumed"}
         if action == "status":
@@ -704,8 +424,10 @@ class GoblinService:
 
     def public_snapshot(self) -> dict[str, object]:
         result = public_view(self.last_state)
-        result.update(self.hunt.public_status())
-        return public_view(result)
+        companions = self.last_state.get("companions")
+        if isinstance(companions, list):
+            result["companions"] = companions
+        return result
 
     def admin_snapshot(self) -> dict[str, object]:
         return {
@@ -718,24 +440,8 @@ class GoblinService:
             "last_action": dict(self.last_action) if self.last_action else None,
             "last_response": dict(self.last_response) if self.last_response else None,
             "last_events": [dict(event) for event in self.last_events],
-            "npc": {
-                "id": NPC_ID,
-                "body_mode": self.current_body.body_mode if self.current_body else "sensor_only",
-                "body_ready": self.current_body.body_ready if self.current_body else False,
-            },
-            "squads": {key: squad.__dict__.copy() for key, squad in self.squads.squads.items()},
-            "jobs": dict(self.jobs.assignments),
-            "base": self.base_manager.base.__dict__.copy(),
-            "mode": {
-                "value": self.mode_controller.state.mode.value,
-                "reason": self.mode_controller.state.reason,
-                "changed_at": self.mode_controller.state.changed_at,
-            },
-            "hunt": self.hunt.admin_status(),
-            "planning": {
-                "pending": self._plan_pending,
-                "reason": self._plan_reason,
-                "last_at": self._last_plan_at,
-                "cooldown_until": self._plan_cooldown_until,
-            },
+            "pending_chat_count": len(self.pending_chats),
+            "selected_owner": self.current_owner,
+            "selected_npc_id": self.current_body.npc_id if self.current_body else None,
+            "companion_count": len(self._companions(self.last_state)),
         }

@@ -1,9 +1,5 @@
--- Deterministic Goblin task controller.
---
--- Qwen may select a high-level action, but this module owns task validation,
--- target resolution, physical-state transitions, and recovery.  It never
--- accepts coordinates or animation names from the model; debug commands may
--- supply a bounded numeric location through the explicit server command path.
+-- Deterministic per-body Goblin task controller.
+-- Qwen chooses semantic actions; this file resolves the actual PZ work.
 local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
 local Body = require("GoblinSurvivor/GoblinBody")
@@ -11,7 +7,9 @@ local Movement = require("GoblinSurvivor/GoblinMovement")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
 local Loot = require("GoblinSurvivor/GoblinLoot")
 
-local Brain = { combat = setmetatable({}, { __mode = "k" }) }
+local Brain = {
+    combat = setmetatable({}, { __mode = "k" })
+}
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -19,10 +17,6 @@ local function call(object, method, ...)
     if not okMember or type(member) ~= "function" then return false, nil end
     local ok, first = pcall(member, object, ...)
     return ok, first
-end
-
-local function log(message)
-    if type(print) == "function" then print("[GoblinSurvivor] " .. tostring(message)) end
 end
 
 local function nowMs()
@@ -33,56 +27,30 @@ local function nowMs()
     return os.time() * 1000
 end
 
-local function numeric(value)
-    return type(value) == "number" and value == value and value ~= math.huge
-        and value ~= -math.huge
-end
-
-local function data(body)
-    return Body.data(body)
-end
-
-local function payloadEqual(a, b)
-    if a == b then return true end
-    if type(a) ~= "table" or type(b) ~= "table" then return false end
-    local aItem, bItem = a.item, b.item
-    local itemEqual = aItem == bItem
-    if type(aItem) == "table" or type(bItem) == "table" then
-        itemEqual = type(aItem) == "table" and type(bItem) == "table"
-            and aItem.name == bItem.name and aItem.count == bItem.count
+local function log(body, text)
+    if type(print) == "function" then
+        print("[GoblinSurvivor] " .. tostring(text)
+            .. " owner=" .. tostring(Body.owner(body))
+            .. " npc_id=" .. tostring(Body.npcId(body)))
     end
-    local aTarget, bTarget = a.target, b.target
-    local targetEqual = aTarget == bTarget
-    if type(aTarget) == "table" or type(bTarget) == "table" then
-        targetEqual = type(aTarget) == "table" and type(bTarget) == "table"
-            and aTarget.kind == bTarget.kind and aTarget.name == bTarget.name
-            and aTarget.label == bTarget.label and aTarget.player == bTarget.player
-    end
-    return a.x == b.x and a.y == b.y and a.z == b.z and a.owner == b.owner
-        and a.text == b.text and a.loot_focus == b.loot_focus and targetEqual and itemEqual
 end
 
-local function playerFor(name)
-    if type(getOnlinePlayers) ~= "function" then return nil end
+local function playerForOwner(body)
+    local owner = Body.owner(body)
+    if type(owner) ~= "string" or type(getOnlinePlayers) ~= "function" then return nil end
     local ok, list = pcall(getOnlinePlayers)
     if not ok or list == nil then return nil end
-    local count = type(list.size) == "function" and list:size() or #list
-    local wanted = type(name) == "string" and string.lower(name) or nil
-    for index = 0, count - 1 do
-        local player = type(list.get) == "function" and list:get(index) or list[index + 1]
-        if player ~= nil then
-            local okName, username = call(player, "getUsername")
-            if wanted == nil then return player end
-            if okName and type(username) == "string" and string.lower(username) == wanted then
-                return player
-            end
+    local okSize, size = call(list, "size")
+    size = okSize and tonumber(size) or 0
+    for index = 0, size - 1 do
+        local okPlayer, player = call(list, "get", index)
+        if okPlayer and player ~= nil then
+            local okName, name = call(player, "getUsername")
+            if okName and type(name) == "string"
+                and string.lower(name) == string.lower(owner) then return player end
         end
     end
     return nil
-end
-
-local function position(object)
-    return Body.position(object)
 end
 
 local function distanceSquared(a, b)
@@ -91,433 +59,288 @@ local function distanceSquared(a, b)
 end
 
 local function nearestThreat(body)
-    local origin = position(body)
+    local origin = Body.position(body)
     if origin == nil or type(getCell) ~= "function" then return nil end
     local okCell, cell = pcall(getCell)
     if not okCell or cell == nil then return nil end
     local okList, list = call(cell, "getZombieList")
     if not okList or list == nil then return nil end
-    local count = type(list.size) == "function" and list:size() or #list
+    local okSize, size = call(list, "size")
+    size = okSize and tonumber(size) or 0
     local radius = tonumber(Config.combatRadius) or 16
-    local closest, closestDistance = nil, radius * radius
-    for index = 0, count - 1 do
-        local candidate = type(list.get) == "function" and list:get(index) or list[index + 1]
-        if candidate ~= nil and candidate ~= body then
-            local candidateData = Body.data(candidate)
+    local best, bestDistance = nil, radius * radius
+    for index = 0, size - 1 do
+        local okZombie, candidate = call(list, "get", index)
+        if okZombie and candidate ~= nil and candidate ~= body and not Body.isGoblin(candidate) then
             local okDead, dead = call(candidate, "isDead")
-            local okPlayer, isPlayer = call(candidate, "isPlayer")
-            local targetPoint = position(candidate)
-            if targetPoint ~= nil and not (okDead and dead == true)
-                and not (okPlayer and isPlayer == true)
-                and not (candidateData ~= nil and candidateData.GoblinNPC == true) then
-                local d = distanceSquared(origin, targetPoint)
-                if d < closestDistance then closest, closestDistance = candidate, d end
+            local point = Body.position(candidate)
+            if point ~= nil and not (okDead and dead == true) then
+                local d = distanceSquared(origin, point)
+                if d < bestDistance then
+                    best, bestDistance = candidate, d
+                end
             end
         end
     end
-    return closest
-end
-
-local function liveTarget(target)
-    if target == nil or not Body.exists(target) then return false end
-    local okDead, dead = call(target, "isDead")
-    if okDead and dead == true then return false end
-    local okPlayer, isPlayer = call(target, "isPlayer")
-    return not (okPlayer and isPlayer == true)
-end
-
-local function targetWithinCombatRadius(body, target)
-    local actor, victim = position(body), position(target)
-    local radius = tonumber(Config.combatRadius) or 16
-    return actor ~= nil and victim ~= nil
-        and distanceSquared(actor, victim) <= radius * radius
-end
-
-local function clearAttack(body)
-    local bodyData = data(body)
-    local hadTarget = bodyData ~= nil and bodyData.GoblinCombatTarget ~= nil
-    Brain.combat[body] = nil
-    Body.setCombatPose(body, false)
-    Movement.clear(body)
-    call(body, "setTarget", nil)
-    call(body, "setAttackTargetSquare", nil)
-    call(body, "setVariable", "GoblinCombatState", Constants.COMBAT.NONE)
-    if bodyData ~= nil then
-        bodyData.GoblinCombatTarget = nil
-        bodyData.GoblinCombatTargetSeenAt = nil
-    end
-    if hadTarget then log("TARGET_CHANGE id=" .. Config.npcId .. " target=none") end
-end
-
-local function applyMeleeHit(body, state, timestamp)
-    if state.impactApplied then return true, "melee impact already applied" end
-    state.impactApplied = true
-    local target = state.target
-    if not liveTarget(target) then return false, "combat target disappeared before impact" end
-    local actor, victim = position(body), position(target)
-    local range = tonumber(Config.meleeRange) or 2.25
-    if actor == nil or victim == nil or distanceSquared(actor, victim) > (range + 0.75) ^ 2 then
-        return false, "combat target moved out of melee range"
-    end
-    local equipped, equipDetail, weapon = Body.ensureWeapon(body)
-    if not equipped or weapon == nil then
-        return false, equipDetail or "preferred weapon is unavailable at impact"
-    end
-    if type(target.Hit) ~= "function" then
-        return false, "IsoZombie target Hit() API is unavailable"
-    end
-    -- Hit() is the normal server-authoritative weapon path.  It applies the
-    -- real item's damage/death rules and is deliberately the only health
-    -- mutation route in this controller.
-    local ok, errorValue = pcall(target.Hit, target, weapon, body, 1.0, false, 1.0, false)
-    local bodyData = data(body)
-    if not ok then
-        if bodyData ~= nil then
-            bodyData.GoblinLastCombatError = tostring(errorValue)
-            bodyData.GoblinCombatAvailable = false
-        end
-        return false, "target.Hit failed: " .. tostring(errorValue)
-    end
-    if bodyData ~= nil then
-        bodyData.GoblinLastCombatError = nil
-        bodyData.GoblinCombatAvailable = true
-        bodyData.GoblinMeleeAttacks = (tonumber(bodyData.GoblinMeleeAttacks) or 0) + 1
-        bodyData.GoblinLastCombatAt = timestamp
-        bodyData.GoblinLastCombatResult = "hit"
-    end
-    local okDead, dead = call(target, "isDead")
-    if okDead and dead == true and not state.killCounted then
-        state.killCounted = true
-        if bodyData ~= nil then
-            bodyData.GoblinMeleeKills = (tonumber(bodyData.GoblinMeleeKills) or 0) + 1
-        end
-        log("KILL id=" .. Config.npcId .. " weapon=" .. tostring(Config.weaponType))
-    end
-    log("MELEE_HIT id=" .. Config.npcId .. " weapon=" .. tostring(Config.weaponType))
-    return true, "server-authoritative melee hit applied"
-end
-
-local function finishCombatPose(body, state)
-    Body.setCombatPose(body, false)
-    state.poseUntil = nil
-    state.impactAt = nil
-    state.impactApplied = false
-    if liveTarget(state.target) then
-        Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.READY)
-    else
-        clearAttack(body)
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-    end
+    return best
 end
 
 local function executeAttack(body, timestamp)
-    -- Combat is bounded to a nearby ordinary zombie and uses the real item
-    -- Hit() path.  We never assign the IsoZombie native hostile target, bite,
-    -- lunge, or eat-body fields.
     local now = timestamp or nowMs()
     local state = Brain.combat[body]
-    if state ~= nil and not liveTarget(state.target) then
-        Body.setCombatPose(body, false)
-        state = nil
-        Brain.combat[body] = nil
-    end
-    if state == nil then
+    if state == nil or state.target == nil or not Body.exists(state.target)
+        or Body.isGoblin(state.target) then
         local target = nearestThreat(body)
         if target == nil then
-            clearAttack(body)
-            Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-                Constants.COMBAT.NONE)
-            return false, "no nearby hostile zombie"
+            Brain.combat[body] = nil
+            Body.setCombatPose(body, false)
+            Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+            return true, "no hostile nearby; returning to owner"
         end
-        state = {
-            target = target,
-            targetSeenAt = now,
-            nextAttackAt = 0,
-            poseUntil = nil,
-            impactAt = nil,
-            impactApplied = false,
-            killCounted = false
-        }
+        state = { target = target, nextAttackAt = 0 }
         Brain.combat[body] = state
-        local bodyData = data(body)
-        if bodyData ~= nil then
-            bodyData.GoblinCombatTarget = "nearby_hostile"
-            bodyData.GoblinCombatTargetSeenAt = now
-        end
-        log("TARGET_CHANGE id=" .. Config.npcId .. " target=nearby_hostile")
-    elseif now - (state.targetSeenAt or 0)
-        >= (tonumber(Config.combatTargetRefreshSeconds) or 0.5) * 1000 then
-        -- Refresh the bounded semantic target periodically.  A zombie that
-        -- leaves the combat radius is dropped instead of turning ATTACK into
-        -- an unbounded chase; a newly nearer zombie may replace it without
-        -- ever touching IsoZombie's native hostile target field.
-        local replacement = nearestThreat(body)
-        state.targetSeenAt = now
-        if replacement ~= nil and replacement ~= state.target then
-            state.target = replacement
-            state.impactApplied = false
-            state.killCounted = false
-            local bodyData = data(body)
-            if bodyData ~= nil then bodyData.GoblinCombatTargetSeenAt = now end
-            log("TARGET_CHANGE id=" .. Config.npcId .. " target=nearby_hostile")
-        elseif not targetWithinCombatRadius(body, state.target) then
-            clearAttack(body)
-            Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-                Constants.COMBAT.NONE)
-            return false, "no nearby hostile zombie"
-        end
     end
 
-    local equipped, equipDetail = Body.ensureWeapon(body)
-    if not equipped then
-        clearAttack(body)
-        Body.setPhysicalState(body, Constants.PHYSICAL.BLOCKED, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-        return false, equipDetail or "preferred weapon is unavailable"
-    end
-    local actor, victim = position(body), position(state.target)
-    if actor == nil or victim == nil then
-        clearAttack(body)
-        return false, "combat positions are unavailable"
-    end
-    local gap = math.sqrt(distanceSquared(actor, victim))
+    local actor = Body.position(body)
+    local victim = Body.position(state.target)
+    if actor == nil or victim == nil then return false, "combat position unavailable" end
     local range = tonumber(Config.meleeRange) or 2.25
-    if gap > range then
-        if state.poseUntil ~= nil then finishCombatPose(body, state) end
-        local started, startDetail = Movement.commandCombat(body, state.target)
-        local updated, updateDetail = Movement.updateCombat(body, now)
-        if updated == false and updateDetail ~= nil then
-            local bodyData = data(body)
-            if bodyData ~= nil then bodyData.GoblinLastMovementError = updateDetail end
-        end
-        return started or updated, updateDetail or startDetail or "closing on combat target"
+    local gap2 = distanceSquared(actor, victim)
+    if gap2 > range * range then
+        Movement.command(body, Constants.TASK.MOVE_TO, {
+            x = victim.x, y = victim.y, z = victim.z
+        })
+        Movement.update(body, now)
+        Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT,
+            gap2 >= (tonumber(Config.followRunDistance) or 9) ^ 2
+                and Constants.MOVE_TYPE.RUN or Constants.MOVE_TYPE.WALK,
+            Constants.COMBAT.READY)
+        return true, "closing on hostile"
     end
 
-    local movement = Movement.snapshot(body)
-    if movement ~= nil and movement.task == Constants.TASK.ATTACK then
-        Movement.clear(body)
-    end
-    if state.poseUntil ~= nil then
-        Body.setPhysicalState(body, Constants.PHYSICAL.ATTACKING, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.ATTACKING)
-        if now >= (state.impactAt or math.huge) and not state.impactApplied then
-            local hit, detail = applyMeleeHit(body, state, now)
-            if not hit then
-                local bodyData = data(body)
-                if bodyData ~= nil then
-                    bodyData.GoblinLastCombatResult = "miss"
-                    bodyData.GoblinLastCombatError = detail
-                end
-                log("MELEE_MISS id=" .. Config.npcId .. " detail=" .. tostring(detail))
-            end
-        end
-        if now >= (state.poseUntil or math.huge) then finishCombatPose(body, state) end
-        return true, "melee pose active"
-    end
+    Movement.clear(body)
     if now < (state.nextAttackAt or 0) then
-        Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.READY)
-        return true, "melee cooldown active"
+        Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT,
+            Constants.MOVE_TYPE.IDLE, Constants.COMBAT.READY)
+        return true, "attack cooldown"
     end
+
+    local equipped, detail, weapon = Body.ensureWeapon(body)
+    if not equipped or weapon == nil then return false, detail end
     Body.faceTarget(body, state.target)
     Body.setCombatPose(body, true)
-    Body.setPhysicalState(body, Constants.PHYSICAL.ATTACKING, Constants.MOVE_TYPE.IDLE,
-        Constants.COMBAT.ATTACKING)
-    state.poseUntil = now + (tonumber(Config.meleePoseSeconds) or 0.7) * 1000
-    state.impactAt = now + (tonumber(Config.meleeImpactDelaySeconds) or 0.325) * 1000
-    state.impactApplied = false
+    Body.setPhysicalState(body, Constants.PHYSICAL.ATTACKING,
+        Constants.MOVE_TYPE.IDLE, Constants.COMBAT.ATTACKING)
     state.nextAttackAt = now + (tonumber(Config.meleeCooldownSeconds) or 1.0) * 1000
-    log("ATTACK id=" .. Config.npcId .. " weapon=" .. tostring(Config.weaponType)
-        .. " range=" .. tostring(range))
-    return true, "melee attack pose started"
+
+    if type(state.target.Hit) == "function" then
+        local ok, err = pcall(state.target.Hit, state.target,
+            weapon, body, 1.0, false, 1.0, false)
+        if not ok then
+            Body.setCombatPose(body, false)
+            return false, "melee Hit failed: " .. tostring(err)
+        end
+        local data = Body.data(body)
+        if data ~= nil then
+            data.GoblinMeleeAttacks = (tonumber(data.GoblinMeleeAttacks) or 0) + 1
+        end
+    end
+    Body.setCombatPose(body, false)
+    log(body, "MELEE_ATTACK")
+    return true, "attacked hostile"
 end
 
-function Brain.setTask(body, task, payload)
+local function setTaskInternal(body, task, payload)
     if not Body.isGoblin(body) then return false, "Goblin body is not present" end
-    if not Constants.ALLOWED_TASKS[task] then return false, "unsupported Goblin task" end
+    if Constants.ALLOWED_TASKS[task] ~= true then return false, "unsupported task" end
     payload = type(payload) == "table" and payload or {}
-    if task == Constants.TASK.MOVE_TO or task == Constants.TASK.GUARD then
-        if not numeric(payload.x) or not numeric(payload.y) or not numeric(payload.z) then
-            return false, "movement target is invalid"
-        end
-    end
-    if task == Constants.TASK.FOLLOW or task == Constants.TASK.RETURN_TO_OWNER then
-        if payload.owner ~= nil and (type(payload.owner) ~= "string" or #payload.owner > 96) then
-            return false, "owner target is invalid"
-        end
-        if payload.owner ~= nil
-            and string.find(payload.owner, "^[A-Za-z0-9_%-]+$") == nil then
-            return false, "owner target is invalid"
-        end
-        if payload.owner ~= nil then
-            -- An explicit owner change must resolve to a currently connected
-            -- player.  This prevents a high-level semantic label from
-            -- silently replacing the persisted owner with an offline name;
-            -- the no-payload form continues to use the saved owner during
-            -- reconnect/restart recovery.
-            if playerFor(payload.owner) == nil then return false, "owner is offline" end
-            Spawner.setOwner(payload.owner)
-        end
-    end
-    if task == Constants.TASK.EQUIP then
-        local requested = type(payload.item) == "table" and payload.item.name or nil
-        if requested ~= Config.weaponType then
-            return false, "only the configured preferred weapon is permitted"
-        end
-    end
-    if task == Constants.TASK.LOOT and payload.loot_focus ~= nil then
-        local focus = string.lower(tostring(payload.loot_focus))
-        if focus ~= "food" and focus ~= "medical" and focus ~= "tools"
-            and focus ~= "ammo" and focus ~= "surprise" then
-            return false, "unsupported loot focus"
-        end
-        payload.loot_focus = focus
-    end
-    local bodyData = data(body)
-    if bodyData == nil then return false, "Goblin ModData is unavailable" end
-    local changed = bodyData.GoblinTask ~= task
-        or not payloadEqual(bodyData.GoblinTaskPayload, payload)
-    if not changed then return true, "task already active" end
-    if not Body.setTask(body, task, payload) then return false, "task could not be stored" end
-    if not Spawner.setTask(task, payload) then return false, "task could not be persisted" end
-    log("TASK_CHANGE id=" .. Config.npcId .. " task=" .. tostring(task))
-    if task ~= Constants.TASK.ATTACK and Brain.combat[body] ~= nil then
-        Body.setCombatPose(body, false)
+    if task ~= Constants.TASK.ATTACK then
         Brain.combat[body] = nil
+        Body.setCombatPose(body, false)
     end
-    if task == Constants.TASK.EQUIP then
-        -- Stop any previous follow/path goal before changing the held item.
-        -- A task switch must never leave PathFindBehavior2 moving the body
-        -- while the physical state says EQUIP/IDLE.
+    if not Spawner.setTask(body, task, payload) then return false, "task could not be persisted" end
+
+    if task == Constants.TASK.WAIT then
         Movement.clear(body)
-        local requested = type(payload.item) == "table" and payload.item.name or nil
-        local ok, detail = Body.ensureWeapon(body, requested)
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-        return ok, detail
+        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE,
+            Constants.MOVE_TYPE.IDLE, Constants.COMBAT.NONE)
+        return true, "waiting"
     end
     if task == Constants.TASK.SPEAK then
         Movement.clear(body)
         local ok, detail = Body.say(body, payload.text)
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
         return ok, detail
+    end
+    if task == Constants.TASK.EQUIP then
+        Movement.clear(body)
+        local requested = type(payload.item) == "table" and payload.item.name or Config.weaponType
+        return Body.ensureWeapon(body, requested)
+    end
+    if task == Constants.TASK.SET_BASE then
+        Movement.clear(body)
+        local player = playerForOwner(body)
+        if player == nil then return false, "owner is offline" end
+        local ok, detail = Spawner.setBaseForPlayer(player)
+        if ok then
+            Spawner.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+            Body.say(body, "Base noted. The revolution now has an address.")
+        end
+        return ok, detail
+    end
+    if task == Constants.TASK.LOOT then
+        Movement.clear(body)
+        local data = Body.data(body)
+        if data ~= nil then data.GoblinLootPhase = "collect" end
+        Body.setPhysicalState(body, Constants.PHYSICAL.LOOTING,
+            Constants.MOVE_TYPE.IDLE, Constants.COMBAT.NONE)
+        return true, "loot cycle started"
     end
     if task == Constants.TASK.ATTACK then
         Movement.clear(body)
         return executeAttack(body, nowMs())
     end
-    if task == Constants.TASK.LOOT then
-        Movement.clear(body)
-        Body.setPhysicalState(body, Constants.PHYSICAL.LOOTING, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-        return Loot.scan(body, payload, nowMs())
-    end
     return Movement.command(body, task, payload)
+end
+
+function Brain.setTask(body, task, payload)
+    local ok, detail = setTaskInternal(body, task, payload)
+    if ok then log(body, "TASK_CHANGE task=" .. tostring(task)) end
+    return ok, detail
 end
 
 function Brain.execute(message, body)
     if not Body.isGoblin(body) then return false, "Goblin body is not present" end
     if type(message) ~= "table" or type(message.action) ~= "string" then
-        return false, "Goblin command is malformed"
+        return false, "malformed Goblin command"
     end
     local action = string.upper(message.action)
     if action == "SAY" then
         return Brain.setTask(body, Constants.TASK.SPEAK, { text = message.text })
     end
     if action == "EQUIP" then
-        local item = type(message.item) == "table" and message.item or nil
-        return Brain.setTask(body, Constants.TASK.EQUIP, { item = item })
+        return Brain.setTask(body, Constants.TASK.EQUIP, { item = message.item })
     end
-    if action == "WAIT" or action == "NOOP" or action == "HOLD_POSITION"
-        or action == "REST" then
+    if action == "WAIT" or action == "NOOP" or action == "HOLD_POSITION" or action == "REST" then
         return Brain.setTask(body, Constants.TASK.WAIT, {})
     end
-    if action == "FOLLOW" or action == "REGROUP" or action == "RETURN_TO_BASE"
-        or action == "RETURN" then
-        local owner = type(message.owner) == "string" and message.owner or nil
-        return Brain.setTask(body, Constants.TASK.FOLLOW, { owner = owner })
+    if action == "FOLLOW" or action == "FOLLOW_GOBLIN" or action == "REGROUP"
+        or action == "HELP" or action == "DEFEND_PLAYER" then
+        return Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
     end
-    if action == "ATTACK" then
+    if action == "SET_BASE" or action == "REMEMBER_BASE" or action == "SECURE_BASE" then
+        return Brain.setTask(body, Constants.TASK.SET_BASE, {})
+    end
+    if action == "RETURN_TO_BASE" or action == "GO_HOME" or action == "RETURN" then
+        return Brain.setTask(body, Constants.TASK.RETURN_TO_BASE, {})
+    end
+    if action == "LOOT" or action == "LOOT_AREA" or action == "SCAVENGE" or action == "SEARCH" then
+        return Brain.setTask(body, Constants.TASK.LOOT, {
+            loot_focus = type(message.loot_focus) == "string" and message.loot_focus or "surprise"
+        })
+    end
+    if action == "ATTACK" or action == "DEFEND_AREA" or action == "CLEAR_BUILDING" then
         return Brain.setTask(body, Constants.TASK.ATTACK, {})
     end
-    if action == "LOOT" or action == "LOOT_AREA" or action == "SCAVENGE" then
-        return Brain.setTask(body, Constants.TASK.LOOT, {
-            loot_focus = type(message.loot_focus) == "string" and message.loot_focus or nil,
-            target = type(message.target) == "table" and message.target or nil
-        })
+    if action == "MOVE_TO" and type(message.x) == "number"
+        and type(message.y) == "number" and type(message.z) == "number" then
+        return Brain.setTask(body, Constants.TASK.MOVE_TO,
+            { x = message.x, y = message.y, z = message.z })
     end
-    if action == "MOVE_TO" or action == "GUARD" then
-        -- Only developer commands carry exact coordinates.  Qwen-originated
-        -- semantic targets are resolved by the Python/server bridge to FOLLOW
-        -- or WAIT before they reach this method.
-        return Brain.setTask(body, action, {
-            x = message.x, y = message.y, z = message.z,
-            owner = message.owner
-        })
+    return false, "unsupported Goblin action"
+end
+
+local function updateLoot(body, payload, timestamp)
+    local data = Body.data(body)
+    if data == nil then return false end
+    local phase = data.GoblinLootPhase or "collect"
+    if phase == "collect" then
+        Body.setPhysicalState(body, Constants.PHYSICAL.LOOTING,
+            Constants.MOVE_TYPE.IDLE, Constants.COMBAT.NONE)
+        local ok, detail, moved = Loot.collect(body, payload, timestamp)
+        if not ok then return false, detail end
+        if (tonumber(moved) or 0) <= 0 and not Loot.hasCargo(body) then
+            Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+            return true, "nothing useful found; following owner"
+        end
+        if data.GoblinBaseSet == true then
+            data.GoblinLootPhase = "return"
+            Spawner.setTask(body, Constants.TASK.RETURN_TO_BASE, { from_loot = true })
+            Movement.command(body, Constants.TASK.RETURN_TO_BASE, {})
+            return true, "loot collected; returning to base"
+        end
+        -- First spawn should already establish a default base, but never lose
+        -- cargo if a legacy record lacked one.
+        Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+        return true, "loot collected; base not set"
     end
-    return false, "unsupported Goblin command"
+    return true, "loot cycle active"
+end
+
+local function updateReturnToBase(body, payload, timestamp)
+    local ok, detail = Movement.update(body, timestamp)
+    if not ok and detail ~= "idle" then return false, detail end
+    local data = Body.data(body)
+    local base = data ~= nil and data.GoblinBaseSet == true and {
+        x = tonumber(data.GoblinBaseX), y = tonumber(data.GoblinBaseY), z = tonumber(data.GoblinBaseZ)
+    } or nil
+    local point = Body.position(body)
+    if base == nil or point == nil or base.x == nil or base.y == nil or base.z == nil then
+        return false, "base unavailable"
+    end
+    if distanceSquared(point, base) <= 2.25 then
+        local delivered, deliveryDetail = Loot.deposit(body)
+        if data ~= nil then data.GoblinLootPhase = nil end
+        Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+        if delivered then
+            Body.say(body, "Supplies redistributed to the collective. Mostly yours, comrade.")
+        end
+        return true, deliveryDetail
+    end
+    return true, "returning to base"
 end
 
 function Brain.update(body, timestamp)
     if not Body.isGoblin(body) then return false end
-    local bodyData = data(body)
-    if bodyData == nil then return false end
-    local task = bodyData.GoblinTask or Constants.TASK.FOLLOW
-    local payload = bodyData.GoblinTaskPayload or {}
-    local healthState = Body.observeHealth(body, timestamp or nowMs())
-    if healthState == "hit" or healthState == "recovering" then return true end
-    if healthState == "recovered" then
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-    end
-    if task == Constants.TASK.ATTACK then
-        return executeAttack(body, timestamp or nowMs())
-    end
-    if task == Constants.TASK.EQUIP then
-        Movement.clear(body)
-        local requested = type(payload.item) == "table" and payload.item.name or nil
-        Body.ensureWeapon(body, requested)
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-        return true
-    end
-    if task == Constants.TASK.SPEAK or task == Constants.TASK.WAIT then
-        Movement.clear(body)
-        Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
+    Body.applyInvariants(body)
+    local data = Body.data(body)
+    if data == nil then return false end
+    local task = data.GoblinTask or Constants.TASK.FOLLOW
+    local payload = type(data.GoblinTaskPayload) == "table" and data.GoblinTaskPayload or {}
+    local now = timestamp or nowMs()
+
+    if task == Constants.TASK.WAIT or task == Constants.TASK.SPEAK or task == Constants.TASK.EQUIP then
         return true
     end
     if task == Constants.TASK.LOOT then
-        Movement.clear(body)
-        Body.setPhysicalState(body, Constants.PHYSICAL.LOOTING, Constants.MOVE_TYPE.IDLE,
-            Constants.COMBAT.NONE)
-        local ok, detail = Loot.scan(body, payload, timestamp or nowMs())
-        if not ok then bodyData.GoblinLastLootError = detail end
-        return ok
+        return updateLoot(body, payload, now)
     end
-    local movement = Movement.snapshot(body)
-    if movement ~= nil and movement.task == task and movement.complete == true then
+    if task == Constants.TASK.RETURN_TO_BASE then
+        local movement = Movement.snapshot(body)
+        if movement == nil then Movement.command(body, task, payload) end
+        return updateReturnToBase(body, payload, now)
+    end
+    if task == Constants.TASK.ATTACK then
+        return executeAttack(body, now)
+    end
+    if task == Constants.TASK.SET_BASE then
+        local player = playerForOwner(body)
+        if player == nil then return false end
+        Spawner.setBaseForPlayer(player)
+        Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
         return true
     end
+
+    local movement = Movement.snapshot(body)
     if movement == nil or movement.task ~= task then
         Movement.command(body, task, payload)
     end
-    local ok, detail = Movement.update(body, timestamp or nowMs())
-    if ok == false and detail ~= nil then
-        local state = Body.data(body)
-        if state ~= nil then state.GoblinLastMovementError = detail end
-    end
-    return ok ~= false
+    return Movement.update(body, now)
 end
 
 function Brain.snapshot(body)
     local result = Body.snapshot(body)
     if result == nil then return nil end
-    local movement = Movement.snapshot(body)
-    if movement ~= nil then result.movement = movement end
+    result.movement = Movement.snapshot(body)
     return result
 end
 

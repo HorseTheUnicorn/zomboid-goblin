@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+    branches: [main, goblin-rescue-2026-09-10]
+  pull_request:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Python
+        run: python -m compileall -q goblin_zomboid tests
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Install Lua 5.1 syntax checker
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1
+      - name: Check Project Zomboid Lua syntax
+        run: find mod/Contents/mods/GoblinSurvivor -type f -name '*.lua' -print0 | xargs -0 -n1 luac5.1 -p

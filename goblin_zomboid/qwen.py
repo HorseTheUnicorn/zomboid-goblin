@@ -1,4 +1,4 @@
-"""Local Qwen adapter with a strict semantic-intent boundary."""
+"""Local Qwen adapter for the feral Lenin-flavored Goblin companions."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from typing import Any
 
-from .social import sanitize_speech
+from .social import FeralPersonality, sanitize_speech
 from .state import brain_view
 from .validator import IntentError, IntentValidator, ValidatedIntent
 
@@ -41,28 +41,36 @@ class QwenClient:
     def _system_prompt() -> str:
         return (
             "Return exactly one JSON object and nothing else. The object must contain intent and mode. "
-            "Goblin is the persistent server-side NPC goblin.primary; never refer to a Steam/PZ client "
-            "or create a character. Allowed intents include WAIT, SAY, EQUIP, MOVE_TO, FOLLOW, "
-            "FOLLOW_GOBLIN, HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, "
-            "GO_HOME, RETURN_TO_BASE, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, "
-            "CLEAR_BUILDING, FLEE, HUNT_START, HUNT_HINT, HUNT_RELOCATE, HUNT_REWARD, TRADE, and HELP. "
-            "Allowed modes are SAFE, ROAM, PARTY, and HUNT. Use only coarse named targets such as a "
-            "nearby building, area, player, home base, escape route, squad, vehicle, candidate, or "
-            "current position. Never output coordinates, routes, cells, chunks, IDs for buildings, Lua, "
-            "shell, eval, exec, raw packets, paths, or code. EQUIP must include an item object whose "
-            "name is exactly Base.Machete. LOOT_AREA may request only a coarse focus "
-            "(food, medical, tools, ammo, or surprise); the server transfers existing world "
-            "items and never fabricates inventory. Deterministic server controllers handle "
-            "movement, combat, inventory, survival, cooldowns, and persistence."
+            "Project Zomboid has one friendly Goblin companion per connected player. The current context "
+            "may include controlled_npc_id and controlled_owner; never invent another npc_id. If you emit "
+            "npc_id, copy controlled_npc_id exactly. Set mode to the controlled companion's current mode from "
+            "context when available; never invent a mode transition just to perform a player's direct request. "
+            "Never create a Steam/PZ client or character. Allowed intents include WAIT, SAY, EQUIP, MOVE_TO, "
+            "FOLLOW, FOLLOW_GOBLIN, HOLD_POSITION, REGROUP, SEARCH, SCAVENGE, LOOT_AREA, RETREAT, REST, "
+            "GO_HOME, RETURN_TO_BASE, SET_BASE, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, "
+            "CLEAR_BUILDING, FLEE, HELP, and TRADE. Interpret direct player requests naturally: "
+            "'follow/come with me' means FOLLOW the speaking player; 'stay/wait/hold here' means HOLD_POSITION; "
+            "'loot/scavenge/find supplies' means LOOT_AREA with current_position and an optional focus food, "
+            "medical, tools, ammo, or surprise; 'go home/take it back/bring it to base' means RETURN_TO_BASE; "
+            "'this is base/home/remember this place' means SET_BASE; 'help/defend me/get them/kill that zombie' "
+            "means DEFEND_PLAYER or ATTACK. For ordinary conversation that does not request an action, use SAY. "
+            "Targets must be coarse named targets such as player, home_base, current_position, nearby_threat, "
+            "nearby_building, area, or escape_route. Never output coordinates, routes, cells, chunks, building "
+            "IDs, Lua, shell, eval, exec, raw packets, paths, or code. EQUIP may only request Base.Machete. "
+            "The deterministic server owns movement, pathfinding, combat, inventory, loot transfer, base "
+            "delivery, cooldowns, spawning, and persistence. Personality affects wording and choices but never "
+            "these safety/format rules: Goblin is feral, helpful, loyal to his player, funny, argumentative, and "
+            "theatrically inspired by Vladimir Lenin. He treats zombie survival as revolutionary struggle, calls "
+            "useful supplies the means of survival, denounces rotten loot as bourgeois decadence, and speaks to "
+            "his player as comrade. Do not advocate real-world political violence or real-world political action; "
+            "this is absurd in-game roleplay."
         )
 
     @staticmethod
     def _speech_system_prompt() -> str:
-        return (
-            "You are Goblin, a feral, observant, dry, occasionally warm survivor. Write one short in-game "
-            "reply to the supplied player message. Stay in character and never reveal hidden locations, "
-            "coordinates, private admin information, credentials, code, or tools. Return exactly one JSON "
-            "object with only the field text."
+        return FeralPersonality.system_prompt() + (
+            " You are speaking inside Project Zomboid. Reply directly to the player who addressed you. "
+            "Use one or two short sentences, usually under 180 characters."
         )
 
     def _request_json(self, system_prompt: str, payload: Mapping[str, Any], *, max_tokens: int) -> str:
@@ -76,16 +84,23 @@ class QwenClient:
             raise QwenError("model input exceeds the context limit")
         request_body = {
             "model": self.model,
-            "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": context_json}],
-            "temperature": 0.7,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context_json},
+            ],
+            "temperature": 0.72,
             "max_tokens": max_tokens,
             "stream": False,
             "response_format": {"type": "json_object"},
         }
-        encoded = json.dumps(request_body, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+        encoded = json.dumps(
+            request_body, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ).encode("utf-8")
         request = Request(
-            f"{self.base_url}/v1/chat/completions", data=encoded,
-            headers={"Content-Type": "application/json"}, method="POST",
+            f"{self.base_url}/v1/chat/completions",
+            data=encoded,
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:

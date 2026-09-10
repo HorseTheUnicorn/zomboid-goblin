@@ -1,10 +1,4 @@
-"""The server-side NPC execution boundary.
-
-The Python process never drives a Steam/PZ client. It emits one typed,
-high-level command for the dedicated server, where the Lua mod resolves the
-stable NPC id through the native IsoZombie companion controller. This module
-intentionally contains no game coordinates and no Lua/script escape hatch.
-"""
+"""Typed execution boundary for one selected per-player Goblin."""
 
 from __future__ import annotations
 
@@ -12,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .body import DeterministicActionGate, DriverResult
-from .controllers import Action, SafeAction
+from .controllers import SafeAction
 from .ipc import BridgeStore
 from .protocol import make_message, new_request_id
 
@@ -23,10 +17,16 @@ PRIVILEGED_ACTIONS = frozenset(
 )
 
 
+def npc_id_for_owner(owner: str) -> str:
+    """Mirror the Lua owner->NPC id mapping without leaking game coordinates."""
+    if not isinstance(owner, str) or not owner:
+        return NPC_ID
+    key = "".join(ch.lower() if ch.isalnum() or ch in "_-" else "_" for ch in owner)
+    return f"{NPC_ID}.{key}" if key else NPC_ID
+
+
 @dataclass(frozen=True)
 class NpcState:
-    """Coarse NPC contract published by the server-side mod."""
-
     npc_id: str = NPC_ID
     name: str = "Goblin"
     alive: bool = True
@@ -39,16 +39,11 @@ class NpcState:
 
     @property
     def body_ready(self) -> bool:
-        return (
-            self.alive
-            and self.active
-            and self.control_ready
-            and self.npc_engine_ready
-        )
+        return self.alive and self.active and self.control_ready and self.npc_engine_ready
 
 
 class NpcBodyDriver:
-    """Publish safe actions for one persistent server-side NPC."""
+    """Publish a safe action for the currently selected Goblin body."""
 
     def __init__(
         self,
@@ -75,22 +70,21 @@ class NpcBodyDriver:
         self.npc_engine_ready = bool(npc_engine_ready)
 
     def execute(
-        self, action: SafeAction, *, authority_token: str | None = None
+        self,
+        action: SafeAction,
+        *,
+        authority_token: str | None = None,
+        owner: str | None = None,
     ) -> DriverResult:
         admitted = self.gate.admit(action)
         if not admitted.accepted:
             return admitted
         if action.npc_id != self.npc_id:
-            return DriverResult(False, "rejected", "unknown NPC id")
+            return DriverResult(False, "rejected", "unknown or non-selected NPC id")
         if action.action.value in PRIVILEGED_ACTIONS:
-            if (
-                not isinstance(authority_token, str)
-                or not authority_token
-                or len(authority_token) > 128
-            ):
+            if not isinstance(authority_token, str) or not authority_token or len(authority_token) > 128:
                 return DriverResult(
-                    False,
-                    "rejected",
+                    False, "rejected",
                     "privileged NPC action requires an authorized in-game request",
                 )
         if not self.available:
@@ -104,6 +98,8 @@ class NpcBodyDriver:
             "reason": action.reason[:240],
             "controller_action": action.as_dict(),
         }
+        if isinstance(owner, str) and owner:
+            fields["owner"] = owner[:96]
         if action.action.value in PRIVILEGED_ACTIONS:
             fields["authority_token"] = authority_token
         if action.target_kind is not None:
@@ -112,19 +108,14 @@ class NpcBodyDriver:
                 "label": (action.target_label or "")[:96],
             }
         if action.item_name is not None:
-            fields["item"] = {
-                "name": action.item_name[:64],
-                "count": action.item_count or 1,
-            }
+            fields["item"] = {"name": action.item_name[:64], "count": action.item_count or 1}
         if action.text is not None:
             fields["text"] = action.text[:240]
         if action.loot_focus is not None:
             fields["loot_focus"] = action.loot_focus
         for key, value in (
-            ("leader", action.leader),
-            ("job", action.job),
-            ("formation", action.formation),
-            ("squad_id", action.squad_id),
+            ("leader", action.leader), ("job", action.job),
+            ("formation", action.formation), ("squad_id", action.squad_id),
         ):
             if value is not None:
                 fields[key] = value

@@ -13,7 +13,7 @@ MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
     "WAIT", "SAY", "EQUIP", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
-    "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
+    "SET_BASE", "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
     "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
     "DEFEND_AREA", "GUARD", "PATROL", "FLEE", "ENTER_VEHICLE", "EXIT_VEHICLE",
     "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
@@ -152,9 +152,6 @@ def _id_list(value: Any, field: str) -> list[str]:
 
 
 def _member_request(value: Any, field: str) -> int | list[str]:
-    # A commander can ask for a bounded number of additional NPCs without
-    # needing to know server entity ids.  The deterministic policy manager
-    # resolves that count to actual available NPCs.
     if field == "requested_members" and isinstance(value, int) and not isinstance(value, bool):
         if not 1 <= value <= 15:
             raise IntentError("requested_members count must be between 1 and 15")

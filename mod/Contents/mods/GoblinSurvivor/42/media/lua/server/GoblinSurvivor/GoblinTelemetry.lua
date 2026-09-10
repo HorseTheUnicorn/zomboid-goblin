@@ -1,12 +1,10 @@
--- Coarse runtime telemetry for the Python/Qwen bridge.
--- Exact world coordinates are kept on the separate tracker stream and are
--- never included in the model-bound state message.
+-- Coarse telemetry for all per-player Goblin companions.
+-- Exact coordinates remain isolated to the tracker stream.
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
-local Brain = require("GoblinSurvivor/GoblinBrain")
 
-local Telemetry = { lastAt = 0 }
+local Telemetry = { lastAt = 0, lastExactAt = 0 }
 
 local function nowMs()
     if type(getTimestampMs) == "function" then
@@ -26,7 +24,7 @@ local function onlinePlayers()
         local player = type(list.get) == "function" and list:get(index) or list[index + 1]
         if player ~= nil and type(player.getUsername) == "function" then
             local okName, name = pcall(player.getUsername, player)
-            if okName and type(name) == "string" and #name > 0 and #name <= 96 then
+            if okName and type(name) == "string" and name ~= "" then
                 result[#result + 1] = { id = name, online = true }
             end
         end
@@ -36,37 +34,22 @@ end
 
 local function modeFor(snapshot)
     if snapshot == nil or snapshot.body_present ~= true then return "SAFE" end
-    if snapshot.task == "FOLLOW" or snapshot.task == "RETURN_TO_OWNER" then return "PARTY" end
     if snapshot.task == "ATTACK" then return "HUNT" end
+    if snapshot.task == "FOLLOW" then return "PARTY" end
     return "ROAM"
 end
 
-function Telemetry.write(force)
-    if not IPC.isReady() then return false end
-    local timestamp = nowMs()
-    if not force and timestamp - Telemetry.lastAt < Config.heartbeatSeconds * 1000 then
-        return false
-    end
-    Telemetry.lastAt = timestamp
-    local snapshot = Spawner.snapshot()
-    local brain = Brain.snapshot(Spawner.find())
-    local nearbyPlayers = onlinePlayers()
-    local bodyPresent = snapshot.body_present == true
-    local message = {
-        protocol = Config.protocol,
-        request_id = "zomboid-state",
-        timestamp_ms = timestamp,
-        type = "runtime.state",
+local function coarseCompanion(snapshot)
+    return {
+        npc_id = snapshot.npc_id,
+        owner = snapshot.owner,
+        name = snapshot.name or Config.npcName,
         alive = snapshot.alive == true,
-        body_present = bodyPresent,
-        body_mode = bodyPresent and "npc" or "sensor_only",
-        npc_id = Config.npcId,
-        entity_class = snapshot.entity_class,
-        engine = snapshot.engine,
-        npc_alive = snapshot.alive == true,
-        npc_active = true,
-        control_ready = bodyPresent and snapshot.humanized == true,
-        npc_engine_ready = bodyPresent and snapshot.engine == "iso_zombie",
+        active = true,
+        body_present = snapshot.body_present == true,
+        body_mode = snapshot.body_present == true and "npc" or "sensor_only",
+        control_ready = snapshot.body_present == true and snapshot.humanized == true,
+        npc_engine_ready = snapshot.body_present == true and snapshot.engine == "iso_zombie",
         role = Config.npcRole,
         mode = modeFor(snapshot),
         task = snapshot.task,
@@ -74,32 +57,95 @@ function Telemetry.write(force)
         move_type = snapshot.move_type,
         combat_state = snapshot.combat_state,
         weapon_ready = snapshot.weapon_ready == true,
-        visual_asset = snapshot.visual_asset,
+        visual_asset = Config.npcVisualAsset,
         visual_asset_applied = snapshot.visual_asset_applied == true,
-        melee_attacks = snapshot.melee_attacks or 0,
-        melee_kills = snapshot.melee_kills or 0,
         loot_count = snapshot.loot_count or 0,
         loot_status = snapshot.loot_status,
-        has_food = false,
-        has_water = false,
-        has_medical = false,
-        friendly = bodyPresent,
+        base_set = snapshot.base_set == true,
+        friendly = true,
         protected = Config.protected == true,
-        spawn_pending = snapshot.spawn_pending == true,
-        spawn_attempts = snapshot.spawn_attempts,
+        spawn_attempts = snapshot.spawn_attempts or 0,
         spawn_status = snapshot.spawn_detail,
         threat_level = "none",
         hunger = 0,
         thirst = 0,
         fatigue = 0,
         panic = 0,
-        injury = 0,
-        nearby_players = nearbyPlayers,
-        player_count = #nearbyPlayers
+        injury = 0
     }
-    if brain ~= nil and brain.movement ~= nil then
-        message.path_status = brain.movement.goal ~= nil and "active" or "idle"
+end
+
+function Telemetry.write(force)
+    if not IPC.isReady() then return false end
+    local timestamp = nowMs()
+    if not force and timestamp - Telemetry.lastAt < (tonumber(Config.heartbeatSeconds) or 5) * 1000 then
+        return false
     end
+    Telemetry.lastAt = timestamp
+
+    local snapshots = Spawner.snapshotAll()
+    local companions = {}
+    local npcs = {}
+    for _, snapshot in ipairs(snapshots) do
+        local item = coarseCompanion(snapshot)
+        companions[#companions + 1] = item
+        npcs[#npcs + 1] = {
+            npc_id = item.npc_id,
+            owner = item.owner,
+            name = item.name,
+            role = item.role,
+            alive = item.alive,
+            active = item.active,
+            friendly = true
+        }
+    end
+    local primary = companions[1]
+    local anyPresent = primary ~= nil
+
+    local message = {
+        protocol = Config.protocol,
+        request_id = "zomboid-state",
+        timestamp_ms = timestamp,
+        type = "runtime.state",
+        companions = companions,
+        npcs = npcs,
+        companion_count = #companions,
+        alive = anyPresent and primary.alive or false,
+        body_present = anyPresent and primary.body_present or false,
+        body_mode = anyPresent and primary.body_mode or "sensor_only",
+        npc_id = anyPresent and primary.npc_id or Config.npcId,
+        owner = anyPresent and primary.owner or nil,
+        npc_alive = anyPresent and primary.alive or false,
+        npc_active = true,
+        control_ready = anyPresent and primary.control_ready or false,
+        npc_engine_ready = anyPresent and primary.npc_engine_ready or false,
+        role = Config.npcRole,
+        mode = anyPresent and primary.mode or "SAFE",
+        task = anyPresent and primary.task or "FOLLOW",
+        physical_state = anyPresent and primary.physical_state or "IDLE",
+        move_type = anyPresent and primary.move_type or "IDLE",
+        combat_state = anyPresent and primary.combat_state or "NONE",
+        weapon_ready = anyPresent and primary.weapon_ready or false,
+        visual_asset = Config.npcVisualAsset,
+        visual_asset_applied = anyPresent and primary.visual_asset_applied or false,
+        loot_count = anyPresent and primary.loot_count or 0,
+        loot_status = anyPresent and primary.loot_status or nil,
+        base_set = anyPresent and primary.base_set or false,
+        has_food = false,
+        has_water = false,
+        has_medical = false,
+        friendly = true,
+        protected = Config.protected == true,
+        threat_level = "none",
+        hunger = 0,
+        thirst = 0,
+        fatigue = 0,
+        panic = 0,
+        injury = 0,
+        nearby_players = onlinePlayers()
+    }
+    message.player_count = #message.nearby_players
+
     local ok = IPC.publishRuntime("zomboid-state", message)
     IPC.publishRuntime("zomboid-heartbeat", {
         protocol = Config.protocol,
@@ -107,14 +153,10 @@ function Telemetry.write(force)
         timestamp_ms = timestamp,
         type = "runtime.heartbeat",
         status = "safe",
+        companion_count = #companions,
         body_mode = message.body_mode,
-        npc_id = Config.npcId,
-        engine = message.engine,
         control_ready = message.control_ready,
-        npc_engine_ready = message.npc_engine_ready,
-        spawn_status = message.spawn_status,
-        spawn_pending = message.spawn_pending,
-        spawn_attempts = message.spawn_attempts
+        npc_engine_ready = message.npc_engine_ready
     })
     return ok == true
 end
@@ -122,18 +164,20 @@ end
 function Telemetry.writeExact(force)
     if not IPC.isReady() or not Config.trackerExactTelemetry then return false end
     local timestamp = nowMs()
-    if not force and timestamp - (Telemetry.lastExactAt or 0) < 1000 then return false end
+    if not force and timestamp - Telemetry.lastExactAt < 1000 then return false end
     Telemetry.lastExactAt = timestamp
-    local snapshot = Spawner.snapshot()
     local entities = {}
-    if snapshot.position ~= nil and snapshot.body_present == true then
-        entities[#entities + 1] = {
-            entity_id = Config.npcId,
-            kind = "goblin",
-            x = snapshot.position.x,
-            y = snapshot.position.y,
-            z = snapshot.position.z
-        }
+    for _, snapshot in ipairs(Spawner.snapshotAll()) do
+        if snapshot.body_present == true and snapshot.position ~= nil then
+            entities[#entities + 1] = {
+                entity_id = snapshot.npc_id,
+                kind = "goblin",
+                owner = snapshot.owner,
+                x = snapshot.position.x,
+                y = snapshot.position.y,
+                z = snapshot.position.z
+            }
+        end
     end
     return IPC.publishRuntime("zomboid-exact-state", {
         protocol = Config.protocol,
