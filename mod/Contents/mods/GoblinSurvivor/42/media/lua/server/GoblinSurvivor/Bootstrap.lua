@@ -19,6 +19,7 @@ end
 local Config = require("GoblinSurvivor/Config")
 local Runtime = require("GoblinSurvivor/GoblinRuntime")
 local EventHooks = require("GoblinSurvivor/EventHooks")
+local SpawnRecovery = require("GoblinSurvivor/GoblinSpawnRecovery")
 
 local Bootstrap = {
     started = false,
@@ -41,6 +42,7 @@ local function tick()
         return
     end
     local now = monotonicSeconds()
+    SpawnRecovery.ensureUsableOwner()
     Runtime.tick()
     if Bootstrap.lastHeartbeat == 0 or now - Bootstrap.lastHeartbeat >= Config.heartbeatSeconds then
         Bootstrap.lastHeartbeat = now
@@ -57,6 +59,7 @@ local function emitInitialTelemetry()
     end
     -- Runtime owns the telemetry cadence now.  A single tick is enough to
     -- publish the first state after the server has a usable world/UDP API.
+    SpawnRecovery.ensureUsableOwner()
     Runtime.tick()
     Bootstrap.lastHeartbeat = monotonicSeconds()
 end
