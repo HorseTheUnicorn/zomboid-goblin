@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Build 42 uses this table to register mod clothing XML files.  The GUID
-     must be identical to Goblin_MysteryBody.xml:m_GUID. -->
+<!-- Goblin's custom ClothingItem is a common asset, so keep its GUID table in
+     the same common/media layer as the clothing XML, FBX and textures. -->
 <fileGuidTable>
 	<files>
 		<path>media/clothing/clothingItems/Goblin_MysteryBody.xml</path>
