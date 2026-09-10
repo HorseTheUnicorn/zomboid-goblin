@@ -85,6 +85,12 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("setBaseForPlayer", spawner)
         self.assertIn('Config.npcId .. "." .. key', spawner)
 
+    def test_event_bridge_uses_pz_runtime_safe_id_generation(self) -> None:
+        event_log = (SERVER / "EventLog.lua").read_text(encoding="utf-8")
+        self.assertIn("getTimestampMs", event_log)
+        self.assertIn("getRandomUUID", event_log)
+        self.assertNotIn("math.random", event_log)
+
     def test_qwen_knows_interaction_rules_and_lenin_persona(self) -> None:
         qwen = (ROOT / "goblin_zomboid" / "qwen.py").read_text(encoding="utf-8")
         social = (ROOT / "goblin_zomboid" / "social.py").read_text(encoding="utf-8")
