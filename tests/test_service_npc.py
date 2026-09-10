@@ -152,7 +152,8 @@ class NpcServiceTests(unittest.TestCase):
             self.assertTrue(all(cmd.fields["npc_id"] == "goblin.primary.alice" for cmd in commands))
             self.assertTrue(all(cmd.fields["owner"] == "Alice" for cmd in commands))
             self.assertEqual(qwen.intent_contexts[0]["controlled_npc_id"], "goblin.primary.alice")
-            self.assertNotIn("x", str(qwen.intent_contexts[0]))
+            self.assertNotIn("x", qwen.intent_contexts[0])
+            self.assertNotIn("y", qwen.intent_contexts[0])
         finally:
             service.close()
 
