@@ -1,9 +1,10 @@
--- Authoritative runtime for one managed Goblin IsoZombie per online player.
+-- Authoritative runtime for one persistent Goblin companion per online player.
 local Config = require("GoblinSurvivor/Config")
 local IPC = require("GoblinSurvivor/IPC")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
 local Body = require("GoblinSurvivor/GoblinBody")
 local Brain = require("GoblinSurvivor/GoblinBrain")
+local Autonomy = require("GoblinSurvivor/GoblinAutonomy")
 local Bridge = require("GoblinSurvivor/GoblinBridge")
 local Commands = require("GoblinSurvivor/GoblinCommands")
 local Telemetry = require("GoblinSurvivor/GoblinTelemetry")
@@ -24,7 +25,7 @@ local function nowMs()
         local ok, value = pcall(getTimestampMs)
         if ok and type(value) == "number" then return value end
     end
-    return os.time() * 1000
+    return 0
 end
 
 local function log(text)
@@ -33,11 +34,15 @@ end
 
 local function updateBody(body, timestamp)
     if not Body.isGoblin(body) or not Body.exists(body) then return end
+    Body.applyInvariants(body)
     local data = Body.data(body)
     local nextBrainAt = data ~= nil and (tonumber(data.GoblinNextBrainAt) or 0) or 0
     if timestamp >= nextBrainAt then
         if data ~= nil then data.GoblinNextBrainAt = timestamp + 250 end
+        -- Finish/advance any current explicit or autonomous task first, then
+        -- let the idle scheduler choose new work only when appropriate.
         Brain.update(body, timestamp)
+        Autonomy.update(body, timestamp)
     end
     Body.clearNativeTargets(body)
 end
@@ -51,7 +56,8 @@ function Runtime.start()
     ChatBridge.start()
     Commands.start()
     Runtime.started = true
-    log("runtime ready engine=iso_zombie mode=one-goblin-per-player")
+    log("runtime ready engine=iso_zombie mode=one-goblin-per-player autonomy="
+        .. tostring(Config.autonomyEnabled) .. " idle_seconds=" .. tostring(Config.autonomyIdleSeconds))
     return true
 end
 
@@ -59,20 +65,11 @@ function Runtime.tick()
     if not isAuthoritativeServer() then return end
     if not Runtime.started then Runtime.start() end
     if not Config.enabled then return end
-
     local timestamp = nowMs()
     local bodies = Spawner.ensureAll(false)
     for _, body in ipairs(bodies) do updateBody(body, timestamp) end
-
-    -- Model/Discord commands are semantic and run only after all currently
-    -- connected players have a body available to resolve against.
     Bridge.tick()
-
-    -- A bridge command can change a task during this tick; assert the friendly
-    -- invariants once more before publishing state to clients.
-    for _, body in ipairs(Spawner.allBodies()) do
-        Body.clearNativeTargets(body)
-    end
+    for _, body in ipairs(Spawner.allBodies()) do Body.clearNativeTargets(body) end
     Spawner.syncClientState(false)
     Telemetry.write(false)
     Telemetry.writeExact(false)
@@ -82,8 +79,7 @@ function Runtime.onZombieCreate(zombie)
     if not isAuthoritativeServer() or not Runtime.started or not Config.enabled then return end
     if Spawner.onZombieCreate(zombie) and Body.isGoblin(zombie) then
         Body.applyInvariants(zombie)
-        log("restore owner=" .. tostring(Body.owner(zombie))
-            .. " npc_id=" .. tostring(Body.npcId(zombie)))
+        log("restore owner=" .. tostring(Body.owner(zombie)) .. " npc_id=" .. tostring(Body.npcId(zombie)))
     end
 end
 
@@ -98,9 +94,6 @@ end
 function Runtime.onZombieUpdate(zombie)
     if not isAuthoritativeServer() or not Runtime.started or not Config.enabled then return end
     if not Body.isGoblin(zombie) then return end
-    -- Vanilla zombie AI runs every update.  This fast invariant fence is what
-    -- prevents a managed body briefly becoming hostile between 250ms brain ticks.
-    Body.applyInvariants(zombie)
     updateBody(zombie, nowMs())
 end
 
