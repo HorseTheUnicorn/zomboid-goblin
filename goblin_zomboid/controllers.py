@@ -228,8 +228,10 @@ class TacticalController:
     def decide(self, intent: ValidatedIntent, state: BodyState) -> ControllerResult:
         if not state.alive:
             return ControllerResult(False, None, "body is not alive")
-        if intent.mode != state.mode and intent.mode not in {"SAFE", state.mode}:
-            return ControllerResult(False, None, "intent mode does not match body mode")
+        # The validator has already checked that the intent is legal for the
+        # model-declared mode.  Do not reject an otherwise safe direct player
+        # command just because the server's coarse PARTY/ROAM label changed
+        # between telemetry and the Qwen response.
         action = self._mapping[intent.intent]
         target = intent.data.get("target")
         candidate = intent.data.get("candidate")
