@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<outfitManager>
+	<m_FemaleOutfits>
+		<m_Name>GoblinCompanion</m_Name>
+		<m_Guid>35ee05f9-a24c-4aba-bdfb-0c033d6a872b</m_Guid>
+		<m_Top>false</m_Top>
+		<m_Pants>false</m_Pants>
+		<m_AllowPantsHue>false</m_AllowPantsHue>
+		<m_AllowTopTint>false</m_AllowTopTint>
+		<m_AllowTShirtDecal>false</m_AllowTShirtDecal>
+		<m_items>
+			<item>
+				<probability>1.0</probability>
+				<itemGUID>6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1</itemGUID>
+			</item>
+		</m_items>
+	</m_FemaleOutfits>
+	<m_MaleOutfits>
+		<m_Name>GoblinCompanion</m_Name>
+		<m_Guid>35ee05f9-a24c-4aba-bdfb-0c033d6a872b</m_Guid>
+		<m_Top>false</m_Top>
+		<m_Pants>false</m_Pants>
+		<m_AllowPantsHue>false</m_AllowPantsHue>
+		<m_AllowTopTint>false</m_AllowTopTint>
+		<m_AllowTShirtDecal>false</m_AllowTShirtDecal>
+		<m_items>
+			<item>
+				<probability>1.0</probability>
+				<itemGUID>6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1</itemGUID>
+			</item>
+		</m_items>
+	</m_MaleOutfits>
+</outfitManager>
