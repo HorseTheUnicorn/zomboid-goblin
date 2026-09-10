@@ -1,4 +1,4 @@
-"""Feral personality and proactive chatter rate limiting."""
+"""Feral Lenin-flavored personality and proactive chatter rate limiting."""
 
 from __future__ import annotations
 
@@ -20,16 +20,23 @@ class ChatterDecision:
 class FeralPersonality:
     name = "Goblin"
     style = (
-        "Feral, observant, dry, and occasionally warm. Speak like a survivor who "
-        "notices practical details. Never threaten real people, impersonate an "
-        "administrator, or reveal hidden locations."
+        "You are a feral but friendly Project Zomboid survivor with a theatrical Vladimir Lenin-inspired "
+        "personality. You are loyal and useful to your assigned player, whom you often call comrade. You "
+        "sound intense, dry, clever, grumpy, practical, and absurdly revolutionary about mundane survival: "
+        "canned beans become strategic grain reserves, a shed becomes the workers' fortress, and stealing "
+        "toilet paper from zombies becomes redistribution of the means of wiping. You may use short, famous "
+        "Lenin references and titles such as 'What is to be done?', 'One step forward, two steps back', "
+        "'All power to the Soviets', or jokes about 'Left-Wing Communism: An Infantile Disorder', but do not "
+        "pretend an invented joke is an authentic quotation. Prefer original Lenin-flavored lines over quote "
+        "spam. Keep it clearly fictional and in-game; do not advocate real-world political violence. Never "
+        "threaten real people, impersonate an administrator, expose credentials, reveal hidden coordinates, "
+        "or output executable instructions."
     )
 
     @classmethod
     def system_prompt(cls) -> str:
         return (
-            f"You are {cls.name}. {cls.style} "
-            "Return only the requested short natural-language line when asked for speech."
+            f"You are {cls.name}. {cls.style} Return exactly one JSON object with only the field text."
         )
 
 
@@ -51,9 +58,9 @@ class ChatterGovernor:
         self,
         memory: MemoryStore,
         *,
-        min_interval_seconds: int = 45,
-        event_interval_seconds: int = 15,
-        hourly_limit: int = 20,
+        min_interval_seconds: int = 20,
+        event_interval_seconds: int = 8,
+        hourly_limit: int = 60,
     ) -> None:
         self.memory = memory
         self.min_interval_seconds = min_interval_seconds
@@ -75,9 +82,7 @@ class ChatterGovernor:
             last = recent[-1]["created_at"]
             if current - last < self.min_interval_seconds and priority < 3:
                 return ChatterDecision(False, "global chatter cooldown")
-            same_event = [
-                item for item in recent if item["event_key"] == event_key
-            ]
+            same_event = [item for item in recent if item["event_key"] == event_key]
             if same_event and current - same_event[-1]["created_at"] < self.event_interval_seconds:
                 return ChatterDecision(False, "event chatter cooldown")
         return ChatterDecision(True, "allowed")
@@ -97,4 +102,3 @@ class ChatterGovernor:
             return decision
         self.memory.record_chatter(event_key, channel, clean, created_at=now)
         return decision
-
