@@ -1,21 +1,19 @@
--- Small, engine-facing contract for the rebuilt Goblin companion.
---
--- Tasks describe intent.  Physical states describe what the body is doing.
--- Keeping those concepts separate prevents the old controller/state-sprawl
--- failure mode from returning.
+-- Compact task/state contract for the per-player Goblin companions.
 local Constants = {}
 
-Constants.NPC_ID = "goblin.primary"
+Constants.NPC_PREFIX = "goblin.primary"
+Constants.NPC_ID = Constants.NPC_PREFIX
+
 Constants.TASK = {
     FOLLOW = "FOLLOW",
     MOVE_TO = "MOVE_TO",
     WAIT = "WAIT",
-    GUARD = "GUARD",
+    RETURN_TO_BASE = "RETURN_TO_BASE",
+    LOOT = "LOOT",
     ATTACK = "ATTACK",
-    RETURN_TO_OWNER = "RETURN_TO_OWNER",
     EQUIP = "EQUIP",
     SPEAK = "SPEAK",
-    LOOT = "LOOT"
+    SET_BASE = "SET_BASE"
 }
 
 Constants.PHYSICAL = {
@@ -23,11 +21,10 @@ Constants.PHYSICAL = {
     PATHING = "PATHING",
     WALKING = "WALKING",
     RUNNING = "RUNNING",
+    LOOTING = "LOOTING",
+    RETURNING = "RETURNING",
     COMBAT = "COMBAT",
     ATTACKING = "ATTACKING",
-    HIT = "HIT",
-    RECOVERING = "RECOVERING",
-    LOOTING = "LOOTING",
     BLOCKED = "BLOCKED"
 }
 
@@ -40,20 +37,19 @@ Constants.MOVE_TYPE = {
 Constants.COMBAT = {
     NONE = "NONE",
     READY = "READY",
-    ATTACKING = "ATTACKING",
-    HIT = "HIT"
+    ATTACKING = "ATTACKING"
 }
 
 Constants.ALLOWED_TASKS = {
     FOLLOW = true,
     MOVE_TO = true,
     WAIT = true,
-    GUARD = true,
+    RETURN_TO_BASE = true,
+    LOOT = true,
     ATTACK = true,
-    RETURN_TO_OWNER = true,
     EQUIP = true,
     SPEAK = true,
-    LOOT = true
+    SET_BASE = true
 }
 
 return Constants
