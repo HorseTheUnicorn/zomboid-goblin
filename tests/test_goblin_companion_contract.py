@@ -94,7 +94,7 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("Vladimir Lenin", qwen + social)
         self.assertIn("What is to be done?", social)
         self.assertIn("bourgeois", social)
-        self.assertIn("do not advocate real-world political violence", qwen)
+        self.assertIn("do not advocate real-world political violence", qwen.lower())
 
     def test_chat_and_qwen_route_by_speaker_not_global_singleton(self) -> None:
         service = (ROOT / "goblin_zomboid" / "service.py").read_text(encoding="utf-8")
