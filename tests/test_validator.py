@@ -26,20 +26,21 @@ class ValidatorTests(unittest.TestCase):
             {
                 "intent": "EQUIP",
                 "mode": "SAFE",
-                "item": {"name": "Base.Machete"},
+                "item": {"name": "Base.Pistol3"},
             }
         )
         self.assertEqual(result.intent, "EQUIP")
         with self.assertRaises(IntentError):
             self.validator.validate({"intent": "EQUIP", "mode": "SAFE"})
-        with self.assertRaises(IntentError):
-            self.validator.validate(
-                {
-                    "intent": "EQUIP",
-                    "mode": "SAFE",
-                    "item": {"name": "Base.Axe"},
-                }
-            )
+        for forbidden in ("Base.Axe", "Base.Machete"):
+            with self.assertRaises(IntentError):
+                self.validator.validate(
+                    {
+                        "intent": "EQUIP",
+                        "mode": "SAFE",
+                        "item": {"name": forbidden},
+                    }
+                )
 
     def test_loot_focus_remains_a_bounded_high_level_field(self) -> None:
         result = self.validator.validate(

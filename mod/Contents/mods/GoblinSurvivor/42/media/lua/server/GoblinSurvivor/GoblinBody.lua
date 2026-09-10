@@ -1,13 +1,14 @@
--- Managed IsoZombie body used by every player's Goblin companion.
---
--- Project Zomboid still owns the moving-object lifecycle.  We mark a normal
--- IsoZombie, suppress hostile zombie behavior, and apply one skinned full-body
--- ClothingItem for Goblin.  No random survivor wardrobe is allowed.
 local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
 
 local Body = {}
-local VISUAL_GUID = "6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1"
+local WARDROBE = {
+    "Base.Shirt_Priest",
+    "Base.Trousers_Black",
+    "Base.Hat_Beret",
+    "Base.Shoes_BlackBoots"
+}
+local PISTOL = "Base.Pistol3"
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -25,24 +26,27 @@ local function nowMs()
     return 0
 end
 
-local function log(message)
-    if type(print) == "function" then
-        print("[GoblinSurvivor] " .. tostring(message))
-    end
+local function log(text)
+    if type(print) == "function" then print("[GoblinSurvivor] " .. tostring(text)) end
 end
 
 local function setVariable(body, name, value)
     call(body, "setVariable", name, value)
 end
 
-local function findInventoryItem(inventory, fullType)
-    if inventory == nil or type(fullType) ~= "string" then return nil end
-    local okItems, items = call(inventory, "getItems")
+local function inventory(body)
+    local ok, value = call(body, "getInventory")
+    return ok and value or nil
+end
+
+local function findInventoryItem(container, fullType)
+    if container == nil then return nil end
+    local okItems, items = call(container, "getItems")
     if not okItems or items == nil then return nil end
     local okSize, size = call(items, "size")
     size = okSize and tonumber(size) or 0
-    for index = 0, size - 1 do
-        local okItem, item = call(items, "get", index)
+    for i = 0, size - 1 do
+        local okItem, item = call(items, "get", i)
         if okItem and item ~= nil then
             local okType, itemType = call(item, "getFullType")
             if okType and itemType == fullType then return item end
@@ -51,33 +55,64 @@ local function findInventoryItem(inventory, fullType)
     return nil
 end
 
-local function ensureInventoryItem(inventory, fullType)
-    local item = findInventoryItem(inventory, fullType)
+local function ensureInventoryItem(container, fullType)
+    local item = findInventoryItem(container, fullType)
     if item ~= nil then return item end
-    local okAdd, added = call(inventory, "AddItem", fullType)
-    if okAdd then return added end
-    return nil
+    local ok, added = call(container, "AddItem", fullType)
+    return ok and added or nil
 end
 
-local function clearItemVisuals(body)
-    call(body, "clearWornItems")
-    local okVisuals, visuals = call(body, "getItemVisuals")
-    if okVisuals and visuals ~= nil then call(visuals, "clear") end
+local function wornTypes(body)
+    local result = {}
+    local okWorn, worn = call(body, "getWornItems")
+    if not okWorn or worn == nil then return result end
+    local okSize, size = call(worn, "size")
+    size = okSize and tonumber(size) or 0
+    for i = 0, size - 1 do
+        local okEntry, entry = call(worn, "get", i)
+        if okEntry and entry ~= nil then
+            local okItem, item = call(entry, "getItem")
+            if okItem and item ~= nil then
+                local okType, itemType = call(item, "getFullType")
+                if okType and type(itemType) == "string" then result[itemType] = true end
+            end
+        end
+    end
+    return result
 end
 
-local function applyVisual(body, data)
-    if data.GoblinVisualApplied == true and data.GoblinVisualDirty ~= true then
+local function wardrobeComplete(body)
+    local worn = wornTypes(body)
+    for _, fullType in ipairs(WARDROBE) do
+        if worn[fullType] ~= true then return false end
+    end
+    return true
+end
+
+local function wearItem(body, item, fullType)
+    if item == nil then return false end
+    local okLocation, location = call(item, "getBodyLocation")
+    if okLocation and location ~= nil then
+        local okWear = select(1, call(body, "setWornItem", location, item))
+        if okWear then return true end
+    end
+    -- Build 42 keeps these compatibility helpers; use them as a fallback if
+    -- Kahlua doesn't expose ItemBodyLocation cleanly for a particular item.
+    if fullType == "Base.Hat_Beret" then return select(1, call(body, "setClothingItem_Head", item)) end
+    if fullType == "Base.Shirt_Priest" then return select(1, call(body, "setClothingItem_Torso", item)) end
+    if fullType == "Base.Trousers_Black" then return select(1, call(body, "setClothingItem_Legs", item)) end
+    if fullType == "Base.Shoes_BlackBoots" then return select(1, call(body, "setClothingItem_Feet", item)) end
+    return false
+end
+
+local function applyWardrobe(body, data)
+    if wardrobeComplete(body) then
+        data.GoblinVisualApplied = true
+        data.GoblinVisualError = nil
+        data.GoblinVisualAsset = "vanilla-wardrobe"
         return true
     end
 
-    local timestamp = nowMs()
-    if timestamp > 0 and timestamp < (tonumber(data.GoblinNextVisualAttemptAt) or 0) then
-        return false
-    end
-    data.GoblinNextVisualAttemptAt = timestamp + 2000
-
-    -- setAsSurvivor is needed for the human visual/model path, but it must be
-    -- done once only.  Repeating it makes Build 42 regenerate survivor looks.
     if data.GoblinVisualPrepared ~= true then
         call(body, "setDressInRandomOutfit", false)
         call(body, "setAsSurvivor")
@@ -86,33 +121,51 @@ local function applyVisual(body, data)
         call(body, "setSkeleton", false)
         call(body, "setCrawler", false)
         call(body, "setFakeDead", false)
-        clearItemVisuals(body)
         data.GoblinVisualPrepared = true
     end
 
-    -- dressInClothingItem takes the ClothingItem GUID.  This directly drives
-    -- Goblin_MysteryBody.xml -> Goblin_PZ_MysteryRig -> textureChoices.
-    local customOk = call(body, "dressInClothingItem", VISUAL_GUID)
-    data.GoblinMeshAsset = Config.npcVisualAsset
-    data.GoblinMeshApplied = customOk == true
-    data.GoblinOutfitApplied = customOk == true
-    data.GoblinVisualApplied = customOk == true
-    data.GoblinVisualDirty = customOk ~= true
-    data.GoblinVisualError = customOk and nil or "dressInClothingItem failed"
-
-    if customOk then
-        call(body, "resetModel")
-        call(body, "resetModelNextFrame")
-        log("MESH_APPLY owner=" .. tostring(data.GoblinOwner)
-            .. " npc_id=" .. tostring(data.GoblinID)
-            .. " asset=" .. tostring(Config.npcVisualAsset)
-            .. " method=clothing-guid")
-        return true
+    call(body, "clearWornItems")
+    local inv = inventory(body)
+    if inv == nil then
+        data.GoblinVisualApplied = false
+        data.GoblinVisualError = "inventory unavailable"
+        return false
     end
 
-    log("MESH_APPLY_FAILED owner=" .. tostring(data.GoblinOwner)
-        .. " detail=" .. tostring(data.GoblinVisualError))
-    return false
+    local applied = 0
+    for _, fullType in ipairs(WARDROBE) do
+        local item = ensureInventoryItem(inv, fullType)
+        if wearItem(body, item, fullType) then applied = applied + 1 end
+    end
+    call(body, "onWornItemsChanged")
+    call(body, "resetModel")
+    call(body, "resetModelNextFrame")
+
+    local ok = applied == #WARDROBE or wardrobeComplete(body)
+    data.GoblinVisualApplied = ok
+    data.GoblinVisualError = ok and nil or ("wardrobe applied " .. tostring(applied) .. "/" .. tostring(#WARDROBE))
+    data.GoblinVisualAsset = "vanilla-wardrobe"
+    if ok and data.GoblinWardrobeLogged ~= true then
+        data.GoblinWardrobeLogged = true
+        log("WARDROBE_APPLIED owner=" .. tostring(data.GoblinOwner)
+            .. " outfit=PriestShirt,BlackTrousers,Beret,BlackBoots")
+    end
+    return ok
+end
+
+local function refillPistol(item)
+    if item == nil then return end
+    local okMax, maxAmmo = call(item, "getMaxAmmo")
+    maxAmmo = okMax and tonumber(maxAmmo) or 15
+    if maxAmmo == nil or maxAmmo < 1 then maxAmmo = 15 end
+    call(item, "setContainsClip", true)
+    call(item, "setCurrentAmmoCount", math.floor(maxAmmo))
+    call(item, "setRoundChambered", true)
+    call(item, "setSpentRoundChambered", false)
+    call(item, "setSpentRoundCount", 0)
+    call(item, "setJammed", false)
+    local okConditionMax, conditionMax = call(item, "getConditionMax")
+    if okConditionMax and tonumber(conditionMax) then call(item, "setCondition", tonumber(conditionMax)) end
 end
 
 function Body.data(body)
@@ -125,10 +178,7 @@ function Body.position(object)
     local okX, x = call(object, "getX")
     local okY, y = call(object, "getY")
     local okZ, z = call(object, "getZ")
-    if not okX or not okY or not okZ
-        or type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then
-        return nil
-    end
+    if not okX or not okY or not okZ or type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" then return nil end
     return { x = x, y = y, z = z }
 end
 
@@ -140,8 +190,7 @@ function Body.exists(body)
     if okHealth and tonumber(health) ~= nil and tonumber(health) <= 0 then return false end
     local okCurrent, square = call(body, "getCurrentSquare")
     if okCurrent then return square ~= nil end
-    local okExists, exists = call(body, "isExistInTheWorld")
-    return not okExists or exists == true
+    return true
 end
 
 function Body.isGoblin(body)
@@ -177,7 +226,6 @@ function Body.mark(body, generation, owner, npcId)
     local data = Body.data(body)
     if data == nil then return false, "IsoZombie ModData unavailable" end
     if type(owner) ~= "string" or owner == "" then return false, "owner is missing" end
-
     data.GoblinNPC = true
     data.goblin_owned = true
     data.goblin_friendly = true
@@ -191,12 +239,12 @@ function Body.mark(body, generation, owner, npcId)
     data.GoblinMoveType = Constants.MOVE_TYPE.IDLE
     data.GoblinCombatState = Constants.COMBAT.NONE
     data.GoblinHumanized = true
-    data.GoblinVisualDirty = true
     data.GoblinVisualPrepared = false
     data.GoblinVisualApplied = false
+    data.GoblinAutonomyEnabled = true
+    data.GoblinAutonomous = false
     data.GoblinStateSequence = 0
     data.GoblinTaskSequence = 0
-
     call(body, "setDressInRandomOutfit", false)
     Body.applyInvariants(body)
     return true, "Goblin body marked"
@@ -222,7 +270,6 @@ function Body.setPhysicalState(body, physical, moveType, combatState)
     data.GoblinMoveType = move
     data.GoblinCombatState = combatState or data.GoblinCombatState or Constants.COMBAT.NONE
     data.GoblinStateSequence = (tonumber(data.GoblinStateSequence) or 0) + 1
-
     local moving = move ~= Constants.MOVE_TYPE.IDLE
     local running = move == Constants.MOVE_TYPE.RUN
     setVariable(body, "GoblinNPC", true)
@@ -237,11 +284,39 @@ function Body.setPhysicalState(body, physical, moveType, combatState)
     return true
 end
 
+function Body.ensureWeapon(body, requestedType)
+    if not Body.isGoblin(body) then return false, "body is not Goblin" end
+    local inv = inventory(body)
+    if inv == nil then return false, "inventory unavailable" end
+    local item = findInventoryItem(inv, PISTOL)
+    if item == nil then item = ensureInventoryItem(inv, PISTOL) end
+    if item == nil then return false, "D-E pistol unavailable" end
+    refillPistol(item)
+    call(body, "setPrimaryHandItem", item)
+    call(body, "setSecondaryHandItem", nil)
+    call(body, "resetEquippedHandsModels")
+    local data = Body.data(body)
+    if data ~= nil then
+        data.GoblinWeaponType = PISTOL
+        data.GoblinWeaponReady = true
+        data.GoblinInfiniteAmmo = true
+    end
+    return true, "D-E pistol equipped with unlimited ammo", item
+end
+
+function Body.refillWeapon(body)
+    local inv = inventory(body)
+    if inv == nil then return false end
+    local item = findInventoryItem(inv, PISTOL)
+    if item == nil then return false end
+    refillPistol(item)
+    return true
+end
+
 function Body.applyInvariants(body)
     if not Body.isGoblin(body) then return false end
     local data = Body.data(body)
     if data == nil then return false end
-
     Body.clearNativeTargets(body)
     call(body, "setNoTeeth", true)
     call(body, "setCanWalk", true)
@@ -250,6 +325,7 @@ function Body.applyInvariants(body)
     call(body, "setSkeleton", false)
     call(body, "setZombiesDontAttack", true)
     call(body, "setDressInRandomOutfit", false)
+    call(body, "setUseless", false)
     call(body, "setSpeedMod", 1.0)
     call(body, "setTurnAlertedValues", -5, 5)
     call(body, "setVoiceSoundName", "")
@@ -260,40 +336,18 @@ function Body.applyInvariants(body)
     setVariable(body, "NoLungeTarget", true)
     setVariable(body, "NoLungeAttack", true)
     setVariable(body, "ZombieHitReaction", "Chainsaw")
-
-    local move = data.GoblinMoveType or Constants.MOVE_TYPE.IDLE
-    Body.setPhysicalState(body, data.GoblinPhysicalState or Constants.PHYSICAL.IDLE,
-        move, data.GoblinCombatState or Constants.COMBAT.NONE)
-
     if Config.protected then
         call(body, "setGodMod", true)
         call(body, "setInvulnerable", true)
         call(body, "setNoDamage", true)
         call(body, "setImmortal", true)
     end
-
-    applyVisual(body, data)
+    applyWardrobe(body, data)
     Body.ensureWeapon(body)
+    local move = data.GoblinMoveType or Constants.MOVE_TYPE.IDLE
+    Body.setPhysicalState(body, data.GoblinPhysicalState or Constants.PHYSICAL.IDLE, move,
+        data.GoblinCombatState or Constants.COMBAT.NONE)
     return true
-end
-
-function Body.ensureWeapon(body, requestedType)
-    if not Body.isGoblin(body) then return false, "body is not Goblin" end
-    local weaponType = requestedType or Config.weaponType
-    if weaponType ~= Config.weaponType then return false, "unsupported weapon" end
-    local okInventory, inventory = call(body, "getInventory")
-    if not okInventory or inventory == nil then return false, "inventory unavailable" end
-    local item = findInventoryItem(inventory, weaponType)
-    if item == nil then item = ensureInventoryItem(inventory, weaponType) end
-    if item == nil then return false, "preferred weapon unavailable" end
-    call(body, "setPrimaryHandItem", item)
-    call(body, "setSecondaryHandItem", nil)
-    local data = Body.data(body)
-    if data ~= nil then
-        data.GoblinWeaponType = weaponType
-        data.GoblinWeaponReady = true
-    end
-    return true, "preferred weapon equipped", item
 end
 
 function Body.setCombatPose(body, active)
@@ -301,7 +355,7 @@ function Body.setCombatPose(body, active)
     Body.clearNativeTargets(body)
     local enabled = active == true
     setVariable(body, "isAttacking", enabled)
-    setVariable(body, "isMelee", enabled)
+    setVariable(body, "isMelee", false)
     setVariable(body, "AttackAnim", enabled)
     setVariable(body, "initiateAttack", enabled)
     call(body, "setPerformingAttackAnimation", enabled)
@@ -314,18 +368,15 @@ function Body.faceTarget(body, target)
     local dx, dy = b.x - a.x, b.y - a.y
     local length = math.sqrt(dx * dx + dy * dy)
     if length < 0.001 then return false end
-    local ok = call(body, "setForwardDirection", dx / length, dy / length)
-    return ok == true
+    return select(1, call(body, "setForwardDirection", dx / length, dy / length))
 end
 
 function Body.say(body, text)
-    if not Body.isGoblin(body) or type(text) ~= "string" or #text < 1 or #text > 240 then
-        return false, "speech is invalid"
-    end
-    local ok = call(body, "addLineChatElement", text, 0.1, 0.8, 0.1)
+    if not Body.isGoblin(body) or type(text) ~= "string" or #text < 1 or #text > 240 then return false, "speech is invalid" end
+    local ok = select(1, call(body, "addLineChatElement", text, 0.1, 0.8, 0.1))
     if ok then return true, "speech displayed" end
-    local okSay = call(body, "Say", text)
-    return okSay == true, okSay and "speech displayed" or "speech API unavailable"
+    local okSay = select(1, call(body, "Say", text))
+    return okSay, okSay and "speech displayed" or "speech API unavailable"
 end
 
 function Body.snapshot(body)
@@ -348,11 +399,15 @@ function Body.snapshot(body)
         physical_state = data.GoblinPhysicalState,
         move_type = data.GoblinMoveType,
         combat_state = data.GoblinCombatState,
-        visual_asset = Config.npcVisualAsset,
+        visual_asset = "vanilla-wardrobe",
         visual_asset_applied = data.GoblinVisualApplied == true,
         visual_error = data.GoblinVisualError,
-        weapon_type = data.GoblinWeaponType,
+        wardrobe = WARDROBE,
+        weapon_type = PISTOL,
         weapon_ready = data.GoblinWeaponReady == true,
+        infinite_ammo = true,
+        autonomous = data.GoblinAutonomous == true,
+        last_autonomy_action = data.GoblinLastAutonomyAction,
         loot_count = tonumber(data.GoblinLootCount) or 0,
         loot_status = data.GoblinLootStatus,
         base_set = data.GoblinBaseSet == true,
