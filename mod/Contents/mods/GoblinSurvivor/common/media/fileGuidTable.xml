@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Goblin's custom ClothingItem is a common asset, so keep its GUID table in
+     the same common/media layer as the clothing XML, FBX and textures. -->
+<fileGuidTable>
+	<files>
+		<path>media/clothing/clothingItems/Goblin_MysteryBody.xml</path>
+		<guid>6bd4b657-5e6c-4b17-9b53-3f6bb6d4f3d1</guid>
+	</files>
+</fileGuidTable>
