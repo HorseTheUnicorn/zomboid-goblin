@@ -31,12 +31,12 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("Body.clearNativeTargets", runtime)
         self.assertNotIn("Spawner.ensure(false)", runtime)
 
-    def test_model_registration_uses_one_common_media_layer(self) -> None:
+    def test_model_registration_uses_canonical_skinned_asset_paths(self) -> None:
         clothing = COMMON_MEDIA / "clothing" / "clothingItems" / "Goblin_MysteryBody.xml"
         guid_table = COMMON_MEDIA / "fileGuidTable.xml"
         outfit_file = COMMON_MEDIA / "clothing" / "clothing.xml"
-        texture = COMMON_MEDIA / "textures" / "Goblin_PZ_MysteryRig" / "Material_1_basecolor.png"
-        model = COMMON_MEDIA / "models_X" / "Goblin_PZ_MysteryRig.fbx"
+        texture = COMMON_MEDIA / "textures" / "Goblin" / "Goblin.png"
+        model = COMMON_MEDIA / "models_X" / "Skinned" / "Goblin" / "Goblin.fbx"
         self.assertTrue(texture.is_file())
         self.assertTrue(model.is_file())
         self.assertTrue(guid_table.is_file())
@@ -45,14 +45,12 @@ class GoblinCompanionContractTests(unittest.TestCase):
 
         root = ET.parse(clothing).getroot()
         self.assertEqual(root.findtext("m_GUID"), VISUAL_GUID)
-        self.assertEqual(root.findtext("m_MaleModel"), "Goblin_PZ_MysteryRig")
-        self.assertEqual(root.findtext("m_FemaleModel"), "Goblin_PZ_MysteryRig")
+        self.assertEqual(root.findtext("m_MaleModel"), "Skinned/Goblin/Goblin")
+        self.assertEqual(root.findtext("m_FemaleModel"), "Skinned/Goblin/Goblin")
+        self.assertEqual(root.findtext("m_Shader"), "basicEffect")
         self.assertIsNone(root.find("m_AltMaleModel"))
         self.assertIsNone(root.find("m_AltFemaleModel"))
-        self.assertEqual(
-            root.findtext("textureChoices"),
-            "Goblin_PZ_MysteryRig/Material_1_basecolor",
-        )
+        self.assertEqual(root.findtext("textureChoices"), "Goblin/Goblin")
 
         guid_root = ET.parse(guid_table).getroot()
         entry = guid_root.find("files")
@@ -75,11 +73,12 @@ class GoblinCompanionContractTests(unittest.TestCase):
             item_guids = [node.text for node in outfit.findall("./m_items/item/itemGUID")]
             self.assertEqual(item_guids, [VISUAL_GUID])
 
-    def test_script_item_uses_full_body_costume_slot(self) -> None:
+    def test_script_item_uses_full_body_costume_slot_and_clothing_xml(self) -> None:
         source = (MOD / "42" / "media" / "scripts" / "goblin_items.txt").read_text(
             encoding="utf-8"
         )
         self.assertIn("BodyLocation = base:body_costume", source)
+        self.assertIn("ClothingItem = Goblin_MysteryBody", source)
         self.assertNotIn("BodyLocation = base:underwear", source)
 
     def test_client_verifies_real_goblin_itemvisual_not_void_method_success(self) -> None:
