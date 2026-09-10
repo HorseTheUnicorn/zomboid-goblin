@@ -1,9 +1,9 @@
 -- Client-side presentation and chat relay for every managed Goblin.
 --
 -- The server owns spawning/tasks. This file keeps the replicated IsoZombie
--- friendly and applies one deterministic custom full-body outfit. Visual
--- success is verified from PZ's ItemVisual/ClothingItem state; a Java method
--- merely returning without throwing is not treated as proof that it rendered.
+-- friendly and applies one deterministic custom full-body visual. Build 42's
+-- HumanVisual API owns ItemVisual creation, so use it directly instead of
+-- assuming IsoZombie convenience dress calls populated the render list.
 local Config = require("GoblinSurvivor/Config")
 local EventHooks = require("GoblinSurvivor/EventHooks")
 
@@ -25,8 +25,8 @@ local function call(object, method, ...)
     if object == nil then return false, nil end
     local okMember, member = pcall(function() return object[method] end)
     if not okMember or type(member) ~= "function" then return false, nil end
-    local ok, first = pcall(member, object, ...)
-    return ok, first
+    local ok, first, second = pcall(member, object, ...)
+    return ok, first, second
 end
 
 local function nowMs()
@@ -104,10 +104,12 @@ local function readField(object, field)
 end
 
 local function clothingAssetInfo()
-    local managerClass = rawget(_G, "OutfitManager")
-    local manager = managerClass ~= nil and readField(managerClass, "instance") or nil
-    if manager == nil then
-        return nil, "OutfitManager.instance unavailable"
+    -- Do not use rawget(_G, "OutfitManager"). Kahlua can expose Java classes
+    -- through global lookup without storing them as raw Lua table entries.
+    local manager = nil
+    local okManager = pcall(function() manager = OutfitManager.instance end)
+    if not okManager or manager == nil then
+        return nil, "OutfitManager.instance unavailable through Lua bridge"
     end
 
     local okItem, clothing = call(manager, "getClothingItem", VISUAL_GUID)
@@ -172,6 +174,51 @@ local function visualContainsGoblin(zombie)
     return false, "Goblin ItemVisual absent count=" .. tostring(size)
 end
 
+local function getVisualContext(zombie)
+    local okHuman, humanVisual = call(zombie, "getHumanVisual")
+    if not okHuman or humanVisual == nil then
+        return nil, nil, "HumanVisual unavailable"
+    end
+    local okVisuals, visuals = call(zombie, "getItemVisuals")
+    if not okVisuals or visuals == nil then
+        return nil, nil, "ItemVisuals unavailable"
+    end
+    return humanVisual, visuals, nil
+end
+
+local function applyThroughHumanVisual(zombie)
+    local humanVisual, visuals, contextError = getVisualContext(zombie)
+    if humanVisual == nil or visuals == nil then
+        return false, contextError
+    end
+
+    -- HumanVisual owns the overload that explicitly receives the target
+    -- ItemVisuals collection. This is the authoritative Build 42 path for
+    -- creating the render entry from a clothing GUID.
+    call(visuals, "clear")
+    local okGuid = call(humanVisual, "dressInClothingItem", VISUAL_GUID, visuals, true)
+    local present, detail = visualContainsGoblin(zombie)
+    if present then
+        return true, "humanvisual-guid " .. tostring(detail)
+    end
+
+    -- A named-outfit fallback uses the same HumanVisual + ItemVisuals path,
+    -- not the IsoZombie convenience wrapper that produced zero visuals in the
+    -- live 42.20.4 test.
+    call(visuals, "clear")
+    local okOutfit = call(humanVisual, "dressInNamedOutfit", VISUAL_OUTFIT, visuals, true)
+    present, detail = visualContainsGoblin(zombie)
+    if present then
+        return true, "humanvisual-outfit " .. tostring(detail)
+    end
+
+    return false,
+        "HumanVisual produced no Goblin ItemVisual"
+        .. " guid_call=" .. tostring(okGuid)
+        .. " outfit_call=" .. tostring(okOutfit)
+        .. " detail=" .. tostring(detail)
+end
+
 local function ensureVisual(zombie, state)
     if Client.visualReady[zombie] == true then return true end
     local timestamp = nowMs()
@@ -191,21 +238,8 @@ local function ensureVisual(zombie, state)
         Client.visualPrepared[zombie] = true
     end
 
-    -- Prefer a named outfit. PZ's native outfit pipeline resolves the GUID and
-    -- creates the ItemVisual exactly as it does for ordinary deterministic
-    -- zombie outfits. GoblinCompanion contains only the Goblin body item.
-    call(zombie, "dressInNamedOutfit", VISUAL_OUTFIT)
+    local present, detail = applyThroughHumanVisual(zombie)
     call(zombie, "onWornItemsChanged")
-    local present, detail = visualContainsGoblin(zombie)
-
-    -- Keep the direct-GUID API as a bounded fallback, but verify the resulting
-    -- ItemVisual instead of trusting the void Java method call itself.
-    if not present then
-        call(zombie, "dressInClothingItem", VISUAL_GUID)
-        call(zombie, "onWornItemsChanged")
-        present, detail = visualContainsGoblin(zombie)
-    end
-
     call(zombie, "resetModel")
     call(zombie, "resetModelNextFrame")
 
@@ -364,6 +398,7 @@ end
 
 log("CLIENT_READY chat_hook=" .. tostring(chatHook)
     .. " visual_outfit=" .. VISUAL_OUTFIT
-    .. " visual_guid=" .. VISUAL_GUID)
+    .. " visual_guid=" .. VISUAL_GUID
+    .. " visual_method=humanvisual")
 requestState()
 return Client
