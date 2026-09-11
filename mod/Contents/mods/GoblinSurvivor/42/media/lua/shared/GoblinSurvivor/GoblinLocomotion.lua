@@ -39,7 +39,11 @@ function Motion.followGoal(body, owner)
     local actor, leader = Motion.position(body), Motion.position(owner)
     if not actor or not leader then return nil end
     local gap = Motion.distance(actor, leader)
-    if math.floor(actor.z) == math.floor(leader.z) and gap <= Config.followPreferredDistance then
+    -- One-tile bodyguard spacing is a product behavior, not a soft config
+    -- suggestion. Enforce it on both server and simulation-owning clients so
+    -- an older config.ini with GoblinFollowDistance=3 cannot widen the gap.
+    local preferred = 1
+    if math.floor(actor.z) == math.floor(leader.z) and gap <= preferred then
         return nil, gap
     end
     -- Path to the owner square so stair/door routing remains valid; stop at
@@ -55,6 +59,11 @@ function Motion.stop(body)
     call(body, "setPathing", false)
     call(body, "setVariable", "bPathfind", false)
     call(body, "setVariable", "bMoving", false)
+    call(body, "setVariable", "GoblinMoveType", "IDLE")
+    call(body, "setRunning", false)
+    call(body, "setSprinting", false)
+    call(body, "setWalkType", "Walk")
+    call(body, "setSpeedTypeFromWalkType")
     call(body, "setUseless", true)
     Motion.paths[body] = nil
 end
