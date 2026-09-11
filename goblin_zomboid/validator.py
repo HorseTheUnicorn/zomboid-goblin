@@ -231,8 +231,8 @@ class IntentValidator:
             result["item"] = _item(raw["item"])
         if intent == "EQUIP":
             item = result.get("item")
-            if not isinstance(item, dict) or item.get("name") != "Base.Pistol3":
-                raise IntentError("EQUIP only permits Base.Pistol3")
+            if not isinstance(item, dict) or item.get("name") != "Base.DoubleBarrelShotgun":
+                raise IntentError("EQUIP only permits Base.DoubleBarrelShotgun")
         if "candidate" in raw:
             result["candidate"] = _candidate(raw["candidate"])
         if intent == "HUNT_RELOCATE" and "candidate" not in result:
