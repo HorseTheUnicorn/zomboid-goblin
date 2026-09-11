@@ -21,18 +21,20 @@ class GoblinLuaTests(unittest.TestCase):
             self.lua.globals().source = path.read_text(encoding='utf-8-sig')
             self.lua.execute('assert(loadstring(source))')
 
-    def test_follow_stops_once_at_three_tiles_and_resumes_when_owner_moves(self):
+    def test_follow_stops_at_one_tile_enters_idle_and_resumes_when_owner_moves(self):
         self.lua.execute('''
             a=actor(6,0,0)
             goal,gap=Motion.followGoal(a,player)
             assert(goal and gap == 4)
             Motion.drive(a,goal,'WALK',clock)
             assert(a.pathCalls == 1)
-            a.x=7.1
-            goal=Motion.followGoal(a,player)
-            assert(goal == nil)
+            a.x=9.1
+            goal,gap=Motion.followGoal(a,player)
+            assert(goal == nil and gap < 1)
             Motion.drive(a,goal,'IDLE',clock)
             assert(a.useless and a.cancelCalls == 1)
+            assert(a.variables.bMoving == false)
+            assert(a.variables.GoblinMoveType == 'IDLE')
             player.x=15
             clock=clock+2000
             goal=Motion.followGoal(a,player)
