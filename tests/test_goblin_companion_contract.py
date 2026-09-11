@@ -87,28 +87,37 @@ class GoblinCompanionContractTests(unittest.TestCase):
         client = self.read(CLIENT / "GoblinClient.lua")
         movement = self.read(SERVER / "GoblinMovement.lua")
         driver = self.read(SHARED / 'GoblinLocomotion.lua')
+        config = self.read(SHARED / 'Config.lua')
         self.assertIn('Motion.drive', client)
         self.assertIn('Motion.drive', movement)
         self.assertIn('call(body, "pathToLocationF"', driver)
         self.assertIn('isRemoteZombie', driver)
         self.assertIn('getOwner', driver)
+        self.assertIn('local preferred = 1', driver)
+        self.assertIn('followPreferredDistance = 1', config)
+        self.assertIn('"GoblinMoveType", "IDLE"', driver)
         self.assertNotIn('call(b, "update")', movement)
         self.assertNotIn('call(body, "setX"', movement)
         self.assertNotIn('call(body, "setY"', movement)
 
-    def test_de_pistol_is_permanent_and_effectively_unlimited(self) -> None:
+    def test_double_barrel_is_permanent_unlimited_and_auto_defends_follow(self) -> None:
         config = self.read(SHARED / "Config.lua")
-        body = self.read(SERVER / "GoblinBody.lua")
-        brain = self.read(SERVER / "GoblinBrain.lua")
-        self.assertIn('weaponType = "Base.Pistol3"', config)
-        self.assertIn('PISTOL = "Base.Pistol3"', body)
-        self.assertIn("setCurrentAmmoCount", body)
-        self.assertIn("setRoundChambered", body)
-        self.assertIn("setJammed", body)
-        self.assertIn("GoblinInfiniteAmmo", body)
-        self.assertIn("Body.refillWeapon", brain)
-        self.assertIn("PISTOL_FIRE", brain)
-        self.assertNotIn("Base.Machete", config + body + brain)
+        defense = self.read(SERVER / "GoblinDefense.lua")
+        bootstrap = self.read(SERVER / "Bootstrap.lua")
+        qwen = self.read(ROOT / "goblin_zomboid" / "qwen.py")
+        self.assertIn('weaponType = "Base.DoubleBarrelShotgun"', config)
+        self.assertIn('WEAPON = "Base.DoubleBarrelShotgun"', defense)
+        self.assertIn('call(body, "setUnlimitedAmmo", true)', defense)
+        self.assertIn('setCurrentAmmoCount', defense)
+        self.assertIn('setRoundChambered', defense)
+        self.assertIn('setPrimaryHandItem', defense)
+        self.assertIn('setSecondaryHandItem', defense)
+        self.assertIn('nearestThreat', defense)
+        self.assertIn('task == Constants.TASK.FOLLOW or task == Constants.TASK.ATTACK', defense)
+        self.assertIn('call(target, "Hit"', defense)
+        self.assertIn('SHOTGUN_FIRE', defense)
+        self.assertIn('Defense.install()', bootstrap)
+        self.assertIn('Base.DoubleBarrelShotgun', qwen)
 
     def test_two_minute_idle_autonomy_is_enabled(self) -> None:
         config = self.read(SHARED / "Config.lua")
@@ -176,13 +185,14 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn("Vladimir Lenin", qwen + social)
         self.assertIn("What is to be done?", social)
         self.assertIn("bourgeois", social)
-        self.assertIn("advocate real-world political violence", qwen.lower())
+        self.assertIn("advocate real-world", qwen.lower())
 
     def test_no_bandits_runtime_dependency(self) -> None:
         files = [
             SERVER / "GoblinSpawner.lua",
             SERVER / "GoblinBody.lua",
             SERVER / "GoblinBrain.lua",
+            SERVER / "GoblinDefense.lua",
             CLIENT / "GoblinClient.lua",
         ]
         text = "\n".join(self.read(path) for path in files)

@@ -26,13 +26,13 @@ class ValidatorTests(unittest.TestCase):
             {
                 "intent": "EQUIP",
                 "mode": "SAFE",
-                "item": {"name": "Base.Pistol3"},
+                "item": {"name": "Base.DoubleBarrelShotgun"},
             }
         )
         self.assertEqual(result.intent, "EQUIP")
         with self.assertRaises(IntentError):
             self.validator.validate({"intent": "EQUIP", "mode": "SAFE"})
-        for forbidden in ("Base.Axe", "Base.Machete"):
+        for forbidden in ("Base.Axe", "Base.Machete", "Base.Pistol3"):
             with self.assertRaises(IntentError):
                 self.validator.validate(
                     {

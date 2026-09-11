@@ -13,6 +13,7 @@ end
 
 local Config = require("GoblinSurvivor/Config")
 local Runtime = require("GoblinSurvivor/GoblinRuntime")
+local Defense = require("GoblinSurvivor/GoblinDefense")
 local EventHooks = require("GoblinSurvivor/EventHooks")
 
 local Bootstrap = { started = false }
@@ -20,9 +21,10 @@ local Bootstrap = { started = false }
 function Bootstrap.start()
     if Bootstrap.started then return end
     Config.refresh()
+    Defense.install()
     Runtime.start()
     Bootstrap.started = true
-    print("[GoblinSurvivor] mode=one-goblin-per-player friendly=true qwen=optional")
+    print("[GoblinSurvivor] mode=one-goblin-per-player friendly=true qwen=optional follow=1tile weapon=DoubleBarrelShotgun")
 end
 
 local function tick()
