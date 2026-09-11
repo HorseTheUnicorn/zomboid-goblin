@@ -18,9 +18,9 @@ local Config = {
     npcVisualAsset = "Goblin_PZ_MysteryRig",
     npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody",
 
-    -- Build 42 Base.Pistol3 is the D-E pistol. GoblinBody keeps its magazine
-    -- and chamber full, so this companion has effectively unlimited ammo.
-    weaponType = "Base.Pistol3",
+    -- Goblin's permanent two-handed bodyguard weapon. Runtime defense keeps
+    -- the two internal shells ready and enables the engine unlimited-ammo flag.
+    weaponType = "Base.DoubleBarrelShotgun",
     protected = true,
 
     fileOptions = {},
@@ -32,18 +32,18 @@ local Config = {
     commanders = {},
 
     spawnOffsetTiles = 4,
-    followPreferredDistance = 3,
-    followWalkDistance = 4,
+    followPreferredDistance = 1,
+    followWalkDistance = 2,
     followRunDistance = 9,
-    followHysteresis = 1.5,
+    followHysteresis = 0.5,
     repathSeconds = 1.25,
     blockedRetrySeconds = 2.0,
     emergencyDistance = 80,
     respawnSeconds = 15,
 
     combatRadius = 20,
-    rangedRange = 16,
-    rangedCooldownSeconds = 0.55,
+    rangedRange = 12,
+    rangedCooldownSeconds = 0.8,
     meleeRange = 2.25,
     meleeCooldownSeconds = 1.0,
     meleePoseSeconds = 0.70,
@@ -168,14 +168,14 @@ function Config.refresh()
     if type(npcName) == "string" and #npcName >= 1 and #npcName <= 32 then Config.npcName = npcName end
 
     -- Asset registration and the companion loadout are fixed package contracts.
-    Config.weaponType = "Base.Pistol3"
+    Config.weaponType = "Base.DoubleBarrelShotgun"
     Config.npcVisualAsset = "Goblin_PZ_MysteryRig"
     Config.npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody"
 
     Config.protected = parseBoolean(option("GoblinNpcProtected", Config.protected), Config.protected)
     Config.trackerExactTelemetry = parseBoolean(option("GoblinTrackerExact", Config.trackerExactTelemetry), Config.trackerExactTelemetry)
-    Config.followPreferredDistance = boundedInteger(option("GoblinFollowDistance", Config.followPreferredDistance), Config.followPreferredDistance, 2, 8)
-    Config.followWalkDistance = boundedInteger(option("GoblinFollowWalkDistance", Config.followWalkDistance), Config.followWalkDistance, 3, 16)
+    Config.followPreferredDistance = boundedInteger(option("GoblinFollowDistance", Config.followPreferredDistance), Config.followPreferredDistance, 1, 8)
+    Config.followWalkDistance = boundedInteger(option("GoblinFollowWalkDistance", Config.followWalkDistance), Config.followWalkDistance, 2, 16)
     Config.followRunDistance = boundedInteger(option("GoblinFollowRunDistance", Config.followRunDistance), Config.followRunDistance, 6, 32)
     Config.spawnOffsetTiles = boundedInteger(option("GoblinSpawnOffset", Config.spawnOffsetTiles), Config.spawnOffsetTiles, 2, 16)
     Config.repathSeconds = boundedNumber(option("GoblinRepathSeconds", Config.repathSeconds), Config.repathSeconds, 0.25, 10)
