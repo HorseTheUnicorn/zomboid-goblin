@@ -141,6 +141,10 @@ local function setTaskInternal(body, task, payload)
     if not Body.isGoblin(body) then return false, "Goblin body is not present" end
     if Constants.ALLOWED_TASKS[task] ~= true then return false, "unsupported task" end
     payload = type(payload) == "table" and payload or {}
+    -- Speech/equipment are one-shot actions, not persistent movement modes.
+    -- Keeping SPEAK as the task made a greeting permanently stop following.
+    if task == Constants.TASK.SPEAK then return Body.say(body, payload.text) end
+    if task == Constants.TASK.EQUIP then return Body.ensureWeapon(body) end
     if task ~= Constants.TASK.ATTACK then
         Brain.combat[body] = nil
         Body.setCombatPose(body, false)
@@ -151,14 +155,6 @@ local function setTaskInternal(body, task, payload)
         Movement.clear(body)
         Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE, Constants.COMBAT.NONE)
         return true, "waiting"
-    end
-    if task == Constants.TASK.SPEAK then
-        Movement.clear(body)
-        return Body.say(body, payload.text)
-    end
-    if task == Constants.TASK.EQUIP then
-        Movement.clear(body)
-        return Body.ensureWeapon(body)
     end
     if task == Constants.TASK.SET_BASE then
         Movement.clear(body)

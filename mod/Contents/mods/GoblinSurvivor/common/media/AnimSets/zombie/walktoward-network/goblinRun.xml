@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animNode>
+    <m_Name>goblinRuntowardNetwork</m_Name>
+    <m_Priority>10</m_Priority>
+    <m_AnimName>Bob_Run</m_AnimName>
+    <m_BlendTime>0.20</m_BlendTime>
+    <m_SpeedScale>0.80</m_SpeedScale>
+    <m_Conditions x_name="4b8fcbd0-1f8f-4ec9-b23c-8270d3d210d4">
+        <m_Name>GoblinNPC</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>true</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="ec6f6624-af7f-4d15-aebf-ec07cda1fc02">
+        <m_Name>GoblinMoveType</m_Name>
+        <m_Type>STRING</m_Type>
+        <m_Value>RUN</m_Value>
+    </m_Conditions>
+    <m_Conditions x_name="771098c5-7bf5-436e-8dfb-b69a3c99ea41">
+        <m_Name>intrees</m_Name>
+        <m_Type>BOOL</m_Type>
+        <m_Value>false</m_Value>
+    </m_Conditions>
+</animNode>

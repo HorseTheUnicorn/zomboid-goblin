@@ -1,9 +1,8 @@
--- Client-side presentation and chat relay for every managed Goblin.
--- The custom FBX renderer is intentionally gone. The server dresses each
--- Goblin in normal vanilla PZ clothing and this client only maintains friendly
--- zombie invariants, native movement assist and player chat routing.
+-- Replicated Goblin appearance, simulation-owner movement and chat relay.
 local Config = require("GoblinSurvivor/Config")
 local EventHooks = require("GoblinSurvivor/EventHooks")
+local Appearance = require("GoblinSurvivor/GoblinAppearance")
+local Motion = require("GoblinSurvivor/GoblinLocomotion")
 
 local Client = {
     statesById = {},
@@ -136,27 +135,26 @@ local function clearZombieAI(zombie)
     call(zombie, "setSkeleton", false)
     call(zombie, "setZombiesDontAttack", true)
     call(zombie, "setDressInRandomOutfit", false)
-    call(zombie, "setUseless", false)
     call(zombie, "setSpeedMod", 1.0)
     call(zombie, "setVoiceSoundName", "")
     call(zombie, "setBiteSoundName", "")
 end
 
 local function followAssist(zombie, state)
-    if state.task ~= "FOLLOW" then return end
-    local owner = playerForOwner(state.owner)
-    if owner == nil then return end
-    local gap2 = dist2(position(zombie), position(owner))
-    local preferred = tonumber(Config.followPreferredDistance) or 3
-    if gap2 <= preferred * preferred then return end
-    local timestamp = nowMs()
-    if timestamp < (Client.nextFollowAt[zombie] or 0) then return end
-    Client.nextFollowAt[zombie] = timestamp + 1000
-    local ok = select(1, call(zombie, "pathToCharacter", owner))
-    if not ok then
-        local target = position(owner)
-        if target ~= nil then call(zombie, "pathToLocationF", target.x, target.y, target.z) end
+    if not Motion.controls(zombie) then
+        Motion.paths[zombie] = nil
+        return
     end
+    if state.owner_online == false then Motion.stop(zombie) return end
+    local goal, gap = state.movement_goal, nil
+    if state.task == "FOLLOW" then
+        local owner = playerForOwner(state.owner)
+        if owner ~= nil then goal, gap = Motion.followGoal(zombie, owner) else goal = nil end
+    elseif state.task ~= "MOVE_TO" and state.task ~= "RETURN_TO_BASE" then
+        goal = nil
+    end
+    local move = goal and ((gap or 0) >= Config.followRunDistance and "RUN" or "WALK") or "IDLE"
+    Motion.drive(zombie, goal, move, nowMs())
 end
 
 local function apply(zombie)
@@ -170,7 +168,6 @@ local function apply(zombie)
     local running = moveType == "RUN"
     local attacking = physical == "ATTACKING" or combat == "ATTACKING"
 
-    call(zombie, "setVariable", "Bandit", true)
     call(zombie, "setVariable", "GoblinNPC", true)
     call(zombie, "setVariable", "GoblinID", state.npc_id)
     call(zombie, "setVariable", "GoblinHumanized", true)
@@ -181,13 +178,13 @@ local function apply(zombie)
     call(zombie, "setVariable", "NoLungeTarget", true)
     call(zombie, "setVariable", "NoLungeAttack", true)
     call(zombie, "setVariable", "ZombieHitReaction", "Chainsaw")
-    call(zombie, "setVariable", "bMoving", moving)
     call(zombie, "setVariable", "isAttacking", attacking)
     call(zombie, "setVariable", "isMelee", false)
     call(zombie, "setRunning", running)
     call(zombie, "setSprinting", false)
     call(zombie, "setWalkType", running and "sprint" or "Walk")
     call(zombie, "setSpeedTypeFromWalkType")
+    Appearance.apply(zombie, nowMs())
     followAssist(zombie, state)
     return true
 end
@@ -272,6 +269,6 @@ if Events ~= nil then
 end
 
 log("CLIENT_READY chat_hook=" .. tostring(chatHook)
-    .. " visual=vanilla-wardrobe custom_model=false movement=native")
+    .. " visual=" .. Config.npcVisualAsset .. " custom_model=true movement=simulation-owner")
 requestState()
 return Client

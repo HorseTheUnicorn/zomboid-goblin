@@ -1,14 +1,17 @@
 local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
+local Appearance = require("GoblinSurvivor/GoblinAppearance")
 
 local Body = {}
 local WARDROBE = {
+    "GoblinSurvivor.Goblin_MysteryBody",
     "Base.Shirt_Priest",
     "Base.Trousers_Black",
     "Base.Hat_Beret",
     "Base.Shoes_BlackBoots"
 }
 local PISTOL = "Base.Pistol3"
+local nextEquipmentAt = setmetatable({}, { __mode = "k" })
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -107,15 +110,13 @@ end
 
 local function applyWardrobe(body, data)
     if wardrobeComplete(body) then
-        data.GoblinVisualApplied = true
-        data.GoblinVisualError = nil
-        data.GoblinVisualAsset = "vanilla-wardrobe"
-        return true
+        data.GoblinVisualApplied, data.GoblinVisualError = Appearance.apply(body, nowMs())
+        data.GoblinVisualAsset = Config.npcVisualAsset
+        return data.GoblinVisualApplied
     end
 
     if data.GoblinVisualPrepared ~= true then
         call(body, "setDressInRandomOutfit", false)
-        call(body, "setAsSurvivor")
         call(body, "setDressInRandomOutfit", false)
         call(body, "setFemaleEtc", false)
         call(body, "setSkeleton", false)
@@ -141,10 +142,11 @@ local function applyWardrobe(body, data)
     call(body, "resetModel")
     call(body, "resetModelNextFrame")
 
-    local ok = applied == #WARDROBE or wardrobeComplete(body)
+    local ok = wardrobeComplete(body)
     data.GoblinVisualApplied = ok
     data.GoblinVisualError = ok and nil or ("wardrobe applied " .. tostring(applied) .. "/" .. tostring(#WARDROBE))
-    data.GoblinVisualAsset = "vanilla-wardrobe"
+    data.GoblinVisualAsset = Config.npcVisualAsset
+    if ok then data.GoblinVisualApplied, data.GoblinVisualError = Appearance.apply(body, nowMs()) end
     if ok and data.GoblinWardrobeLogged ~= true then
         data.GoblinWardrobeLogged = true
         log("WARDROBE_APPLIED owner=" .. tostring(data.GoblinOwner)
@@ -325,12 +327,10 @@ function Body.applyInvariants(body)
     call(body, "setSkeleton", false)
     call(body, "setZombiesDontAttack", true)
     call(body, "setDressInRandomOutfit", false)
-    call(body, "setUseless", false)
     call(body, "setSpeedMod", 1.0)
     call(body, "setTurnAlertedValues", -5, 5)
     call(body, "setVoiceSoundName", "")
     call(body, "setBiteSoundName", "")
-    setVariable(body, "Bandit", true)
     setVariable(body, "GoblinNPC", true)
     setVariable(body, "GoblinID", tostring(data.GoblinID))
     setVariable(body, "NoLungeTarget", true)
@@ -342,8 +342,12 @@ function Body.applyInvariants(body)
         call(body, "setNoDamage", true)
         call(body, "setImmortal", true)
     end
-    applyWardrobe(body, data)
-    Body.ensureWeapon(body)
+    local timestamp = nowMs()
+    if timestamp >= (nextEquipmentAt[body] or 0) then
+        nextEquipmentAt[body] = timestamp + 2000
+        applyWardrobe(body, data)
+        Body.ensureWeapon(body)
+    end
     local move = data.GoblinMoveType or Constants.MOVE_TYPE.IDLE
     Body.setPhysicalState(body, data.GoblinPhysicalState or Constants.PHYSICAL.IDLE, move,
         data.GoblinCombatState or Constants.COMBAT.NONE)
@@ -387,6 +391,7 @@ function Body.snapshot(body)
     return {
         npc_id = data.GoblinID,
         owner = data.GoblinOwner,
+        owner_online = data.GoblinOwnerOnline ~= false,
         name = Config.npcName,
         body_present = Body.exists(body),
         alive = Body.exists(body),
@@ -399,7 +404,8 @@ function Body.snapshot(body)
         physical_state = data.GoblinPhysicalState,
         move_type = data.GoblinMoveType,
         combat_state = data.GoblinCombatState,
-        visual_asset = "vanilla-wardrobe",
+        visual_asset = Config.npcVisualAsset,
+        movement_goal = data.GoblinMovementGoal,
         visual_asset_applied = data.GoblinVisualApplied == true,
         visual_error = data.GoblinVisualError,
         wardrobe = WARDROBE,

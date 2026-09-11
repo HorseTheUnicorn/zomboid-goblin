@@ -6,9 +6,7 @@ local Config = {
     npcName = "Goblin",
     npcRole = "companion",
 
-    -- Goblin is intentionally a normal PZ survivor visual now.  The custom
-    -- FBX is no longer part of the runtime path; these four vanilla items are
-    -- the complete, deterministic uniform.
+    -- Full-body Goblin costume plus the player's requested vanilla uniform.
     npcOutfit = "Survivor",
     npcOutfitId = 4101,
     npcOutfitItems = {
@@ -17,8 +15,8 @@ local Config = {
         "Base.Hat_Beret",
         "Base.Shoes_BlackBoots"
     },
-    npcVisualAsset = "vanilla-wardrobe",
-    npcVisualItemType = "",
+    npcVisualAsset = "Goblin_PZ_MysteryRig",
+    npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody",
 
     -- Build 42 Base.Pistol3 is the D-E pistol. GoblinBody keeps its magazine
     -- and chamber full, so this companion has effectively unlimited ammo.
@@ -169,12 +167,10 @@ function Config.refresh()
     local npcName = option("GoblinNpcName", Config.npcName)
     if type(npcName) == "string" and #npcName >= 1 and #npcName <= 32 then Config.npcName = npcName end
 
-    -- Wardrobe and weapon are deliberate product behavior, not configurable
-    -- legacy asset hooks. Keep them fixed so old config.ini files cannot put
-    -- the broken FBX or machete back into service.
+    -- Asset registration and the companion loadout are fixed package contracts.
     Config.weaponType = "Base.Pistol3"
-    Config.npcVisualAsset = "vanilla-wardrobe"
-    Config.npcVisualItemType = ""
+    Config.npcVisualAsset = "Goblin_PZ_MysteryRig"
+    Config.npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody"
 
     Config.protected = parseBoolean(option("GoblinNpcProtected", Config.protected), Config.protected)
     Config.trackerExactTelemetry = parseBoolean(option("GoblinTrackerExact", Config.trackerExactTelemetry), Config.trackerExactTelemetry)

@@ -7,6 +7,7 @@
 local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
 local Body = require("GoblinSurvivor/GoblinBody")
+local Motion = require("GoblinSurvivor/GoblinLocomotion")
 
 local Spawner = {
     store = nil,
@@ -16,6 +17,7 @@ local Spawner = {
     lastDetail = {},
     lastClientSignature = nil
 }
+local restoredBodies = setmetatable({}, { __mode = "k" })
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -112,7 +114,8 @@ local function loadStore()
         local ok, data = pcall(modData.getOrCreate, "GoblinCompanions")
         if ok and data ~= nil then Spawner.store = data end
     end
-    if Spawner.store == nil then Spawner.store = {} end
+    -- Never silently replace a persistent store with a process-local table.
+    if Spawner.store == nil then error("GoblinCompanions persistent ModData unavailable") end
     if type(Spawner.store.records) ~= "table" then Spawner.store.records = {} end
     Spawner.store.protocol = Config.protocol
     Spawner.store.npc_prefix = Config.npcId
@@ -143,6 +146,10 @@ local function recordFor(owner, create)
         record.npc_id = Spawner.npcIdForOwner(owner)
         record.generation = tonumber(record.generation) or 0
         record.task = Constants.ALLOWED_TASKS[record.task] and record.task or Constants.TASK.FOLLOW
+        if record.task == Constants.TASK.SPEAK or record.task == Constants.TASK.EQUIP then
+            record.task = Constants.TASK.FOLLOW
+            record.task_payload = { owner = owner }
+        end
         if type(record.task_payload) ~= "table" then record.task_payload = { owner = owner } end
         record.body_present = record.body_present == true
         record.base_set = record.base_set == true
@@ -152,6 +159,23 @@ end
 
 local function bodyLive(body)
     return body ~= nil and Body.exists(body) and Body.isGoblin(body)
+end
+
+local function checkpoint(body, record)
+    if not record or not bodyLive(body) then return end
+    local point = Body.position(body)
+    if point then record.position = { x = point.x, y = point.y, z = point.z } end
+    record.saved_at = nowMs()
+end
+
+local function savedSquare(record)
+    local point, cell = record.position, currentCell()
+    if type(point) ~= "table" or cell == nil then return nil end
+    if type(point.x) ~= "number" or type(point.y) ~= "number" or type(point.z) ~= "number" then return nil end
+    local ok, square = call(cell, "getGridSquare", math.floor(point.x), math.floor(point.y), math.floor(point.z))
+    if not ok or square == nil then return nil end
+    local freeOK, free = call(square, "isFree", false)
+    return freeOK and free and square or nil
 end
 
 local function removeBody(body)
@@ -244,7 +268,13 @@ local function applyRecord(body, record)
     data.GoblinID = record.npc_id
     local task = Constants.ALLOWED_TASKS[record.task] and record.task or Constants.TASK.FOLLOW
     local payload = type(record.task_payload) == "table" and record.task_payload or { owner = record.owner }
-    Body.setTask(body, task, payload)
+    -- Discovery runs repeatedly: do not reset sequence/deadlines or restart
+    -- the task of an already recovered live body every server tick.
+    if not restoredBodies[body] then
+        Body.setTask(body, task, payload)
+        restoredBodies[body] = true
+        data.GoblinAutonomous = payload.autonomous == true
+    end
     Body.applyInvariants(body)
     return true
 end
@@ -262,6 +292,11 @@ local function discoverBodies()
         end
         local data = Body.data(zombie)
         local generation = data ~= nil and (tonumber(data.GoblinGeneration) or 0) or 0
+        local record = recordFor(owner, true)
+        if generation < record.generation then
+            duplicates[#duplicates + 1] = zombie
+            return
+        end
         local existing = best[key]
         if existing == nil then
             best[key] = zombie
@@ -292,6 +327,7 @@ local function discoverBodies()
             local generation = data ~= nil and (tonumber(data.GoblinGeneration) or 0) or 0
             record.generation = math.max(tonumber(record.generation) or 0, generation)
             record.body_present = true
+            checkpoint(body, record)
             local okOnline, online = call(body, "getOnlineID")
             record.online_id = okOnline and type(online) == "number" and online >= 0 and online or nil
             applyRecord(body, record)
@@ -351,6 +387,7 @@ function Spawner.ensureForPlayer(player, force)
     local record = recordFor(owner, true)
     local body = Spawner.findForOwner(owner)
     if body ~= nil then
+        Body.data(body).GoblinOwnerOnline = true
         record.body_present = true
         setDefaultBase(record, player)
         applyRecord(body, record)
@@ -368,7 +405,12 @@ function Spawner.ensureForPlayer(player, force)
         return nil, Spawner.lastDetail[key] or "spawn retry pending"
     end
 
-    local square = freeSquareNear(player)
+    local square = savedSquare(record)
+    if square == nil and record.task == Constants.TASK.WAIT and record.position ~= nil then
+        Spawner.lastDetail[key] = "waiting for saved square to load"
+        return nil, Spawner.lastDetail[key]
+    end
+    square = square or freeSquareNear(player)
     if square == nil then
         Spawner.nextAttemptAt[key] = timestamp + 3000
         Spawner.lastDetail[key] = "no free square near player"
@@ -398,7 +440,9 @@ function Spawner.ensureForPlayer(player, force)
         return nil, markDetail
     end
     applyRecord(created, record)
+    Body.data(created).GoblinOwnerOnline = true
     Spawner.bodies[key] = created
+    checkpoint(created, record)
     local okOnline, online = call(created, "getOnlineID")
     record.online_id = okOnline and type(online) == "number" and online >= 0 and online or nil
     Spawner.lastDetail[key] = "spawned"
@@ -422,19 +466,20 @@ function Spawner.ensureAll(force)
         end
     end
 
-    -- Goblins belonging to disconnected players are removed from the live
-    -- cell but their persistent record/base/task is retained for next login.
+    -- Park the real actor on disconnect. Keep its inventory and saved record;
+    -- unload/restart recovery uses the checkpoint, never a fresh identity.
     for key, body in pairs(Spawner.bodies) do
         if not seenOwners[key] then
             local owner = Body.owner(body)
             local record = recordFor(owner, true)
             if record ~= nil then
-                record.body_present = false
-                record.online_id = nil
+                checkpoint(body, record)
+                record.body_present = bodyLive(body)
             end
-            removeBody(body)
-            Spawner.bodies[key] = nil
-            log("DESPAWN owner=" .. tostring(owner) .. " reason=owner-offline")
+            Motion.stop(body)
+            Body.data(body).GoblinOwnerOnline = false
+            Body.data(body).GoblinMovementGoal = nil
+            Body.setPhysicalState(body, Constants.PHYSICAL.IDLE, Constants.MOVE_TYPE.IDLE, Constants.COMBAT.NONE)
         end
     end
     Spawner.syncClientState(false)
@@ -569,9 +614,16 @@ end
 
 function Spawner.snapshotAll()
     local result = {}
+    local included = {}
     for _, player in ipairs(onlinePlayers()) do
         local owner = username(player)
-        if owner ~= nil then result[#result + 1] = Spawner.snapshotForOwner(owner) end
+        if owner ~= nil then
+            result[#result + 1] = Spawner.snapshotForOwner(owner)
+            included[ownerKey(owner)] = true
+        end
+    end
+    for key, body in pairs(Spawner.bodies) do
+        if not included[key] and bodyLive(body) then result[#result + 1] = Body.snapshot(body) end
     end
     table.sort(result, function(a, b)
         return string.lower(tostring(a.owner)) < string.lower(tostring(b.owner))
@@ -609,9 +661,11 @@ function Spawner.syncClientState(force)
             combat_state = snapshot.combat_state or Constants.COMBAT.NONE,
             visual_asset = Config.npcVisualAsset,
             visual_item_type = Config.npcVisualItemType,
+            movement_goal = snapshot.movement_goal,
             weapon_type = Config.weaponType,
             base_set = snapshot.base_set == true,
-            friendly = true
+            friendly = true,
+            owner_online = snapshot.owner_online
         }
     end
     store.companions = companions
@@ -622,7 +676,10 @@ function Spawner.syncClientState(force)
             tostring(item.npc_id), tostring(item.owner), tostring(item.body_present),
             tostring(item.online_id or ""), tostring(item.generation or 0),
             tostring(item.task), tostring(item.physical_state), tostring(item.move_type),
-            tostring(item.combat_state), tostring(item.base_set)
+            tostring(item.combat_state), tostring(item.base_set), tostring(item.owner_online),
+            tostring(item.movement_goal and math.floor(item.movement_goal.x * 2)),
+            tostring(item.movement_goal and math.floor(item.movement_goal.y * 2)),
+            tostring(item.movement_goal and item.movement_goal.z)
         }, "|")
     end
     local signature = table.concat(parts, ";")

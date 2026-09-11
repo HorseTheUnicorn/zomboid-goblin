@@ -1,4 +1,6 @@
 from pathlib import Path
+import hashlib
+import xml.etree.ElementTree as ET
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,31 +47,36 @@ class GoblinCompanionContractTests(unittest.TestCase):
         for item in WARDROBE:
             self.assertIn(item, config)
             self.assertIn(item, body)
-        self.assertIn('npcVisualAsset = "vanilla-wardrobe"', config)
-        self.assertIn('npcVisualItemType = ""', config)
+        self.assertIn('npcVisualAsset = "Goblin_PZ_MysteryRig"', config)
+        self.assertIn('npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody"', config)
         self.assertIn("setWornItem", body)
         self.assertIn("WARDROBE_APPLIED", body)
         self.assertIn("setDressInRandomOutfit", body)
 
-    def test_custom_character_assets_are_not_packaged(self) -> None:
-        forbidden = (
-            COMMON_MEDIA / "clothing" / "clothing.xml",
+    def test_custom_character_assets_resolve_to_the_supplied_mesh_and_texture(self) -> None:
+        required = (
             COMMON_MEDIA / "clothing" / "clothingItems" / "Goblin_MysteryBody.xml",
-            COMMON_MEDIA / "fileGuidTable.xml",
-            COMMON_MEDIA / "models_X" / "Goblin_PZ_MysteryRig.fbx",
             COMMON_MEDIA / "models_X" / "Skinned" / "Goblin" / "Goblin.fbx",
             COMMON_MEDIA / "textures" / "Goblin" / "Goblin.png",
             MOD / "42" / "media" / "scripts" / "goblin_items.txt",
         )
-        for path in forbidden:
-            self.assertFalse(path.exists(), str(path))
-        self.assertFalse((COMMON_MEDIA / "AnimSets" / "zombie").exists())
-        self.assertTrue((ROOT / "art" / "goblin").is_dir())
+        for path in required:
+            self.assertTrue(path.is_file(), str(path))
+        clothing = ET.parse(required[0]).getroot()
+        mesh = COMMON_MEDIA / 'models_X' / (clothing.findtext('m_MaleModel') + '.fbx')
+        texture = COMMON_MEDIA / 'textures' / (clothing.findtext('textureChoices') + '.png')
+        for packaged, source in ((mesh, ROOT / 'art/goblin/Goblin_PZ_MysteryRig.fbx'),
+                                 (texture, ROOT / 'art/goblin/textures/Material_1_basecolor.png')):
+            self.assertEqual(hashlib.sha256(packaged.read_bytes()).digest(), hashlib.sha256(source.read_bytes()).digest())
+        self.assertEqual(texture.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
+        for path in (COMMON_MEDIA / 'AnimSets/zombie').rglob('*.xml'):
+            node = ET.parse(path).getroot()
+            self.assertTrue(any(c.findtext('m_Name') == 'GoblinNPC' for c in node.findall('m_Conditions')))
 
     def test_client_has_no_custom_model_retry_loop(self) -> None:
         client = self.read(CLIENT / "GoblinClient.lua")
-        self.assertIn("visual=vanilla-wardrobe", client)
-        self.assertIn("custom_model=false", client)
+        self.assertIn("Appearance.apply", client)
+        self.assertIn("custom_model=true", client)
         self.assertNotIn("OutfitManager", client)
         self.assertNotIn("HumanVisual", client)
         self.assertNotIn("dressInClothingItem", client)
@@ -79,9 +86,12 @@ class GoblinCompanionContractTests(unittest.TestCase):
     def test_client_and_server_use_native_follow_pathing(self) -> None:
         client = self.read(CLIENT / "GoblinClient.lua")
         movement = self.read(SERVER / "GoblinMovement.lua")
-        self.assertIn("pathToCharacter", client)
-        self.assertIn("pathToLocationF", client)
-        self.assertIn('call(body, "pathToLocationF"', movement)
+        driver = self.read(SHARED / 'GoblinLocomotion.lua')
+        self.assertIn('Motion.drive', client)
+        self.assertIn('Motion.drive', movement)
+        self.assertIn('call(body, "pathToLocationF"', driver)
+        self.assertIn('isRemoteZombie', driver)
+        self.assertIn('getOwner', driver)
         self.assertNotIn('call(b, "update")', movement)
         self.assertNotIn('call(body, "setX"', movement)
         self.assertNotIn('call(body, "setY"', movement)

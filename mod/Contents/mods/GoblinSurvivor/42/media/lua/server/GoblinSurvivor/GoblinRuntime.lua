@@ -11,6 +11,8 @@ local Telemetry = require("GoblinSurvivor/GoblinTelemetry")
 local ChatBridge = require("GoblinSurvivor/ChatBridge")
 
 local Runtime = { started = false }
+local nextRosterAt = 0
+local nextBrainAt = setmetatable({}, { __mode = "k" })
 
 local function isAuthoritativeServer()
     if type(isServer) == "function" then
@@ -36,9 +38,9 @@ local function updateBody(body, timestamp)
     if not Body.isGoblin(body) or not Body.exists(body) then return end
     Body.applyInvariants(body)
     local data = Body.data(body)
-    local nextBrainAt = data ~= nil and (tonumber(data.GoblinNextBrainAt) or 0) or 0
-    if timestamp >= nextBrainAt then
-        if data ~= nil then data.GoblinNextBrainAt = timestamp + 250 end
+    if data ~= nil and data.GoblinOwnerOnline == false then return end
+    if timestamp >= (nextBrainAt[body] or 0) then
+        nextBrainAt[body] = timestamp + 250
         -- Finish/advance any current explicit or autonomous task first, then
         -- let the idle scheduler choose new work only when appropriate.
         Brain.update(body, timestamp)
@@ -66,6 +68,10 @@ function Runtime.tick()
     if not Runtime.started then Runtime.start() end
     if not Config.enabled then return end
     local timestamp = nowMs()
+    -- Zombie events still run each update; roster scans/telemetry don't need
+    -- to traverse the whole cell on every rendered server frame.
+    if timestamp < nextRosterAt then return end
+    nextRosterAt = timestamp + 250
     local bodies = Spawner.ensureAll(false)
     for _, body in ipairs(bodies) do updateBody(body, timestamp) end
     Bridge.tick()

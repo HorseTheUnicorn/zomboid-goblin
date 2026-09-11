@@ -45,27 +45,27 @@ Qwen emits only high-level intents. Lua resolves movement, targets, loot, base d
 
 ## Runtime architecture
 
-- Dedicated PZ server: owns all Goblin bodies and all gameplay mutations.
+- Dedicated PZ server: owns Goblin identities, tasks, destinations and gameplay mutations. Native zombie motion runs on the simulation owner assigned by the engine.
 - Local Qwen/Python service: interprets addressed chat and generates in-character speech.
 - `GoblinSpawner.lua`: one `addZombiesInOutfit(... total=1 ...)` spawn path only; no `createRealZombieAlways`, `createRealZombieNow`, or manual body insertion fallbacks.
 - `GoblinBody.lua`: friendly/humanized invariants and supplied-model clothing registration.
-- `GoblinMovement.lua`: native `PathFindBehavior2`; no coordinate stepping or teleport movement.
+- `GoblinMovement.lua` / `GoblinLocomotion.lua`: native path commands on the simulation owner, with live follow targets, a three-tile stopping radius, and blocked-path retries.
 - `GoblinLoot.lua`: transfers real existing items and delivers cargo to the owner's base.
 - `GoblinClient.lua`: recognizes every replicated Goblin by its own online/NPC identity and keeps the custom model/human animation variables applied without forcing animation frames or `ZombieIdleState`.
 
-When a player disconnects, their live Goblin is removed but their persistent identity, base, and task record remain. When they return, their own Goblin is recreated/recovered. Ordinary zombies are never claimed as Goblins.
+When a player disconnects, their loaded Goblin parks in place. Its identity, base, task and last position are checkpointed in world `ModData`. Reconnecting recovers the same loaded actor and inventory. If the engine has unloaded the actor or a restart requires recreation, the saved identity/task/position are restored; a following Goblin may rejoin near its owner if that square is unavailable. A waiting Goblin waits for its saved square to load. Inventory preservation across engine unload/recreation is not yet guaranteed. Ordinary zombies are never claimed as Goblins.
 
 ## Character asset
 
 The supplied source character is preserved under `art/goblin`, and the game package uses:
 
 ```text
-common/media/models_X/Goblin_PZ_MysteryRig.fbx
-common/media/textures/Goblin_PZ_MysteryRig/Material_1_basecolor.png
+common/media/models_X/Skinned/Goblin/Goblin.fbx
+common/media/textures/Goblin/Goblin.png
 common/media/clothing/clothingItems/Goblin_MysteryBody.xml
 ```
 
-The clothing XML references `Goblin_PZ_MysteryRig` **without** an `.fbx` suffix and resolves its texture relative to `media/textures`.
+The clothing XML references `Skinned/Goblin/Goblin` without an `.fbx` suffix and `Goblin/Goblin` relative to `media/textures`. `GoblinAppearance.lua` resolves the registered script item into the zombie's actual `ItemVisuals`, retries asynchronous loading, and repairs visuals replaced during replication. The four vanilla uniform items remain equipped alongside the costume. No global human-model override or `OutfitManager.instance` Lua access is used.
 
 ## Configuration
 
@@ -75,7 +75,7 @@ The important defaults remain in `goblin-bridge/config.ini` / `ops/server-option
 GoblinEnabled=true
 GoblinNpcId=goblin.primary
 GoblinNpcVisualAsset=Goblin_PZ_MysteryRig
-GoblinWeapon=Base.Machete
+GoblinWeapon=Base.Pistol3
 GoblinNpcProtected=true
 GoblinFollowDistance=3
 GoblinFollowWalkDistance=4
@@ -88,8 +88,9 @@ GoblinSpawnOffset=4
 ## Development
 
 ```text
+python -m pip install -r requirements-dev.txt
 python -m compileall -q goblin_zomboid tests
 python -m unittest discover -s tests -v
 ```
 
-The repository also contains a GitHub Actions workflow that runs these checks on pushes and pull requests.
+The repository also contains a GitHub Actions workflow that runs these checks on pushes and pull requests. Lua behavior tests execute production modules in Lua 5.1 with engine boundary doubles; a live B42 server/client check is still needed for actual rendering and navigation.
