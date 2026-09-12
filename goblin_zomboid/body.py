@@ -67,7 +67,7 @@ class DeterministicActionGate:
         }:
             return DriverResult(False, "rejected", "unsafe loot focus")
         if action.action is Action.EQUIP and (
-            not action.item_name or action.item_name != "Base.Machete"
+            not action.item_name or action.item_name != "Base.DoubleBarrelShotgun"
         ):
             return DriverResult(False, "rejected", "EQUIP requires the configured preferred weapon")
         if action.action not in set(Action):

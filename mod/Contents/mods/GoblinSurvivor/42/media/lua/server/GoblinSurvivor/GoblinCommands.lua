@@ -41,7 +41,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "spawn | follow | wait | loot [food|medical|tools|ammo|surprise] | base | home | attack | equip | state")
+    reply(player, "follow | wait | enter/exit vehicle | open door/window | close curtains | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -59,15 +59,55 @@ local function handle(player, rawText)
         return
     end
     if command == "base" or command == "setbase" or command == "homebase" then
-        local ok, detail = Spawner.setBaseForPlayer(player)
+        local clear = string.lower(parts[2] or "") == "clear"
+        local ok, detail = Spawner.setBaseForPlayer(player, clear)
         local body = Spawner.findForPlayer(player)
-        if ok and body ~= nil then Body.say(body, "Base recorded, comrade. Try not to bourgeois it up.") end
+        if ok and body ~= nil then Body.say(body, clear and "Deliveries at your boots, comrade." or "Base recorded, comrade. Try not to bourgeois it up.") end
         reply(player, detail)
         return
     end
 
     local body, detail = ownBody(player, false)
     if body == nil then reply(player, detail or "Your Goblin is not present."); return end
+    if command=="enter" or command=="board" or command=="exit" or command=="disembark" then
+        local entering=command=="enter" or command=="board"
+        local ok,result=Brain.setTask(body,entering and "ENTER_VEHICLE" or "EXIT_VEHICLE",{})
+        Body.say(body,"Comrade, "..tostring(result)..".");return
+    end
+    if command=="close" then
+        local kind=string.lower(parts[2] or "")
+        if kind~="curtain" and kind~="curtains" and kind~="blinds" then reply(player,"use close curtains");return end
+        local ok,result=Brain.setTask(body,Constants.TASK.CLOSE_CURTAINS,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="open" then
+        local kind=string.lower(parts[2] or "door")
+        if kind~="door" and kind~="window" then reply(player,"use open door or open window");return end
+        local ok,result=Brain.setTask(body,kind=="window" and Constants.TASK.OPEN_WINDOW or Constants.TASK.OPEN_DOOR,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="farm" or command=="craft" or command=="repair" then
+        local task=command=="farm" and "FARM" or command=="craft" and "CRAFT" or "REPAIR_VEHICLE"
+        local payload
+        if task=="FARM" then payload={job=parts[2] or "tend",item=parts[3] and {name=parts[3]} or nil}
+        elseif task=="CRAFT" then payload={item={name=parts[2],count=tonumber(parts[3]) or 1}}
+        else payload={job=parts[2] or "all"} end
+        local ok,result=Brain.setTask(body,task,payload)
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command == "fortify" or command == "barricade" then
+        local ok,result = Brain.setTask(body, Constants.TASK.FORTIFY, {})
+        Body.say(body,result)
+        return
+    end
+    if command == "build" then
+        local ok,result = Brain.setTask(body, Constants.TASK.BUILD, {kind=parts[2],north=parts[3]=="north"})
+        Body.say(body,result)
+        return
+    end
 
     if command == "follow" or command == "come" or command == "regroup" then
         local ok, result = Brain.setTask(body, Constants.TASK.FOLLOW, { owner = playerName(player) })
@@ -84,13 +124,13 @@ local function handle(player, rawText)
         local allowed = { food = true, medical = true, tools = true, ammo = true, surprise = true }
         if not allowed[focus] then reply(player, "loot focus must be food, medical, tools, ammo, or surprise"); return end
         local ok, result = Brain.setTask(body, Constants.TASK.LOOT, { loot_focus = focus })
-        if ok then Body.say(body, "I shall seize useful property and return it to the collective. Meaning the base.") end
+        if ok then Body.say(body, "I shall seize useful property, comrade. Delivery to your base, or your boots if you have none.") end
         reply(player, ok and "Loot run started." or result)
         return
     end
     if command == "home" or command == "return" or command == "returntobase" then
         local ok, result = Brain.setTask(body, Constants.TASK.RETURN_TO_BASE, {})
-        reply(player, ok and "Returning to base." or result)
+        reply(player, ok and "Returning with supplies." or result)
         return
     end
     if command == "attack" or command == "defend" or command == "help" then

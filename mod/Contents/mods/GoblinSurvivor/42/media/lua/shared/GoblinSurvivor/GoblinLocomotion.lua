@@ -1,7 +1,9 @@
 -- The server chooses destinations. Only the engine's current simulation owner
 -- issues native path commands; other peers render replicated motion.
 local Config = require("GoblinSurvivor/Config")
+local Hands = require("GoblinSurvivor/GoblinHands")
 local Motion = { paths = setmetatable({}, { __mode = "k" }) }
+local rejoined = setmetatable({}, {__mode="k"})
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -35,20 +37,59 @@ function Motion.distance(a, b)
     return math.sqrt((a.x-b.x)^2 + (a.y-b.y)^2 + (a.z-b.z)^2)
 end
 
+local function clearanceGoal(actor,leader)
+    if type(getCell)~="function" then return nil end
+    local cell=getCell()
+    local best,score
+    -- Chair resting treats a visible zombie on a neighboring tile as a threat.
+    -- Move outside that tile ring without changing any player threat checks.
+    for dx=-4,4 do for dy=-4,4 do
+        if math.max(math.abs(dx),math.abs(dy))>=2 then
+            local x,y=math.floor(leader.x)+dx+0.5,math.floor(leader.y)+dy+0.5
+            local radius=(x-leader.x)^2+(y-leader.y)^2
+            local outward=(x-leader.x)*(actor.x-leader.x)+(y-leader.y)*(actor.y-leader.y)
+            if radius>=3.2^2 and radius<=4.5^2 and outward>=0 then
+                local _,square=call(cell,"getGridSquare",math.floor(x),math.floor(y),math.floor(leader.z))
+                local _,free=call(square,"isFree",false)
+                local distance=(x-actor.x)^2+(y-actor.y)^2
+                if free==true and (not score or distance<score) then
+                    best,score={x=x,y=y,z=leader.z},distance
+                end
+            end
+        end
+    end end
+    return best
+end
+
 function Motion.followGoal(body, owner)
+    local _, dead = call(owner, "isDead")
+    if dead == true then return nil end
     local actor, leader = Motion.position(body), Motion.position(owner)
     if not actor or not leader then return nil end
     local gap = Motion.distance(actor, leader)
-    -- One-tile bodyguard spacing is a product behavior, not a soft config
-    -- suggestion. Enforce it on both server and simulation-owning clients so
-    -- an older config.ini with GoblinFollowDistance=3 cannot widen the gap.
-    local preferred = 1
+    -- Three tiles keeps a following companion outside the chair-rest ring.
+    -- Use the same rule on both simulators even with older local configs.
+    local preferred = 3.0
+    local adjacent=math.abs(math.floor(actor.x)-math.floor(leader.x))<=1
+        and math.abs(math.floor(actor.y)-math.floor(leader.y))<=1
+    if math.floor(actor.z)==math.floor(leader.z) and (adjacent or gap<2.5) then
+        return clearanceGoal(actor,leader),gap
+    end
     if math.floor(actor.z) == math.floor(leader.z) and gap <= preferred then
         return nil, gap
     end
-    -- Path to the owner square so stair/door routing remains valid; stop at
-    -- the preferred radius using the live owner distance, measured only once.
+    -- Path to the owner square to retain native stair/door routing.
     return leader, gap
+end
+
+function Motion.moveType(goal, gap, owner)
+    if not goal then return "IDLE" end
+    local _, running = call(owner, "isRunning")
+    local _, sprinting = call(owner, "isSprinting")
+    -- Mirror the leader immediately, not only after falling nine tiles behind.
+    -- These are reads on the player, never player-only running flags on Goblin.
+    if running == true or sprinting == true or (gap or 0) >= Config.followRunDistance then return "RUN" end
+    return "WALK"
 end
 
 function Motion.stop(body)
@@ -68,7 +109,25 @@ function Motion.stop(body)
     Motion.paths[body] = nil
 end
 
+function Motion.rejoin(body, point, sequence, expires, timestamp)
+    if type(point)~="table" or type(sequence)~="number" or type(expires)~="number"
+        or timestamp>expires or rejoined[body]==sequence or not Motion.controls(body) then return false end
+    for _,key in ipairs({"x","y","z"}) do
+        if type(point[key])~="number" or point[key]~=point[key] or math.abs(point[key])>1000000 then return false end
+    end
+    local square=getCell():getGridSquare(math.floor(point.x),math.floor(point.y),math.floor(point.z))
+    if not square then return false end
+    Motion.stop(body)
+    local ok=call(body,"teleportTo",math.floor(point.x),math.floor(point.y),math.floor(point.z))
+    if ok then rejoined[body]=sequence end
+    return ok
+end
+
 function Motion.drive(body, goal, moveType, timestamp)
+    -- Before any native path call, including the first frame of a new order.
+    if goal or Hands.travelling(body) then Hands.stow(body) end
+    local _,vehicle=call(body,"getVehicle")
+    if vehicle then Motion.stop(body);return true,"riding" end
     if not Motion.controls(body) then
         Motion.paths[body] = nil
         return true, "delegated"
@@ -77,8 +136,16 @@ function Motion.drive(body, goal, moveType, timestamp)
         Motion.stop(body)
         return true, "arrived"
     end
-    call(body, "setUseless", false)
-    call(body, "setRunning", moveType == "RUN")
+    -- Do not mark an actively pathing actor useless: WalkTowardState.enter
+    -- immediately returns such an actor to idle in 42.20.4. The idle guard
+    -- disables wandering again whenever the native path has ended or failed.
+    -- IsoZombie has no BodyDamage. The player running flag makes fence-vault
+    -- entry dereference it in 42.20.4. Native zombie speedType plus our human
+    -- RUN animation provide running without invoking that player-only branch.
+    call(body, "setRunning", false)
+    call(body, "setSprinting", false)
+    call(body, "setWalkType", moveType == "RUN" and "sprint" or "Walk")
+    call(body, "setSpeedTypeFromWalkType")
     call(body, "setVariable", "GoblinMoveType", moveType)
     local path = Motion.paths[body]
     local point = Motion.position(body)
@@ -95,6 +162,7 @@ function Motion.drive(body, goal, moveType, timestamp)
     if timestamp >= path.nextPathAt and (moved or stuck) then
         -- Respect the engine repath cooldown; a moving leader doesn't reset
         -- progress detection, so a frozen actor is still reported/retried.
+        call(body, "setUseless", false)
         local ok, result = call(body, "pathToLocationF", goal.x, goal.y, goal.z)
         path.nextPathAt = timestamp + Config.repathSeconds * 1000
         if not ok or result == false then return false, "native path rejected" end

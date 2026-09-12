@@ -11,17 +11,19 @@ from typing import Any
 MAX_INTENT_BYTES = 16 * 1024
 MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
+    "FARM", "CRAFT", "REPAIR_VEHICLE",
+    "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS",
     "WAIT", "SAY", "EQUIP", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
     "SET_BASE", "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
-    "SECURE_BASE", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
+    "SECURE_BASE", "BUILD", "RETURN_TO_BASE", "CLEAR_BUILDING", "ATTACK", "DEFEND_PLAYER",
     "DEFEND_AREA", "GUARD", "PATROL", "FLEE", "ENTER_VEHICLE", "EXIT_VEHICLE",
     "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
 }
 MODE_ALLOWED = {
     "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
-    "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "ENTER_VEHICLE", "EXIT_VEHICLE"},
-    "PARTY": INTENTS - {"ASSIGN_JOB", "SECURE_BASE", "PATROL", "GUARD"},
+    "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL"},
+    "PARTY": INTENTS - {"ASSIGN_JOB", "PATROL", "GUARD"},
     "HUNT": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "GUARD", "PATROL"},
 }
 TARGET_KINDS = {
@@ -220,7 +222,7 @@ class IntentValidator:
         target_required = {
             "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA",
             "JOIN_PARTY", "TRADE", "HELP", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD",
-            "PATROL", "CLEAR_BUILDING", "ENTER_VEHICLE", "FLEE", "RETREAT", "REGROUP",
+            "PATROL", "CLEAR_BUILDING", "FLEE", "RETREAT", "REGROUP",
             "GO_HOME", "RETURN_TO_BASE",
         }
         if intent in target_required and "target" not in raw:
@@ -233,6 +235,10 @@ class IntentValidator:
             item = result.get("item")
             if not isinstance(item, dict) or item.get("name") != "Base.DoubleBarrelShotgun":
                 raise IntentError("EQUIP only permits Base.DoubleBarrelShotgun")
+        if intent == "BUILD":
+            item = result.get("item")
+            if not isinstance(item, dict) or item.get("name") not in {"crate", "wall", "fence"}:
+                raise IntentError("BUILD requires crate, wall, or fence")
         if "candidate" in raw:
             result["candidate"] = _candidate(raw["candidate"])
         if intent == "HUNT_RELOCATE" and "candidate" not in result:
@@ -258,6 +264,15 @@ class IntentValidator:
             raise IntentError("FORM_SQUAD requires leader")
         if "job" in raw:
             result["job"] = _text(raw["job"], "job", maximum=32).casefold()
+        if intent == "FARM":
+            if result.get("job") not in {"plow", "sow", "water", "harvest", "tend"}:
+                raise IntentError("FARM requires plow, sow, water, harvest, or tend")
+            if result["job"] == "sow" and not result.get("item", {}).get("name"):
+                raise IntentError("sowing requires a crop name")
+        if intent == "CRAFT" and not result.get("item", {}).get("name"):
+            raise IntentError("CRAFT requires an installed recipe name")
+        if intent == "REPAIR_VEHICLE" and result.get("job", "all") not in {"all", "engine", "bodywork"}:
+            raise IntentError("vehicle repair requires all, engine, or bodywork")
         if intent == "ASSIGN_JOB" and "job" not in result:
             raise IntentError("ASSIGN_JOB requires job")
         if "formation" in raw:

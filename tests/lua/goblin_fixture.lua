@@ -5,7 +5,10 @@ isServer = function() return clientMode ~= true end
 print = function() end
 function list(items)
     return { values = items or {}, size = function(self) return #self.values end,
-        get = function(self, i) return self.values[i+1] end,
+        get = function(self, i)
+            if i<0 or i>=#self.values then listBoundsErrors=(listBoundsErrors or 0)+1; error('Java list bounds') end
+            return self.values[i+1]
+        end,
         add = function(self, v) self.values[#self.values+1] = v end,
         clear = function(self) self.values = {} end }
 end
@@ -26,7 +29,14 @@ function actor(x, y, z)
     function a:pathToLocationF(x,y,z) self.pathCalls=self.pathCalls+1; self.destination={x=x,y=y,z=z} end
     function a:getPathFindBehavior2() return {cancel=function() a.cancelCalls=a.cancelCalls+1 end} end
     function a:getItemVisuals() return self.visuals end
-    function a:getHumanVisual() return {} end
+    a.human = {skin='MaleBody01',hair='RandomHair',beard='RandomBeard'}
+    function a.human:getSkinTexture() return self.skin end
+    function a.human:setSkinTextureName(v) self.skin=v end
+    function a.human:getHairModel() return self.hair end
+    function a.human:setHairModel(v) self.hair=v end
+    function a.human:getBeardModel() return self.beard end
+    function a.human:setBeardModel(v) self.beard=v end
+    function a:getHumanVisual() return self.human end
     function a:resetModelNextFrame() self.resets=(self.resets or 0)+1 end
     function a:removeFromWorld() self.removed=true end
     function a:removeFromSquare() end
@@ -52,6 +62,8 @@ cell={getZombieList=function() return zombies end,
     end}
 getCell=function() return cell end
 saved={}
+goblinServerInventoryRestore=function(body,id) return 'new' end
+goblinServerInventorySave=function(body,id) return 'saved' end
 ModData={getOrCreate=function() return saved end, transmit=function() end}
 spawnCount=0
 addZombiesInOutfit=function(x,y,z,total)

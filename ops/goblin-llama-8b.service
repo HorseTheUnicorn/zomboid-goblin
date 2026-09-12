@@ -1,0 +1,22 @@
+[Unit]
+Description=Goblin resident Qwen3-8B API (game and Discord)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goblin
+Group=goblin
+WorkingDirectory=/home/goblin/cave
+# Both aliases address ONE model; tool-capable Discord routes remain available.
+ExecStart=/home/goblin/llama.cpp/build-turing/bin/llama-server --host 127.0.0.1 --port 8000 --model /home/goblin/models/Qwen3-8B-Q4_K_M.gguf --alias goblin-fast,goblin-smart --ctx-size 16384 --parallel 2 --batch-size 512 --ubatch-size 256 --cache-type-k q4_0 --cache-type-v q4_0 --flash-attn on --n-gpu-layers auto --fit on --fit-target 384 --threads 2 --threads-batch 2 --poll 0 --jinja --reasoning off --chat-template-kwargs '{"enable_thinking":false}' --no-ui
+Nice=5
+CPUQuota=200%
+MemoryHigh=7G
+MemoryMax=9G
+MemorySwapMax=512M
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

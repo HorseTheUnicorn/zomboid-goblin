@@ -10,6 +10,12 @@ from .validator import ValidatedIntent
 
 
 class Action(str, Enum):
+    FARM = "FARM"
+    CRAFT = "CRAFT"
+    REPAIR_VEHICLE = "REPAIR_VEHICLE"
+    OPEN_DOOR = "OPEN_DOOR"
+    OPEN_WINDOW = "OPEN_WINDOW"
+    CLOSE_CURTAINS = "CLOSE_CURTAINS"
     NOOP = "NOOP"
     SAY = "SAY"
     EQUIP = "EQUIP"
@@ -42,6 +48,7 @@ class Action(str, Enum):
     DISMISS_SQUAD = "DISMISS_SQUAD"
     ASSIGN_JOB = "ASSIGN_JOB"
     SECURE_BASE = "SECURE_BASE"
+    BUILD = "BUILD"
     RETURN_TO_BASE = "RETURN_TO_BASE"
     CLEAR_BUILDING = "CLEAR_BUILDING"
     ENTER_VEHICLE = "ENTER_VEHICLE"
@@ -187,6 +194,13 @@ class CombatController:
 
 class TacticalController:
     _mapping = {
+        "ATTACK": Action.ATTACK,
+        "OPEN_DOOR": Action.OPEN_DOOR,
+        "FARM": Action.FARM,
+        "CRAFT": Action.CRAFT,
+        "REPAIR_VEHICLE": Action.REPAIR_VEHICLE,
+        "OPEN_WINDOW": Action.OPEN_WINDOW,
+        "CLOSE_CURTAINS": Action.CLOSE_CURTAINS,
         "WAIT": Action.NOOP,
         "SAY": Action.SAY,
         "EQUIP": Action.EQUIP,
@@ -219,6 +233,7 @@ class TacticalController:
         "DISMISS_SQUAD": Action.DISMISS_SQUAD,
         "ASSIGN_JOB": Action.ASSIGN_JOB,
         "SECURE_BASE": Action.SECURE_BASE,
+        "BUILD": Action.BUILD,
         "RETURN_TO_BASE": Action.RETURN_TO_BASE,
         "CLEAR_BUILDING": Action.CLEAR_BUILDING,
         "ENTER_VEHICLE": Action.ENTER_VEHICLE,
@@ -232,7 +247,9 @@ class TacticalController:
         # model-declared mode.  Do not reject an otherwise safe direct player
         # command just because the server's coarse PARTY/ROAM label changed
         # between telemetry and the Qwen response.
-        action = self._mapping[intent.intent]
+        action = self._mapping.get(intent.intent)
+        if action is None:
+            return ControllerResult(False, None, "intent has no implemented controller action")
         target = intent.data.get("target")
         candidate = intent.data.get("candidate")
         if intent.intent == "HUNT_RELOCATE":
@@ -240,7 +257,7 @@ class TacticalController:
         target_required = {
             "MOVE_TO", "FOLLOW", "SEARCH", "SCAVENGE", "JOIN_PARTY", "TRADE", "HELP",
             "FOLLOW_GOBLIN", "LOOT_AREA", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL",
-            "CLEAR_BUILDING", "ENTER_VEHICLE", "FLEE", "RETREAT", "REGROUP", "GO_HOME",
+            "CLEAR_BUILDING", "FLEE", "RETREAT", "REGROUP", "GO_HOME",
             "RETURN_TO_BASE",
         }
         if intent.intent in target_required and not isinstance(target, dict):
@@ -288,7 +305,7 @@ class SafetyController:
         if not state.body_ready:
             if intent is None:
                 return ControllerResult(True, None, "NPC body driver is unavailable")
-            if self.tactical._mapping[intent.intent] not in {Action.SAY, Action.NOOP}:
+            if self.tactical._mapping.get(intent.intent) not in {Action.SAY, Action.NOOP}:
                 return ControllerResult(False, None, "NPC body driver is unavailable")
             return self.tactical.decide(intent, state)
         reflex = self.reflex.decide(state)

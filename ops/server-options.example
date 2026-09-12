@@ -4,18 +4,18 @@
 # Build 42 ignores unknown server-option keys. Place this file at:
 #   <cachedir>/Lua/goblin-bridge/config.ini
 # The bridge provisioner creates this file automatically with the safe values.
-# The rebuilt runtime defaults to one Goblin. Set false only to disable it.
+# One Goblin per player. Set false to pause the companion runtime.
 GoblinEnabled=true
 GoblinBridgeRoot=goblin-bridge
 GoblinNpcId=goblin.primary
 GoblinNpcName=Goblin
 GoblinNpcOutfit=Survivor
 GoblinNpcOutfitId=4101
-GoblinNpcVisualAsset=Goblin_PZ_MysteryRig
+GoblinNpcVisualAsset=Goblin_Community_Human
 GoblinWeapon=Base.DoubleBarrelShotgun
 GoblinNpcProtected=true
 GoblinCommanders=
-GoblinFollowDistance=1
+# Follow spacing is fixed at 3 tiles by the runtime to allow chair rest.
 GoblinFollowWalkDistance=2
 GoblinFollowRunDistance=9
 GoblinFollowHysteresis=0.5
@@ -34,6 +34,10 @@ GoblinMeleeImpactDelaySeconds=0.325
 GoblinRecoverySeconds=0.8
 GoblinStuckTimeoutSeconds=8
 GoblinMaxRecoveryAttempts=3
-GoblinLootRadius=6
+GoblinLootRadius=8
 GoblinLootScanSeconds=2
-GoblinLootMaxItemsPerTask=4
+GoblinLootMaxItemsPerTask=8
+GoblinAutonomyEnabled=true
+GoblinAutonomyIdleSeconds=30
+GoblinAutonomyDecisionSeconds=8
+GoblinAutonomyExploreRadius=24

@@ -6,6 +6,7 @@ local Constants = require("GoblinSurvivor/Constants")
 local Body = require("GoblinSurvivor/GoblinBody")
 local Movement = require("GoblinSurvivor/GoblinMovement")
 local Brain = require("GoblinSurvivor/GoblinBrain")
+local World = require("GoblinSurvivor/GoblinWorld")
 
 local Defense = {
     installed = false,
@@ -13,10 +14,12 @@ local Defense = {
 }
 
 local WEAPON = "Base.DoubleBarrelShotgun"
-local FOLLOW_DISTANCE = 1
+local FOLLOW_DISTANCE = 3.0
 local SHOTGUN_RANGE = 12
-local SHOT_COOLDOWN_MS = 800
+local SHOT_COOLDOWN_MS = 1200
+local SHOT_WINDUP_MS = 400
 local SHOT_DAMAGE = 8.0
+local OWNER_DEFENSE_RADIUS = 5
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
@@ -84,8 +87,7 @@ local function refillShotgun(item)
     return true
 end
 
-local function nearestThreat(body)
-    local origin = Body.position(body)
+local function nearestThreat(body, origin, radius)
     if origin == nil or type(getCell) ~= "function" then return nil end
     local okCell, cell = pcall(getCell)
     if not okCell or cell == nil then return nil end
@@ -93,16 +95,17 @@ local function nearestThreat(body)
     if not okList or list == nil then return nil end
     local okSize, size = call(list, "size")
     size = okSize and tonumber(size) or 0
-    local radius = tonumber(Config.combatRadius) or 20
     local best, bestDistance = nil, radius * radius
     for i = 0, size - 1 do
         local okZombie, candidate = call(list, "get", i)
         if okZombie and candidate ~= nil and candidate ~= body and not Body.isGoblin(candidate) then
             local okDead, dead = call(candidate, "isDead")
             local point = Body.position(candidate)
-            if point ~= nil and not (okDead and dead == true) then
+            local _, health = call(candidate, "getHealth")
+            if point ~= nil and math.floor(point.z) == math.floor(origin.z) and not (okDead and dead == true)
+                and not (type(health)=="number" and health<=0) then
                 local d = distanceSquared(origin, point)
-                if d < bestDistance then
+                if d <= bestDistance then
                     best, bestDistance = candidate, d
                 end
             end
@@ -120,17 +123,32 @@ local function targetIsAlive(target)
     return Body.position(target) ~= nil
 end
 
-local function engage(body, target, timestamp)
+local function engage(body, target, timestamp, allowChase)
     local state = Defense.states[body]
     if state == nil or state.target ~= target then
-        state = { target = target, nextAttackAt = 0, lastGoal = nil }
+        state = { target = target, nextAttackAt = 0, lastGoal = nil,
+            taskSequence=Body.data(body).GoblinTaskSequence }
         Defense.states[body] = state
     end
 
     local actor, victim = Body.position(body), Body.position(target)
     if actor == nil or victim == nil then return false, "combat position unavailable" end
+    local visible, result = pcall(function()
+        return tostring(LosUtil.lineClear(getCell(),math.floor(actor.x),math.floor(actor.y),math.floor(actor.z),
+            math.floor(victim.x),math.floor(victim.y),math.floor(victim.z),false))
+    end)
+    if not visible then return false, "could not check the line of fire" end
+    local blocked=result~="Clear"
     local gap2 = distanceSquared(actor, victim)
-    if gap2 > SHOTGUN_RANGE * SHOTGUN_RANGE then
+    if blocked or gap2 > SHOTGUN_RANGE * SHOTGUN_RANGE then
+        state.fireAt=nil
+        Body.setCombatPose(body,false)
+        if not allowChase then
+            Defense.states[body] = nil
+            return false, "following owner; no clear shot in range"
+        end
+        state.approachAt=state.approachAt or timestamp
+        if timestamp-state.approachAt>=45000 then return false,"could not reach a clear firing position; clear a path and try again" end
         local needsGoal = state.lastGoal == nil or distanceSquared(state.lastGoal, victim) > 1.0
         if needsGoal or Movement.snapshot(body) == nil then
             Movement.command(body, Constants.TASK.MOVE_TO, { x = victim.x, y = victim.y, z = victim.z })
@@ -141,25 +159,51 @@ local function engage(body, target, timestamp)
         Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT,
             gap2 >= (tonumber(Config.followRunDistance) or 9)^2 and Constants.MOVE_TYPE.RUN or Constants.MOVE_TYPE.WALK,
             Constants.COMBAT.READY)
-        return true, "closing to double-barrel range"
+        return true, blocked and "approaching the zombie for a clear shot" or "closing to double-barrel range"
     end
+    state.approachAt=nil
 
     Movement.clear(body)
     Body.setPhysicalState(body, Constants.PHYSICAL.COMBAT, Constants.MOVE_TYPE.IDLE, Constants.COMBAT.READY)
-    if timestamp < (state.nextAttackAt or 0) then return true, "shotgun cooldown" end
-
     local equipped, detail, shotgun = Body.ensureWeapon(body)
     if not equipped or shotgun == nil then return false, detail end
-    Body.refillWeapon(body)
     Body.faceTarget(body, target)
-    Body.setCombatPose(body, true)
+    if not state.fireAt then
+        if timestamp < (state.nextAttackAt or 0) then
+            Body.setCombatPose(body, false)
+            return true, "shotgun recovery"
+        end
+        Body.setCombatPose(body, true)
+        local data = Body.data(body)
+        data.GoblinActionSequence = (tonumber(data.GoblinActionSequence) or 0)+1
+        state.fireAt = timestamp + SHOT_WINDUP_MS
+        state.nextAttackAt = timestamp + SHOT_COOLDOWN_MS
+        if type(sendServerCommand) == "function" then
+            pcall(sendServerCommand,"GoblinSurvivor","combat",{
+                npc_id=Body.npcId(body),generation=data.GoblinGeneration,
+                sequence=data.GoblinActionSequence,x=victim.x,y=victim.y,
+                windup_ms=SHOT_WINDUP_MS,duration_ms=850
+            })
+        end
+        return true, "aiming double-barrel shotgun"
+    end
+    if timestamp < state.fireAt then return true, "aiming double-barrel shotgun" end
+    -- Range, line-of-sight, owner leash and life are revalidated every update
+    -- above, including this impact tick. No instant invisible damage on acquire.
+    state.fireAt = nil
+    Body.refillWeapon(body)
     Body.setPhysicalState(body, Constants.PHYSICAL.ATTACKING, Constants.MOVE_TYPE.IDLE, Constants.COMBAT.ATTACKING)
-    state.nextAttackAt = timestamp + SHOT_COOLDOWN_MS
 
-    local fired = select(1, call(target, "Hit", shotgun, body, SHOT_DAMAGE, false, 1.0, false))
+    local _,before=call(target,"getHealth")
+    local fired,damage = call(target, "Hit", shotgun, body, SHOT_DAMAGE, false, 1.0, false)
+    local _,after=call(target,"getHealth")
     Body.refillWeapon(body)
     Body.setCombatPose(body, false)
     if not fired then return false, "double-barrel Hit failed" end
+    if type(before)=="number" and type(after)=="number" and after>=before and targetIsAlive(target) then
+        print("[GoblinSurvivor] SHOT_NO_DAMAGE owner="..tostring(Body.owner(body)).." hit_result="..tostring(damage))
+        return false,"the shot did not damage that zombie"
+    end
 
     local data = Body.data(body)
     if data ~= nil then
@@ -168,7 +212,8 @@ local function engage(body, target, timestamp)
         if dead then data.GoblinKills = (tonumber(data.GoblinKills) or 0) + 1 end
     end
     print("[GoblinSurvivor] SHOTGUN_FIRE weapon=" .. WEAPON
-        .. " infinite_ammo=true owner=" .. tostring(Body.owner(body)))
+        .. " infinite_ammo=true owner=" .. tostring(Body.owner(body))
+        .. " health_before="..tostring(before).." health_after="..tostring(after).." hit_result="..tostring(damage))
     return true, "fired double-barrel shotgun"
 end
 
@@ -227,20 +272,70 @@ local function installBrainOverride()
         local data = Body.data(body)
         local task = data ~= nil and (data.GoblinTask or Constants.TASK.FOLLOW) or Constants.TASK.FOLLOW
         local now = timestamp or nowMs()
+        local previous=Defense.states[body]
+        if previous and previous.taskSequence~=data.GoblinTaskSequence then
+            Defense.states[body]=nil
+            Body.setCombatPose(body,false)
+        end
+        -- Boarding/riding has priority over automatic defense. Explicit combat
+        -- ordered aboard is queued until Transport performs a safe exit.
+        if data and (data.GoblinRide or data.GoblinTransportActive
+            or task=="ENTER_VEHICLE" or task=="EXIT_VEHICLE") then
+            Defense.states[body]=nil
+            Body.setCombatPose(body,false)
+            return originalUpdate(body,now)
+        end
+        local automatic = task == Constants.TASK.FOLLOW or data.GoblinAutonomous == true
+
+        -- Automatic defense is centered on the PLAYER, not Goblin. Recompute
+        -- this every tick so moving owners and escaping targets cannot extend
+        -- the leash. An explicit ATTACK is the only online radius override.
+        local origin, radius = Body.position(body), tonumber(Config.combatRadius) or 20
+        if automatic then
+            origin, radius = nil, OWNER_DEFENSE_RADIUS
+            for _, player in ipairs(World.values(getOnlinePlayers())) do
+                if string.lower(player:getUsername()) == string.lower(Body.owner(body)) then
+                    if select(2,call(player,"getVehicle")) then return originalUpdate(body,now) end
+                    origin = Body.position(player)
+                    break
+                end
+            end
+            if origin == nil then
+                Defense.states[body] = nil
+                Body.setCombatPose(body, false)
+                return originalUpdate(body, now)
+            end
+        end
 
         -- While following, Goblin is a bodyguard: nearby ordinary zombies are
         -- automatically engaged, then normal follow resumes. Explicit ATTACK
         -- uses the same loop and returns to FOLLOW when the area is clear.
-        if task == Constants.TASK.FOLLOW or task == Constants.TASK.ATTACK then
+        if automatic or task == Constants.TASK.ATTACK then
             local state = Defense.states[body]
             local target = state ~= nil and state.target or nil
-            if not targetIsAlive(target) then target = nearestThreat(body) end
-            if target ~= nil then return engage(body, target, now) end
+            local point = target and Body.position(target)
+            if not targetIsAlive(target) or (automatic and
+                (not point or math.floor(point.z) ~= math.floor(origin.z) or distanceSquared(point,origin) > radius*radius)) then
+                target = nearestThreat(body, origin, radius)
+            end
+            if target ~= nil then
+                local engaged, detail = engage(body, target, now, task == Constants.TASK.ATTACK)
+                if engaged then return engaged, detail end
+                if task == Constants.TASK.ATTACK then
+                    Defense.states[body]=nil
+                    Body.setCombatPose(body,false)
+                    Brain.setTask(body,Constants.TASK.FOLLOW,{owner=Body.owner(body)})
+                    Body.say(body,"Comrade, "..tostring(detail).."; returning to you.")
+                    print("[GoblinSurvivor] ATTACK_FAILED owner="..tostring(Body.owner(body)).." detail="..tostring(detail))
+                    return false,detail
+                end
+            end
             Defense.states[body] = nil
             Body.setCombatPose(body, false)
             if task == Constants.TASK.ATTACK then
                 Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
-                return true, "area clear; following owner"
+                Body.say(body,"Comrade, no live zombie remains in my search range; returning to you.")
+                return true, "no live zombie in search range; following owner"
             end
         end
         return originalUpdate(body, now)
@@ -248,8 +343,7 @@ local function installBrainOverride()
 end
 
 local function applyTuning()
-    -- Product behavior requested by the owner. Locomotion also enforces one
-    -- tile on both server and client so an old config.ini cannot widen it.
+    -- Locomotion enforces the same three tiles on the simulation-owning client.
     Config.followPreferredDistance = FOLLOW_DISTANCE
     Config.followWalkDistance = math.max(2, tonumber(Config.followWalkDistance) or 2)
     Config.weaponType = WEAPON
@@ -271,7 +365,7 @@ function Defense.install()
 
     installWeaponOverride()
     installBrainOverride()
-    print("[GoblinSurvivor] DEFENSE_READY follow=1tile weapon=" .. WEAPON .. " infinite_ammo=true auto_kill=true")
+    print("[GoblinSurvivor] DEFENSE_READY follow=" .. FOLLOW_DISTANCE .. "tiles weapon=" .. WEAPON .. " infinite_ammo=true defense=5tiles_from_owner")
     return true
 end
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import signal
 import threading
 from pathlib import Path
@@ -15,6 +16,7 @@ from .tracker import TrackerApp
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = AgentConfig.from_env()
     memory_path = Path(
         os.environ.get(
@@ -24,7 +26,7 @@ def main() -> int:
     )
     qwen = QwenClient(
         base_url=os.environ.get("GOBLIN_QWEN_URL", "http://127.0.0.1:8000"),
-        model=os.environ.get("GOBLIN_QWEN_MODEL", "qwen3-8b-q4km"),
+        model=os.environ.get("GOBLIN_QWEN_MODEL", "goblin-fast"),
         timeout_seconds=float(os.environ.get("GOBLIN_QWEN_TIMEOUT_SECONDS", "20")),
     )
     service = GoblinService(config, memory_path=memory_path, qwen=qwen)

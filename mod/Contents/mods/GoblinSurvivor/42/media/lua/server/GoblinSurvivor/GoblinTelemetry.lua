@@ -61,6 +61,21 @@ local function coarseCompanion(snapshot)
         visual_asset_applied = snapshot.visual_asset_applied == true,
         loot_count = snapshot.loot_count or 0,
         loot_status = snapshot.loot_status,
+        work_status = snapshot.work_status,
+        job_active = snapshot.job_active,
+        riding = snapshot.riding,
+        transport_active = snapshot.transport_active,
+        transport_status = snapshot.transport_status,
+        owner_idle_seconds = snapshot.owner_idle_seconds,
+        job_progress = snapshot.job_progress,
+        work_completed = snapshot.work_completed,
+        all_skills_maxed = snapshot.all_skills_maxed,
+        inventory_persisted = snapshot.inventory_persisted == true,
+        inventory_error = snapshot.inventory_error,
+        owner_online = snapshot.owner_online,
+        autonomous = snapshot.autonomous == true,
+        persisted = snapshot.persisted == true,
+        generation = snapshot.generation,
         base_set = snapshot.base_set == true,
         friendly = true,
         protected = Config.protected == true,
@@ -88,6 +103,9 @@ function Telemetry.write(force)
     local npcs = {}
     for _, snapshot in ipairs(snapshots) do
         local item = coarseCompanion(snapshot)
+        if item.owner_online == false and item.body_present then
+            item.authority_token = require("GoblinSurvivor/Authority").issueOffline(Spawner.findByNpcId(item.npc_id))
+        end
         companions[#companions + 1] = item
         npcs[#npcs + 1] = {
             npc_id = item.npc_id,
@@ -167,6 +185,15 @@ function Telemetry.writeExact(force)
     if not force and timestamp - Telemetry.lastExactAt < 1000 then return false end
     Telemetry.lastExactAt = timestamp
     local entities = {}
+    -- Private tracker diagnostics, never forwarded to Qwen's coarse view.
+    if type(getOnlinePlayers)=="function" then
+        local players=getOnlinePlayers()
+        for i=0,players:size()-1 do
+            local player=players:get(i)
+            entities[#entities+1]={entity_id="player."..player:getUsername(),kind="player",
+                x=player:getX(),y=player:getY(),z=player:getZ()}
+        end
+    end
     for _, snapshot in ipairs(Spawner.snapshotAll()) do
         if snapshot.body_present == true and snapshot.position ~= nil then
             entities[#entities + 1] = {

@@ -9,3 +9,12 @@ __pycache__/
 *.sqlite3-*
 runtime/*.json
 bridge/
+# Local Blender/importer diagnostics; do not ship compiled tools or game dumps.
+art/goblin/qa/*.class
+art/goblin/qa/*_import.json
+art/goblin/*.blend1
+server-java/build/
+# Disposable local multiplayer caches and extracted diagnostics.
+live-client-*/
+live-pz-*/
+goblin-errors-latest.txt

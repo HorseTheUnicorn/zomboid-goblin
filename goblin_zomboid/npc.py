@@ -13,8 +13,10 @@ from .protocol import make_message, new_request_id
 
 NPC_ID = "goblin.primary"
 PRIVILEGED_ACTIONS = frozenset(
-    {"FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "BUILD"}
+    {"FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "SECURE_BASE", "BUILD", "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS",
+     "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"}
 )
+OFFLINE_ACTIONS = frozenset({"WAIT", "LOOT_AREA", "RETURN_TO_BASE", "SECURE_BASE", "EQUIP"})
 
 
 def npc_id_for_owner(owner: str) -> str:
@@ -75,13 +77,16 @@ class NpcBodyDriver:
         *,
         authority_token: str | None = None,
         owner: str | None = None,
+        autonomous: bool = False,
     ) -> DriverResult:
         admitted = self.gate.admit(action)
         if not admitted.accepted:
             return admitted
         if action.npc_id != self.npc_id:
             return DriverResult(False, "rejected", "unknown or non-selected NPC id")
-        if action.action.value in PRIVILEGED_ACTIONS:
+        if autonomous and action.action.value not in OFFLINE_ACTIONS:
+            return DriverResult(False, "rejected", "unsupported offline task")
+        if autonomous or action.action.value in PRIVILEGED_ACTIONS:
             if not isinstance(authority_token, str) or not authority_token or len(authority_token) > 128:
                 return DriverResult(
                     False, "rejected",
@@ -100,8 +105,10 @@ class NpcBodyDriver:
         }
         if isinstance(owner, str) and owner:
             fields["owner"] = owner[:96]
-        if action.action.value in PRIVILEGED_ACTIONS:
+        if autonomous or action.action.value in PRIVILEGED_ACTIONS:
             fields["authority_token"] = authority_token
+        if autonomous:
+            fields["autonomous"] = True
         if action.target_kind is not None:
             fields["target"] = {
                 "kind": action.target_kind,

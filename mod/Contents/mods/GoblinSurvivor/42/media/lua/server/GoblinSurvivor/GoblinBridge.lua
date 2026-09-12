@@ -5,14 +5,18 @@ local Net = require("GoblinSurvivor/Net")
 local Authority = require("GoblinSurvivor/Authority")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
 local Brain = require("GoblinSurvivor/GoblinBrain")
+local Body = require("GoblinSurvivor/GoblinBody")
 
 local Bridge = { seen = {}, order = {}, maxSeen = 2048 }
 
 local actions = {
+    ENTER_VEHICLE=true, EXIT_VEHICLE=true,
+    FARM=true, CRAFT=true, REPAIR_VEHICLE=true,
+    OPEN_DOOR=true, OPEN_WINDOW=true, CLOSE_CURTAINS=true,
     NOOP=true, WAIT=true, SAY=true, EQUIP=true, FOLLOW=true, FOLLOW_GOBLIN=true,
     HOLD_POSITION=true, REGROUP=true, HELP=true, SEARCH=true, SCAVENGE=true,
     LOOT=true, LOOT_AREA=true, RETURN_TO_BASE=true, GO_HOME=true, RETURN=true,
-    SET_BASE=true, REMEMBER_BASE=true, SECURE_BASE=true, ATTACK=true,
+    SET_BASE=true, REMEMBER_BASE=true, SECURE_BASE=true, BUILD=true, ATTACK=true,
     DEFEND_PLAYER=true, DEFEND_AREA=true, CLEAR_BUILDING=true, REST=true,
     RETREAT=true, FLEE=true, MOVE_TO=true
 }
@@ -20,7 +24,7 @@ local actions = {
 local allowedKeys = {
     protocol=true, request_id=true, timestamp_ms=true, type=true, npc_id=true,
     owner=true, action=true, priority=true, reason=true, text=true, target=true,
-    item=true, loot_focus=true, authority_token=true, controller_action=true
+    item=true, job=true, loot_focus=true, authority_token=true, controller_action=true, autonomous=true
 }
 local targetKeys = { kind=true, name=true, player=true, label=true }
 local itemKeys = { name=true, count=true, category=true }
@@ -71,6 +75,7 @@ local function valid(message)
         if focus ~= "food" and focus ~= "medical" and focus ~= "tools"
             and focus ~= "ammo" and focus ~= "surprise" then return false end
     end
+    if message.job~=nil and not safeText(message.job,32) then return false end
     if message.target ~= nil and not validTarget(message.target) then return false end
     if message.item ~= nil then
         if type(message.item) ~= "table" then return false end
@@ -78,12 +83,15 @@ local function valid(message)
             if type(key) ~= "string" or not itemKeys[string.lower(key)] then return false end
         end
         if not safeText(message.item.name, 96) then return false end
+        local count=message.item.count
+        if count~=nil and (type(count)~="number" or count~=math.floor(count) or count<1 or count>10) then return false end
     end
     if action == "EQUIP" and (type(message.item) ~= "table"
         or message.item.name ~= Config.weaponType) then return false end
     if message.authority_token ~= nil and not Net.safeId(message.authority_token, 128) then return false end
     if message.controller_action ~= nil and not Net.safeTable(message.controller_action) then return false end
-    if Authority.requires(action) and not Authority.consume(message) then return false end
+    if message.autonomous ~= nil and type(message.autonomous) ~= "boolean" then return false end
+    if message.autonomous ~= true and Authority.requires(action) and not Authority.consume(message) then return false end
     return true
 end
 
@@ -99,7 +107,10 @@ end
 
 local function resolveBody(message)
     local body = Spawner.findByNpcId(message.npc_id)
-    if body ~= nil then return body end
+    if body ~= nil then
+        if type(message.owner) ~= "string" or string.lower(message.owner) ~= string.lower(Body.owner(body) or "") then return nil end
+        return body
+    end
     if message.npc_id == Config.npcId and type(message.owner) == "string" then
         return Spawner.findForOwner(message.owner)
     end
@@ -120,7 +131,7 @@ local function normalizedMessage(message)
     if action == "GO_HOME" or action == "RETURN" then
         return { action = "RETURN_TO_BASE" }
     end
-    if action == "REMEMBER_BASE" or action == "SECURE_BASE" then
+    if action == "REMEMBER_BASE" then
         return { action = "SET_BASE" }
     end
     if action == "DEFEND_PLAYER" or action == "DEFEND_AREA" or action == "CLEAR_BUILDING" then
@@ -152,9 +163,22 @@ local function process(stem)
     local body = resolveBody(message)
     local accepted, detail = false, "requested player's Goblin is not present"
     if body ~= nil then
-        accepted, detail = Brain.execute(normalizedMessage(message), body)
+        if message.autonomous == true then
+            if Authority.consumeOffline(message, body) then
+                local normalized = normalizedMessage(message)
+                normalized.autonomous = true
+                accepted, detail = Brain.execute(normalized, body)
+            else
+                detail = "offline grant expired, owner returned, or task changed"
+            end
+        else
+            accepted, detail = Brain.execute(normalizedMessage(message), body)
+        end
     end
     local status = accepted and "accepted" or "failed"
+    if body and not accepted and message.action~="SAY" then
+        Body.say(body,"Comrade, "..tostring(detail)..".")
+    end
     log("QWEN_COMMAND request=" .. tostring(message.request_id)
         .. " npc_id=" .. tostring(message.npc_id)
         .. " owner=" .. tostring(message.owner or (body ~= nil and require("GoblinSurvivor/GoblinBody").owner(body)))

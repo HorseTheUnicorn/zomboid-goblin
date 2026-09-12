@@ -5,6 +5,15 @@ Constants.NPC_PREFIX = "goblin.primary"
 Constants.NPC_ID = Constants.NPC_PREFIX
 
 Constants.TASK = {
+    ENTER_VEHICLE = "ENTER_VEHICLE", EXIT_VEHICLE = "EXIT_VEHICLE",
+    FARM = "FARM",
+    CRAFT = "CRAFT",
+    REPAIR_VEHICLE = "REPAIR_VEHICLE",
+    OPEN_DOOR = "OPEN_DOOR",
+    OPEN_WINDOW = "OPEN_WINDOW",
+    CLOSE_CURTAINS = "CLOSE_CURTAINS",
+    FORTIFY = "FORTIFY",
+    BUILD = "BUILD",
     FOLLOW = "FOLLOW",
     MOVE_TO = "MOVE_TO",
     WAIT = "WAIT",
@@ -41,6 +50,15 @@ Constants.COMBAT = {
 }
 
 Constants.ALLOWED_TASKS = {
+    ENTER_VEHICLE = true, EXIT_VEHICLE = true,
+    FARM = true,
+    CRAFT = true,
+    REPAIR_VEHICLE = true,
+    OPEN_DOOR = true,
+    OPEN_WINDOW = true,
+    CLOSE_CURTAINS = true,
+    FORTIFY = true,
+    BUILD = true,
     FOLLOW = true,
     MOVE_TO = true,
     WAIT = true,

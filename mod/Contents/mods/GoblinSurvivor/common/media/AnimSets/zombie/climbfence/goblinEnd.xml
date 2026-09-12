@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native human clip; preserve only the carrier state completion events. -->
+<animNode>
+    <m_Name>goblinEnd</m_Name>
+    <m_ConditionPriority>210</m_ConditionPriority>
+    <m_AnimName>Bob_VaultOver_End_Rifle</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_BlendTime>0.10</m_BlendTime>
+    <m_SpeedScale>1.0</m_SpeedScale>
+    <m_SyncTrackingEnabled>false</m_SyncTrackingEnabled>
+    <m_Conditions><m_Name>GoblinNPC</m_Name><m_Type>BOOL</m_Type><m_Value>true</m_Value></m_Conditions>
+    <m_Conditions><m_Name>ClimbFenceStarted</m_Name><m_Type>BOOL</m_Type><m_Value>true</m_Value></m_Conditions>
+    <m_Conditions><m_Name>ClimbFenceOutcome</m_Name><m_Type>STRING</m_Type><m_Value>success</m_Value></m_Conditions>
+    <m_Events><m_EventName>SetVariable</m_EventName><m_Time>End</m_Time><m_ParameterValue>ClimbFenceFinished=true</m_ParameterValue></m_Events>
+</animNode>

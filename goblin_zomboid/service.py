@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import logging
 from pathlib import Path
 import threading
 import time
+import random
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -21,13 +24,15 @@ from .controllers import Action, BodyState, SafeAction, SafetyController
 from .events import EventGate
 from .ipc import EventConsumer, RequestLedger, ResponseConsumer
 from .memory import MemoryStore
-from .npc import NPC_ID, NpcBodyDriver, npc_id_for_owner
+from .npc import NPC_ID, OFFLINE_ACTIONS, NpcBodyDriver, npc_id_for_owner
 from .protocol import Message
 from .qwen import QwenClient, QwenError
 from .social import ChatterGovernor
 from .state import brain_view, public_view
 from .tracker import TrackerStore
 from .validator import IntentError
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,13 @@ class GoblinService:
         self.npc_driver = NpcBodyDriver(self.store, npc_id=NPC_ID)
         self.paused = config.start_paused
         self.pending_chats: list[dict[str, object]] = []
+        self.next_offline_decision: dict[str, float] = {}
+        self.next_ambient: dict[str, float] = {}
+        self.ambient_quiet_until=0.0
+        self.ambient_executor=None
+        self.ambient_future=None
+        self.ambient_selected=None
+        self.ambient_recent: list[str] = []
         self.last_events: list[dict[str, object]] = []
         self.last_response: dict[str, object] | None = None
         self.last_state: dict[str, object] = {}
@@ -80,8 +92,14 @@ class GoblinService:
         self.last_action: dict[str, object] | None = None
         self.last_status = "starting"
         self.last_detail = ""
+        self.chat_results: list[dict[str, object]] = []
+        self.next_wait_poll = 0.0
+        if qwen is not None and callable(getattr(qwen,"set_wait_callback",None)):
+            qwen.set_wait_callback(self._poll_during_inference)
 
     def close(self) -> None:
+        if self.ambient_executor is not None:
+            self.ambient_executor.shutdown(wait=False,cancel_futures=True)
         self.tracker.close()
         self.memory.close()
 
@@ -104,7 +122,7 @@ class GoblinService:
     def _chat_is_addressed(fields: Mapping[str, object]) -> bool:
         text = fields.get("text")
         return isinstance(text, str) and (
-            "goblin" in text.casefold() or text.lstrip().casefold().startswith("!goblin")
+            "goblin" in text.casefold() or fields.get("addressed") is True
         )
 
     def _poll_events(self) -> None:
@@ -184,6 +202,19 @@ class GoblinService:
         except (FileNotFoundError, OSError, ValueError):
             return None
 
+    def _poll_during_inference(self) -> None:
+        """Drain fresh events while HTTP is pending, without changing its owner."""
+        now = self.clock()
+        if now < self.next_wait_poll:
+            return
+        self.next_wait_poll = now + 1.0
+        self.agent.run_once()
+        self._poll_events()
+        self._poll_responses()
+        state = self._read_state()
+        if state is not None and state.type == "runtime.state":
+            self._record_state(state)
+
     @staticmethod
     def _number(fields: Mapping[str, object], key: str, default: float = 0.0) -> float:
         value = fields.get(key, default)
@@ -235,6 +266,7 @@ class GoblinService:
                 value = companion.get("owner")
                 if isinstance(value, str) and value.casefold() == wanted:
                     return companion
+            return None  # Never answer/control another player's Goblin as fallback.
         for companion in companions:
             if companion.get("body_present") is True:
                 return companion
@@ -252,12 +284,18 @@ class GoblinService:
         )
         return body
 
+    def _roster_context(self) -> list[dict[str, object]]:
+        keys = ("npc_id", "owner", "name", "persisted", "owner_online", "body_present", "task")
+        return [{key: entry[key] for key in keys if key in entry}
+                for entry in self._companions(self.last_state)]
+
     def _publish_reply(
         self,
         chat: Mapping[str, object],
         companion: Mapping[str, object],
+        prepared_speech: str | None = None,
     ) -> str | None:
-        if self.qwen is None:
+        if self.qwen is None and prepared_speech is None:
             return None
         speaker = chat.get("speaker")
         text = chat.get("text")
@@ -267,15 +305,19 @@ class GoblinService:
         if not body.body_ready:
             return None
         context = {
-            "event": {"speaker": speaker, "text": text},
+            "event": {"speaker": speaker, "text": text,
+                      "direct_action": chat.get("direct_action"),
+                      "direct_applied": chat.get("direct_applied", False)},
             "controlled_npc_id": body.npc_id,
             "controlled_owner": speaker,
             "companion": brain_view(companion),
+            "persistent_goblins": self._roster_context(),
             "recent_memories": self.memory.recent_memories(8),
         }
         try:
-            speech = self.qwen.propose_speech(context)
-        except (QwenError, TypeError, ValueError):
+            speech = prepared_speech if prepared_speech is not None else self.qwen.propose_speech(context)
+        except (QwenError, TypeError, ValueError) as exc:
+            LOG.warning("QWEN_SPEECH_FAILED owner=%s detail=%s", speaker, str(exc)[:240])
             return None
         event_key = f"reply:{chat.get('event_request_id', 'chat')}"
         decision = self.chatter.record(
@@ -302,20 +344,43 @@ class GoblinService:
         if not body.body_ready:
             return ServiceResult("sensor_only", f"{speaker}'s Goblin body is not ready")
 
-        speech = self._publish_reply(chat, companion)
+        if isinstance(chat.get("direct_action"), str):
+            # A rejected direct order is still handled: never ask the model to
+            # replace it with FOLLOW (or another task) after the game refused it.
+            # Current servers report the exact result in game immediately.
+            if chat.get("direct_reported") is True:
+                return ServiceResult("npc_command_handled", str(chat.get("direct_detail", "server handled order")))
+            detail = chat.get("direct_detail")
+            if not isinstance(detail, str) or not detail.strip():
+                detail = "order accepted" if chat.get("direct_applied") is True else "I could not carry out that order"
+            speech = self._publish_reply(chat, companion, prepared_speech=f"Comrade, {detail[:180]}.")
+            return ServiceResult("npc_spoke" if speech else "npc_steady",
+                                 "server handled the requested task; no substitute or duplicate action")
         if self.qwen is None:
             detail = "Qwen is unavailable; deterministic slash commands still work"
             return ServiceResult("no_qwen", detail)
 
-        context = brain_view(dict(companion))
+        context = {"mode": body.mode}
         context.update({
             "controlled_npc_id": body.npc_id,
             "controlled_owner": speaker,
             "event": {"type": "chat", "speaker": speaker, "text": text},
+            "persistent_goblins": self._roster_context(),
+            "companion": brain_view(companion),
         })
+        speech = None
         try:
-            intent = self.qwen.propose_intent(context)
+            combined = getattr(self.qwen, "propose_chat", None)
+            if callable(combined):
+                intent, generated_speech = combined(context)
+                speech = self._publish_reply(chat, companion, prepared_speech=generated_speech)
+            else:
+                # Compatibility for older adapters; production uses one request.
+                speech = self._publish_reply(chat, companion)
+                intent = self.qwen.propose_intent(context)
         except QwenError as exc:
+            self._publish_reply(chat, companion, prepared_speech=
+                "Comrade, my radio jammed. Try again; /goblin follow, loot, home or wait still work.")
             return ServiceResult("qwen_failed", f"speech={bool(speech)}; intent failed: {exc}")
 
         decision = self.safety.decide(intent, body)
@@ -341,6 +406,111 @@ class GoblinService:
             f"{speaker}'s {body.npc_id} received {decision.action.action.value}",
             result.detail,
         )
+
+    @staticmethod
+    def _offline_eligible(companion: Mapping[str, object]) -> bool:
+        return (companion.get("owner_online") is False
+                and companion.get("body_present") is True
+                and (companion.get("task") == "FOLLOW" or companion.get("autonomous") is True)
+                and isinstance(companion.get("authority_token"), str))
+
+    def _handle_offline(self, companion: Mapping[str, object]) -> ServiceResult:
+        body = self._configure_driver(companion)
+        self.next_offline_decision[body.npc_id] = self.clock() + max(10, self.config.planning_interval_seconds)
+        context = brain_view(companion)
+        context.update({
+            "controlled_npc_id": body.npc_id, "controlled_owner": companion.get("owner"),
+            "event": {"type": "offline_decision"},
+            "allowed_offline_intents": sorted(OFFLINE_ACTIONS),
+            "persistent_goblins": self._roster_context(),
+        })
+        try:
+            intent = self.qwen.propose_intent(context)
+        except (QwenError, TypeError, ValueError) as exc:
+            return ServiceResult("qwen_failed", f"offline decision failed: {exc}; Lua chores continue")
+        decision = self.safety.decide(intent, body)
+        if not decision.accepted or decision.action is None or decision.action.action.value not in OFFLINE_ACTIONS:
+            return ServiceResult("controller_rejected", "Qwen proposed an unsupported offline task")
+        # A model request can outlast a reconnect. Recheck before publishing;
+        # Lua independently checks the live owner and one-use task-bound grant.
+        current = self._read_state()
+        latest = self._companion_for_owner(current.fields, companion.get("owner")) if current else None
+        if latest is None or not self._offline_eligible(latest):
+            return ServiceResult("offline_cancelled", "owner returned, body unloaded, or explicit task took priority")
+        action = decision.action.action.value
+        task = {"LOOT_AREA": "LOOT", "SECURE_BASE": "FORTIFY"}.get(action, action)
+        if latest.get("task") == task:
+            return ServiceResult("npc_steady", "Qwen kept the existing offline job")
+        result = self.npc_driver.execute(
+            decision.action, owner=companion.get("owner"),
+            authority_token=companion.get("authority_token"), autonomous=True,
+        )
+        self.last_action = decision.action.as_dict()
+        return ServiceResult("offline_command_published" if result.accepted else result.status,
+                             result.detail, result.detail if result.accepted else None)
+
+    @staticmethod
+    def _ambient_eligible(companion: Mapping[str, object]) -> bool:
+        idle=companion.get("owner_idle_seconds",0)
+        return (companion.get("owner_online") is True and companion.get("body_present") is True
+                and companion.get("control_ready") is True and companion.get("npc_engine_ready") is True
+                and isinstance(idle,(int,float)) and math.isfinite(idle) and idle>=30
+                and not companion.get("riding") and not companion.get("transport_active")
+                and companion.get("combat_state","NONE")=="NONE"
+                and (companion.get("task")=="FOLLOW" or companion.get("autonomous") is True))
+
+    def _ambient_tick(self, fields: Mapping[str, object]) -> ServiceResult | None:
+        now=self.clock()
+        if self.ambient_future is not None:
+            if not self.ambient_future.done(): return None
+            future,selected=self.ambient_future,self.ambient_selected
+            self.ambient_future,self.ambient_selected=None,None
+            try:
+                speech=future.result()
+            except Exception:
+                LOG.warning("AMBIENT_FAILED; ordinary chat and gameplay continue")
+                return None
+            latest=self._companion_for_owner(fields,selected["owner"])
+            if (self.pending_chats or now<self.ambient_quiet_until or latest is None
+                    or latest.get("npc_id")!=selected["npc_id"] or not self._ambient_eligible(latest)):
+                return None
+            if speech in self.ambient_recent: return None
+            key=f"ambient:{selected['npc_id']}:{int(now)}"
+            decision=self.chatter.record(key,"game",speech,now=int(now),priority=1)
+            if not decision.allowed: return None
+            body=self._configure_driver(latest)
+            result=self.npc_driver.execute(SafeAction(Action.SAY,0,"Lenin-themed downtime remark",
+                text=speech,npc_id=body.npc_id),owner=selected["owner"])
+            if result.accepted:
+                self.ambient_recent=(self.ambient_recent+[speech])[-6:]
+                self.ambient_quiet_until=now+45
+                LOG.info("AMBIENT_SAY owner=%s",selected["owner"])
+                return ServiceResult("ambient_spoken","short downtime remark published")
+            return None
+        if self.pending_chats or now<self.ambient_quiet_until: return None
+        propose=getattr(self.qwen,"propose_ambient",None)
+        if not callable(propose): return None
+        for companion in self._companions(fields):
+            if not self._ambient_eligible(companion): continue
+            npc_id=companion.get("npc_id")
+            if not isinstance(npc_id,str): continue
+            if npc_id not in self.next_ambient:
+                self.next_ambient[npc_id]=now+random.uniform(120,240)
+            if now<self.next_ambient[npc_id]: continue
+            self.next_ambient[npc_id]=now+random.uniform(120,240)
+            if not self.chatter.allow(f"ambient:{npc_id}",now=int(now),priority=1).allowed: continue
+            topic=random.choice(("Lenin and the distribution of canned food","Lenin's revolution versus these zombies",
+                "Lenin, comrades, and our ramshackle base","Lenin and the tyranny of missing building supplies",
+                "Lenin and the revolutionary importance of decent boots","Lenin and a committee for ridiculous survival problems"))
+            context={"companion":brain_view(companion),"controlled_npc_id":npc_id,
+                "controlled_owner":companion.get("owner"),"ambient_topic":topic,
+                "recent_ambient_lines":list(self.ambient_recent)}
+            if self.ambient_executor is None:
+                self.ambient_executor=ThreadPoolExecutor(max_workers=1,thread_name_prefix="goblin-aside")
+            self.ambient_selected={"npc_id":npc_id,"owner":companion.get("owner")}
+            self.ambient_future=self.ambient_executor.submit(propose,context)
+            break
+        return None
 
     def _record_state(self, state_message: Message) -> None:
         self.last_state = brain_view(state_message.fields)
@@ -378,6 +548,7 @@ class GoblinService:
         self._record_state(state_message)
 
         if self.pending_chats:
+            self.ambient_quiet_until=self.clock()+45
             chat = self.pending_chats.pop(0)
             speaker = chat.get("speaker")
             companion = self._companion_for_owner(
@@ -387,27 +558,66 @@ class GoblinService:
                 self.last_status = "waiting_for_goblin"
                 self.last_detail = f"no companion telemetry for {speaker}"
                 return ServiceResult(self.last_status, self.last_detail)
-            result = self._handle_chat(chat, companion)
+            started = time.monotonic()
+            try:
+                result = self._handle_chat(chat, companion)
+            except Exception:
+                # This chat is consumed once. Never replay a potentially partially
+                # published action, and never take other players' chat down with it.
+                LOG.exception("CHAT_FAILED owner=%s event_id=%s", speaker, chat.get("event_request_id"))
+                try:
+                    self._publish_reply(chat, companion, "Comrade, that command failed. I am still here; please give the order again.")
+                except Exception:
+                    LOG.exception("CHAT_FAILURE_REPLY_FAILED owner=%s", speaker)
+                result = ServiceResult("chat_failed", "this command failed; the chat bridge is still running")
             self.last_status, self.last_detail = result.status, result.detail
+            diagnostic = {"owner": speaker, "event_id": chat.get("event_request_id"),
+                          "status": result.status, "detail": result.detail,
+                          "elapsed_ms": round((time.monotonic()-started)*1000)}
+            self.chat_results = (self.chat_results + [diagnostic])[-16:]
+            LOG.info("CHAT_RESULT owner=%s status=%s elapsed_ms=%s detail=%s",
+                     speaker, result.status, diagnostic["elapsed_ms"], result.detail)
             return result
 
+        if self.qwen is not None:
+            candidates = [c for c in self._companions(state_message.fields) if self._offline_eligible(c)
+                          and self._body_state(c).body_ready
+                          and self.clock() >= self.next_offline_decision.get(str(c.get("npc_id")), 0)]
+            if candidates:
+                companion = min(candidates, key=lambda c: self.next_offline_decision.get(str(c.get("npc_id")), 0))
+                result = self._handle_offline(companion)
+                self.last_status, self.last_detail = result.status, result.detail
+                return result
+
+        ambient=self._ambient_tick(state_message.fields)
+        if ambient is not None:
+            self.last_status,self.last_detail=ambient.status,ambient.detail
+            return ambient
         companion = self._companion_for_owner(state_message.fields, None)
         if companion is not None:
             self._configure_driver(companion)
             self.last_status = "npc_steady"
-            self.last_detail = f"{len(self._companions(state_message.fields))} Goblin companion(s) online"
+            self.last_detail = f"{len(self._companions(state_message.fields))} persistent Goblin companion(s) known"
         else:
             self.current_body = None
             self.current_owner = None
             self.last_status = "waiting_for_goblin"
-            self.last_detail = "no Goblin companions are online"
+            self.last_detail = "no persistent Goblin companions are known"
         return ServiceResult(self.last_status, self.last_detail)
 
     def run_forever(self, stop_event: threading.Event | None = None) -> None:
         stop_event = stop_event or threading.Event()
+        next_tick = 0.0
         while not stop_event.is_set():
-            self.run_once()
-            stop_event.wait(self.config.heartbeat_seconds)
+            # Chat latency must not inherit the five-second telemetry interval,
+            # nor pay another full interval for each player already in the queue.
+            if (self.pending_chats and self.config.enabled and not self.paused) or self.clock() >= next_tick:
+                self.run_once()
+                next_tick = self.clock() + self.config.heartbeat_seconds
+            else:
+                self._poll_events()
+                self._poll_responses()
+            stop_event.wait(0 if self.pending_chats and self.config.enabled and not self.paused else 0.25)
 
     def control(self, action: str) -> dict[str, object]:
         if action == "pause":
@@ -440,6 +650,7 @@ class GoblinService:
             "last_action": dict(self.last_action) if self.last_action else None,
             "last_response": dict(self.last_response) if self.last_response else None,
             "last_events": [dict(event) for event in self.last_events],
+            "chat_results": [dict(result) for result in self.chat_results],
             "pending_chat_count": len(self.pending_chats),
             "selected_owner": self.current_owner,
             "selected_npc_id": self.current_body.npc_id if self.current_body else None,

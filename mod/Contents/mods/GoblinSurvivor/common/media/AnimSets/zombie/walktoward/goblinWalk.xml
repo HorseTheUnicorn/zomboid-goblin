@@ -1,23 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <animNode>
-    <m_Name>goblinWalktoward</m_Name>
-    <m_Priority>10</m_Priority>
-    <m_AnimName>Bob_Walk</m_AnimName>
+    <m_Name>goblinWalk</m_Name>
+    <m_ConditionPriority>200</m_ConditionPriority>
+    <m_AnimName>Bob_WalkRifle</m_AnimName>
     <m_BlendTime>0.20</m_BlendTime>
     <m_SpeedScale>0.80</m_SpeedScale>
-    <m_Conditions x_name="52a98569-c278-41a2-9fdd-b9036f86898b">
-        <m_Name>GoblinNPC</m_Name>
-        <m_Type>BOOL</m_Type>
-        <m_Value>true</m_Value>
-    </m_Conditions>
-    <m_Conditions x_name="9eb2f23c-62e4-41fa-8e1e-dc29d154dc24">
-        <m_Name>GoblinMoveType</m_Name>
-        <m_Type>STRING</m_Type>
-        <m_Value>WALK</m_Value>
-    </m_Conditions>
-    <m_Conditions x_name="879873bd-cc98-4265-b15f-127cd2ac1b55">
-        <m_Name>intrees</m_Name>
-        <m_Type>BOOL</m_Type>
-        <m_Value>false</m_Value>
-    </m_Conditions>
+    <m_Conditions><m_Name>GoblinNPC</m_Name><m_Type>BOOL</m_Type><m_Value>true</m_Value></m_Conditions>
+    <m_Conditions><m_Name>GoblinMoveType</m_Name><m_Type>STRING</m_Type><m_Value>WALK</m_Value></m_Conditions>
 </animNode>

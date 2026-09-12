@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+import json
 import xml.etree.ElementTree as ET
 import unittest
 
@@ -21,6 +22,21 @@ WARDROBE = (
 class GoblinCompanionContractTests(unittest.TestCase):
     def read(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
+
+    def test_silent_voice_aliases_cover_all_native_choices_without_overriding_zombies(self):
+        import re
+        source = self.read(MOD / '42/media/scripts/goblin_sounds.txt')
+        aliases = re.findall(r'sound\s+(\w+)\s*\{(.*?)\n    \}', source, re.S)
+        expected = {f'GoblinCompanion{speed}{kind}{choice}'
+                    for speed in ('', 'Sprinter') for kind in ('Voice', 'Bite') for choice in 'ABC'}
+        self.assertEqual({name for name, _ in aliases}, expected)
+        for _, body in aliases:
+            self.assertRegex(body, r'volume\s*=\s*0\.0\s*,')
+            self.assertRegex(body, r'event\s*=\s*Zombie/(Voice|Bite)/(Sprinter/)?Male[ABC]')
+        self.assertIn('Audio.silence(body)', self.read(SHARED / 'GoblinGuard.lua'))
+        for file in (SHARED/'GoblinGuard.lua', SERVER/'GoblinBody.lua', CLIENT/'GoblinClient.lua'):
+            self.assertNotIn('setVoiceSoundName', self.read(file))
+            self.assertNotIn('setBiteSoundName', self.read(file))
 
     def test_one_persistent_goblin_per_online_player(self) -> None:
         source = self.read(SERVER / "GoblinSpawner.lua")
@@ -47,7 +63,7 @@ class GoblinCompanionContractTests(unittest.TestCase):
         for item in WARDROBE:
             self.assertIn(item, config)
             self.assertIn(item, body)
-        self.assertIn('npcVisualAsset = "Goblin_PZ_MysteryRig"', config)
+        self.assertIn('npcVisualAsset = "Goblin_Community_Human"', config)
         self.assertIn('npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody"', config)
         self.assertIn("setWornItem", body)
         self.assertIn("WARDROBE_APPLIED", body)
@@ -56,22 +72,39 @@ class GoblinCompanionContractTests(unittest.TestCase):
     def test_custom_character_assets_resolve_to_the_supplied_mesh_and_texture(self) -> None:
         required = (
             COMMON_MEDIA / "clothing" / "clothingItems" / "Goblin_MysteryBody.xml",
-            COMMON_MEDIA / "models_X" / "Skinned" / "Goblin" / "Goblin.fbx",
+            COMMON_MEDIA / "models_X" / "Skinned" / "Goblin" / "GoblinHead.x",
             COMMON_MEDIA / "textures" / "Goblin" / "Goblin.png",
             MOD / "42" / "media" / "scripts" / "goblin_items.txt",
         )
         for path in required:
             self.assertTrue(path.is_file(), str(path))
         clothing = ET.parse(required[0]).getroot()
-        mesh = COMMON_MEDIA / 'models_X' / (clothing.findtext('m_MaleModel') + '.fbx')
+        self.assertTrue(clothing.findtext('m_MaleModel').startswith('x:'))
+        mesh = COMMON_MEDIA / 'models_X' / (clothing.findtext('m_MaleModel')[2:] + '.x')
         texture = COMMON_MEDIA / 'textures' / (clothing.findtext('textureChoices') + '.png')
-        for packaged, source in ((mesh, ROOT / 'art/goblin/Goblin_PZ_MysteryRig.fbx'),
-                                 (texture, ROOT / 'art/goblin/textures/Material_1_basecolor.png')):
-            self.assertEqual(hashlib.sha256(packaged.read_bytes()).digest(), hashlib.sha256(source.read_bytes()).digest())
+        self.assertEqual(hashlib.sha256(texture.read_bytes()).digest(),
+                         hashlib.sha256((ROOT/'art/goblin/textures/Material_1_basecolor.png').read_bytes()).digest())
+        report=json.loads((ROOT/'art/goblin/Goblin_Community_Final_report.json').read_text())
+        self.assertEqual(report['head_sha256'],hashlib.sha256(mesh.read_bytes()).hexdigest())
+        skin=COMMON_MEDIA/'textures/Body/Goblin/GoblinNativeSkin.png'
+        self.assertEqual(report['skin_sha256'],hashlib.sha256(skin.read_bytes()).hexdigest())
+        self.assertLess(report['community_native_vertex_max_error'],0.00001)
+        self.assertGreater(report['native_triangles_surface_baked'],800)
+        self.assertLessEqual(report['head_triangles'],2100)
+        self.assertEqual(report['head_bones'],['Bip01_Head'])
+        self.assertEqual(report['head_max_influences'],1)
+        self.assertEqual(clothing.findall('m_Masks')[0].text,'0')
+        self.assertEqual([m.text for m in clothing.findall('m_Masks')],['0','11'])
+        self.assertGreater(report['native_transparent_texels_preserved'],1000)
+        self.assertIn('setSkinTextureName',self.read(SHARED/'GoblinAppearance.lua'))
+        self.assertEqual(clothing.findtext('m_MasksFolder'), 'none')
+        guids=ET.parse(COMMON_MEDIA/'fileGuidTable.xml').getroot()
+        self.assertEqual(guids.findtext('files/guid'),clothing.findtext('m_GUID'))
         self.assertEqual(texture.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
         for path in (COMMON_MEDIA / 'AnimSets/zombie').rglob('*.xml'):
             node = ET.parse(path).getroot()
             self.assertTrue(any(c.findtext('m_Name') == 'GoblinNPC' for c in node.findall('m_Conditions')))
+            self.assertGreaterEqual(int(node.findtext('m_ConditionPriority')),100)
 
     def test_client_has_no_custom_model_retry_loop(self) -> None:
         client = self.read(CLIENT / "GoblinClient.lua")
@@ -93,8 +126,8 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn('call(body, "pathToLocationF"', driver)
         self.assertIn('isRemoteZombie', driver)
         self.assertIn('getOwner', driver)
-        self.assertIn('local preferred = 1', driver)
-        self.assertIn('followPreferredDistance = 1', config)
+        self.assertIn('local preferred = 3.0', driver)
+        self.assertIn('followPreferredDistance = 3.0', config)
         self.assertIn('"GoblinMoveType", "IDLE"', driver)
         self.assertNotIn('call(b, "update")', movement)
         self.assertNotIn('call(body, "setX"', movement)
@@ -113,41 +146,39 @@ class GoblinCompanionContractTests(unittest.TestCase):
         self.assertIn('setPrimaryHandItem', defense)
         self.assertIn('setSecondaryHandItem', defense)
         self.assertIn('nearestThreat', defense)
-        self.assertIn('task == Constants.TASK.FOLLOW or task == Constants.TASK.ATTACK', defense)
+        self.assertIn('automatic or task == Constants.TASK.ATTACK', defense)
         self.assertIn('call(target, "Hit"', defense)
         self.assertIn('SHOTGUN_FIRE', defense)
         self.assertIn('Defense.install()', bootstrap)
         self.assertIn('Base.DoubleBarrelShotgun', qwen)
 
-    def test_two_minute_idle_autonomy_is_enabled(self) -> None:
+    def test_autonomy_starts_after_30_seconds_and_defense_is_owner_centered(self) -> None:
         config = self.read(SHARED / "Config.lua")
         autonomy = self.read(SERVER / "GoblinAutonomy.lua")
         runtime = self.read(SERVER / "GoblinRuntime.lua")
         self.assertIn("autonomyEnabled = true", config)
-        self.assertIn("autonomyIdleSeconds = 120", config)
-        self.assertIn("playerMoved", autonomy)
-        self.assertIn("explicit task has priority", autonomy)
+        self.assertIn("autonomyIdleSeconds = 30", config)
+        self.assertIn('data.GoblinTask~="FOLLOW"', autonomy)
+        self.assertIn("Config.autonomyIdleSeconds*1000", autonomy)
         self.assertIn("GoblinAutonomous", autonomy)
+        self.assertIn("OWNER_DEFENSE_RADIUS = 5", self.read(SERVER/'GoblinDefense.lua'))
+        self.assertIn("five tiles of the owner", self.read(ROOT/'goblin_zomboid/qwen.py'))
         self.assertIn('require("GoblinSurvivor/GoblinAutonomy")', runtime)
         self.assertIn("Autonomy.update(body, timestamp)", runtime)
 
-    def test_autonomy_can_defend_barricade_craft_and_loot(self) -> None:
+    def test_autonomy_delegates_real_work_and_does_not_invent_recipe_completion(self) -> None:
         autonomy = self.read(SERVER / "GoblinAutonomy.lua")
-        self.assertIn("Constants.TASK.ATTACK", autonomy)
-        self.assertIn("IsoBarricade.AddBarricadeToObject", autonomy)
-        self.assertIn('inventoryItem(body, "Base.Plank")', autonomy)
-        self.assertIn("canAddPlank", autonomy)
-        self.assertIn("RecipeManager.IsRecipeValid", autonomy)
-        self.assertIn("RecipeManager.PerformMakeItem", autonomy)
-        self.assertIn("Constants.TASK.LOOT", autonomy)
-        self.assertIn("BARRICADE", autonomy)
-        self.assertIn("CRAFT", autonomy)
-        self.assertIn("LOOT", autonomy)
+        self.assertIn('Brain.setTask(body,"FORTIFY"',autonomy)
+        self.assertIn('Brain.setTask(body,"LOOT"',autonomy)
+        self.assertNotIn('PerformMakeItem',autonomy)
+        work=self.read(SERVER/'GoblinWork.lua')
+        for boundary in ('World.approach','World.materials','World.reserve','World.refund','IsoBarricade.AddBarricadeToObject'):
+            self.assertIn(boundary,work)
 
     def test_loot_cycle_collects_real_items_and_delivers_to_persisted_base(self) -> None:
         loot = self.read(SERVER / "GoblinLoot.lua")
         brain = self.read(SERVER / "GoblinBrain.lua")
-        self.assertIn("getWorldObjects", loot)
+        self.assertIn("getWorldObjects", self.read(SERVER/'GoblinWorld.lua'))
         self.assertIn("getContainer", loot)
         self.assertIn("Loot.deposit", loot)
         self.assertIn("AddWorldInventoryItem", loot)
@@ -171,7 +202,7 @@ class GoblinCompanionContractTests(unittest.TestCase):
         service = self.read(ROOT / "goblin_zomboid" / "service.py")
         driver = self.read(ROOT / "goblin_zomboid" / "npc.py")
         self.assertIn("Spawner.ensureForPlayer", chat)
-        self.assertIn("Spawner.setTask", chat)
+        self.assertIn('require("GoblinSurvivor/GoblinBrain").setTask', chat)
         self.assertIn('EventLog.emit("chat"', chat)
         self.assertIn("_companion_for_owner", service)
         self.assertIn("controlled_owner", service)

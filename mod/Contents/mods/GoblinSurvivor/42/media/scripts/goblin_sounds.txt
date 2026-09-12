@@ -1,0 +1,65 @@
+module Base
+{
+    /* Private aliases, not overrides of vanilla sounds. Retaining valid FMOD
+       events avoids missing-sound retries; clip volume makes them silent. */
+    sound GoblinCompanionVoiceA
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/MaleA, volume = 0.0, }
+    }
+    sound GoblinCompanionVoiceB
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/MaleB, volume = 0.0, }
+    }
+    sound GoblinCompanionVoiceC
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/MaleC, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterVoiceA
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/Sprinter/MaleA, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterVoiceB
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/Sprinter/MaleB, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterVoiceC
+    {
+        category = Goblin,
+        clip { event = Zombie/Voice/Sprinter/MaleA, volume = 0.0, }
+    }
+    sound GoblinCompanionBiteA
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/MaleA, volume = 0.0, }
+    }
+    sound GoblinCompanionBiteB
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/MaleB, volume = 0.0, }
+    }
+    sound GoblinCompanionBiteC
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/MaleC, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterBiteA
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/Sprinter/MaleA, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterBiteB
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/Sprinter/MaleB, volume = 0.0, }
+    }
+    sound GoblinCompanionSprinterBiteC
+    {
+        category = Goblin,
+        clip { event = Zombie/Bite/Sprinter/MaleA, volume = 0.0, }
+    }
+}

@@ -115,18 +115,18 @@ elif [[ ! -e "$config_file" ]]; then
     umask 007
     printf '%s\n' \
         '# GoblinSurvivor integration configuration.' \
-        '# One persistent native IsoZombie Goblin; set false to disable.' \
+        '# One persistent Goblin per player; set false to disable.' \
         'GoblinEnabled=true' \
         'GoblinBridgeRoot=goblin-bridge' \
         'GoblinNpcId=goblin.primary' \
         'GoblinNpcName=Goblin' \
         'GoblinNpcOutfit=Survivor' \
         'GoblinNpcOutfitId=4101' \
-        'GoblinNpcVisualAsset=Goblin_PZ_MysteryRig' \
+        'GoblinNpcVisualAsset=Goblin_Community_Human' \
         'GoblinWeapon=Base.DoubleBarrelShotgun' \
         'GoblinNpcProtected=true' \
         'GoblinCommanders=' \
-        'GoblinFollowDistance=1' \
+        '# Follow spacing is fixed at 3 tiles by the runtime.' \
         'GoblinFollowWalkDistance=2' \
         'GoblinFollowRunDistance=9' \
         'GoblinFollowHysteresis=0.5' \
@@ -145,14 +145,16 @@ elif [[ ! -e "$config_file" ]]; then
         'GoblinRecoverySeconds=0.8' \
         'GoblinStuckTimeoutSeconds=8' \
         'GoblinMaxRecoveryAttempts=3' \
-        'GoblinLootRadius=6' \
+        'GoblinLootRadius=8' \
         'GoblinLootScanSeconds=2' \
-        'GoblinLootMaxItemsPerTask=4' > "$config_file"
+        'GoblinLootMaxItemsPerTask=8' \
+        'GoblinAutonomyEnabled=true' \
+        'GoblinAutonomyIdleSeconds=30' > "$config_file"
 fi
 chown root:goblinbridge "$config_file"
 chmod 0660 "$config_file"
 
 printf 'bridge provisioned at %s\n' "$bridge_root"
 printf 'accounts granted through group goblinbridge: zomboid, goblin\n'
-printf 'Goblin config: %s (one native IsoZombie companion)\n' "$config_file"
+printf 'Goblin config: %s (one companion per player)\n' "$config_file"
 printf '%s\n' 'Restart the PZ service before testing so its supplementary group is active.'

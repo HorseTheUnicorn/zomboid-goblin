@@ -138,7 +138,7 @@ class ProtocolTests(unittest.TestCase):
     def test_decode_rejects_mixed_payload_and_direct_fields(self) -> None:
         with self.assertRaises(ProtocolError):
             decode_message(
-                b'{"protocol":1,"request_id":"a-1","timestamp_ms":1,"type":"x","payload":{},"status":"online"}'
+                b'{"protocol":2,"request_id":"a-1","timestamp_ms":1,"type":"x","payload":{},"status":"online"}'
             )
 
     def test_events_are_consumed_once_and_malformed_events_are_deadlettered(self) -> None:

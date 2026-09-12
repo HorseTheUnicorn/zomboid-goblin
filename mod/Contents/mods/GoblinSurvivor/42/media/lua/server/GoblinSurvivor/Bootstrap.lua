@@ -22,9 +22,9 @@ function Bootstrap.start()
     if Bootstrap.started then return end
     Config.refresh()
     Defense.install()
-    Runtime.start()
+    if not Runtime.start() then return end
     Bootstrap.started = true
-    print("[GoblinSurvivor] mode=one-goblin-per-player friendly=true qwen=optional follow=1tile weapon=DoubleBarrelShotgun")
+    print("[GoblinSurvivor] mode=one-goblin-per-player friendly=true qwen=optional follow=3tiles weapon=DoubleBarrelShotgun")
 end
 
 local function tick()
@@ -33,9 +33,12 @@ local function tick()
 end
 
 if Events ~= nil then
-    EventHooks.install("server.global_data_init", Events.OnInitGlobalModData, Bootstrap.start)
+    -- OnInitGlobalModData precedes RakNet initialization. Starting there can
+    -- transmit the roster while GameServer.udpEngine is still null.
     EventHooks.install("server.started", Events.OnServerStarted, tick)
     EventHooks.install("server.tick", Events.OnTick, tick)
+    EventHooks.install("server.save", Events.OnSave, Runtime.save)
+    EventHooks.install("server.player_dead", Events.OnPlayerDeath, Runtime.onPlayerDeath)
     EventHooks.install("server.minute", Events.EveryOneMinute, tick)
     EventHooks.install("server.zombie_create", Events.OnZombieCreate, Runtime.onZombieCreate)
     EventHooks.install("server.zombie_dead", Events.OnZombieDead, Runtime.onZombieDead)

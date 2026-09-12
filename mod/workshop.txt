@@ -1,9 +1,10 @@
 version=1
+id=3797199625
 title=GoblinSurvivor
-description=Original server-side Goblin NPC bridge for Project Zomboid Build 42.
+description=GoblinSurvivor 0.6.0 - one named, persistent Goblin companion per player for Project Zomboid 42.20.4 multiplayer.
 description=
-description=Provides exactly one protected persistent Goblin body backed by a networked IsoZombie, humanized with the packaged Mystery Rig clothing item and Bob_* AnimSets, and driven by native PathFindBehavior2. Includes deterministic follow/wait/move/attack/loot/equip tasks, strict server validation, optional Qwen/Discord IPC, and read-only telemetry.
+description=Includes a Community Rig-derived green skin, custom Goblin head and uniform, human animations, follow/run, five-tile owner defense, 30-second idle chores, real looting and delivery, whole-house curtain sweeps, door handling, supported building/farming/crafting/repair jobs, reusable tools, passenger vehicle entry/exit, overhead names and map markers.
 description=
-description=No third-party NPC framework, IsoSurvivor, test NPC, or native client dependency is required. Joining clients receive the replicated IsoZombie through ordinary multiplayer networking.
+description=Storm is required ONLY on the dedicated server for the included Java helper. Ordinary clients need this mod but no Storm installation. Goblin uses a networked IsoZombie actor with companion controls, not a native player actor. Optional separately configured Qwen provides conversational, profane Lenin-inspired dialogue; the model is not included. Driving and workstation-only crafting are not implemented.
 tags=Build 42;Multiplayer;NPC;Server
 visibility=unlisted

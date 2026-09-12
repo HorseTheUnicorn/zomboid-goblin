@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A late native state packet must never select a zombie animation for Goblin. -->
+<animNode>
+    <m_Name>goblinHumanFallback</m_Name>
+    <m_ConditionPriority>100</m_ConditionPriority>
+    <m_AnimName>Bob_IdleRifle</m_AnimName>
+    <m_Looped>false</m_Looped>
+    <m_Events><m_EventName>IsAlmostUp</m_EventName><m_TimePc>0.5</m_TimePc></m_Events>
+    <m_BlendTime>0.0</m_BlendTime>
+    <m_SpeedScale>1.0</m_SpeedScale>
+    <m_Conditions><m_Name>GoblinNPC</m_Name><m_Type>BOOL</m_Type><m_Value>true</m_Value></m_Conditions>
+</animNode>

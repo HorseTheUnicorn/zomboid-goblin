@@ -100,6 +100,11 @@ local function pathExists(path)
 end
 
 local function writeFile(path, content)
+    local atomicWriter=rawget(_G,"goblinServerWriteFile")
+    if type(atomicWriter)=="function" then
+        local ok,written=pcall(atomicWriter,path,content)
+        return ok and written==true
+    end
     -- Build 42 removes io and os file mutation APIs from mod Lua.  The PZ
     -- file writer is the supported bridge primitive.  JSON is closed before
     -- its ready marker is written; readers reject incomplete JSON and retry.

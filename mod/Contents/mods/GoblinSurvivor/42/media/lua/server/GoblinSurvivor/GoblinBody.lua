@@ -146,7 +146,9 @@ local function applyWardrobe(body, data)
     data.GoblinVisualApplied = ok
     data.GoblinVisualError = ok and nil or ("wardrobe applied " .. tostring(applied) .. "/" .. tostring(#WARDROBE))
     data.GoblinVisualAsset = Config.npcVisualAsset
-    if ok then data.GoblinVisualApplied, data.GoblinVisualError = Appearance.apply(body, nowMs()) end
+    -- WornItems is not the rendered outfit for this network actor. A missing
+    -- player-only wear API must not suppress the actual ItemVisuals repair.
+    data.GoblinVisualApplied, data.GoblinVisualError = Appearance.apply(body, nowMs())
     if ok and data.GoblinWardrobeLogged ~= true then
         data.GoblinWardrobeLogged = true
         log("WARDROBE_APPLIED owner=" .. tostring(data.GoblinOwner)
@@ -214,6 +216,7 @@ end
 
 function Body.clearNativeTargets(body)
     if body == nil then return false end
+    require("GoblinSurvivor/GoblinGuard").apply(body)
     call(body, "setTarget", nil)
     call(body, "setThumpTarget", nil)
     call(body, "setAttackTargetSquare", nil)
@@ -278,8 +281,7 @@ function Body.setPhysicalState(body, physical, moveType, combatState)
     setVariable(body, "GoblinPhysicalState", physical)
     setVariable(body, "GoblinMoveType", move)
     setVariable(body, "GoblinCombatState", data.GoblinCombatState)
-    setVariable(body, "bMoving", moving)
-    call(body, "setRunning", running)
+    call(body, "setRunning", false) -- speedType drives zombie speed, not player vault flags
     call(body, "setSprinting", false)
     call(body, "setWalkType", running and "sprint" or "Walk")
     call(body, "setSpeedTypeFromWalkType")
@@ -329,8 +331,6 @@ function Body.applyInvariants(body)
     call(body, "setDressInRandomOutfit", false)
     call(body, "setSpeedMod", 1.0)
     call(body, "setTurnAlertedValues", -5, 5)
-    call(body, "setVoiceSoundName", "")
-    call(body, "setBiteSoundName", "")
     setVariable(body, "GoblinNPC", true)
     setVariable(body, "GoblinID", tostring(data.GoblinID))
     setVariable(body, "NoLungeTarget", true)
@@ -345,8 +345,10 @@ function Body.applyInvariants(body)
     local timestamp = nowMs()
     if timestamp >= (nextEquipmentAt[body] or 0) then
         nextEquipmentAt[body] = timestamp + 2000
+        require("GoblinSurvivor/GoblinIdentity").train(body)
+        require("GoblinSurvivor/GoblinTools").ensureKit(body)
         applyWardrobe(body, data)
-        Body.ensureWeapon(body)
+        if data.GoblinAction ~= "BUILD" and not data.GoblinJobActive and not data.GoblinRide then Body.ensureWeapon(body) end
     end
     local move = data.GoblinMoveType or Constants.MOVE_TYPE.IDLE
     Body.setPhysicalState(body, data.GoblinPhysicalState or Constants.PHYSICAL.IDLE, move,
@@ -358,11 +360,11 @@ function Body.setCombatPose(body, active)
     if not Body.isGoblin(body) then return false end
     Body.clearNativeTargets(body)
     local enabled = active == true
-    setVariable(body, "isAttacking", enabled)
-    setVariable(body, "isMelee", false)
-    setVariable(body, "AttackAnim", enabled)
-    setVariable(body, "initiateAttack", enabled)
-    call(body, "setPerformingAttackAnimation", enabled)
+    local data = Body.data(body)
+    if enabled then data.GoblinActionUntil = nowMs()+850 end
+    if not enabled and nowMs() < (data.GoblinActionUntil or 0) then return true end
+    data.GoblinAction = enabled and "SHOOT" or ""
+    setVariable(body, "GoblinAction", enabled and "SHOOT" or "")
     return true
 end
 
@@ -377,6 +379,16 @@ end
 
 function Body.say(body, text)
     if not Body.isGoblin(body) or type(text) ~= "string" or #text < 1 or #text > 240 then return false, "speech is invalid" end
+    if type(isServer) == "function" and isServer() and type(sendServerCommand) == "function" then
+        local data = Body.data(body)
+        data.GoblinSpeechSequence = (tonumber(data.GoblinSpeechSequence) or 0) + 1
+        local ok = pcall(sendServerCommand, "GoblinSurvivor", "speech", {
+            npc_id = data.GoblinID, owner = data.GoblinOwner, name = data.GoblinName or Config.npcName,
+            online_id = select(2, call(body, "getOnlineID")),
+            generation = data.GoblinGeneration, sequence = data.GoblinSpeechSequence, text = text
+        })
+        if ok then return true, "speech sent to clients" end
+    end
     local ok = select(1, call(body, "addLineChatElement", text, 0.1, 0.8, 0.1))
     if ok then return true, "speech displayed" end
     local okSay = select(1, call(body, "Say", text))
@@ -392,10 +404,13 @@ function Body.snapshot(body)
         npc_id = data.GoblinID,
         owner = data.GoblinOwner,
         owner_online = data.GoblinOwnerOnline ~= false,
-        name = Config.npcName,
+        autonomous = data.GoblinAutonomous == true,
+        name = data.GoblinName or Config.npcName,
+        all_skills_maxed = require("GoblinSurvivor/GoblinIdentity").trained[body] == true,
         body_present = Body.exists(body),
         alive = Body.exists(body),
         online_id = onlineId,
+        outfit_id = select(2, call(body, "getPersistentOutfitID")),
         generation = tonumber(data.GoblinGeneration) or 0,
         engine = "iso_zombie",
         humanized = true,
@@ -406,6 +421,24 @@ function Body.snapshot(body)
         combat_state = data.GoblinCombatState,
         visual_asset = Config.npcVisualAsset,
         movement_goal = data.GoblinMovementGoal,
+        rejoin_run = data.GoblinTaskPayload and data.GoblinTaskPayload.rejoin_run == true,
+        rejoin_point = data.GoblinRejoinPoint,
+        rejoin_sequence = data.GoblinRejoinSequence,
+        rejoin_expires = data.GoblinRejoinExpires,
+        action = data.GoblinAction or "",
+        job_active = data.GoblinJobActive == true,
+        riding = data.GoblinRide ~= nil,
+        transport_active = data.GoblinTransportActive == true,
+        transport_status = data.GoblinTransportStatus,
+        owner_idle_seconds = data.GoblinOwnerIdleSeconds or 0,
+        job_progress = data.GoblinJobProgress,
+        job_tool = (data.GoblinJobActive or data.GoblinAction=="BUILD") and
+            select(2,call(select(2,call(body,"getPrimaryHandItem")),"getFullType")) or nil,
+        action_sequence = tonumber(data.GoblinActionSequence) or 0,
+        inventory_persisted = data.GoblinInventoryPersistent == true,
+        inventory_error = data.GoblinInventoryError,
+        work_status = data.GoblinWorkStatus,
+        work_completed = data.GoblinWorkCompleted or 0,
         visual_asset_applied = data.GoblinVisualApplied == true,
         visual_error = data.GoblinVisualError,
         wardrobe = WARDROBE,

@@ -1,0 +1,4 @@
+# Deployment scripts must also run after a Windows checkout.
+*.sh text eol=lf
+# Exported meshes are generated assets; preserve the validated bytes and hashes.
+*.x binary

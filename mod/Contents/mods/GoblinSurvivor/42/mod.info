@@ -1,4 +1,4 @@
 name=GoblinSurvivor
 id=GoblinSurvivor
-description=One persistent, server-authoritative humanized IsoZombie Goblin companion for Project Zomboid Build 42. Uses the packaged Mystery Rig clothing item, native PathFindBehavior2, conditional Bob_* AnimSets, bounded melee/loot tasks, and an optional Qwen/Discord bridge.
-version=0.5.0
+description=One persistent Goblin companion per player for Project Zomboid Build 42. Native human body, Community Rig skin and custom head, human Bob_* animations, server-owned combat/loot/build tasks, and optional Qwen chat. Requires Storm only on the dedicated server; ordinary clients need no Storm.
+version=0.6.0

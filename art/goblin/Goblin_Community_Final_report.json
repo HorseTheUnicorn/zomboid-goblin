@@ -1,0 +1,24 @@
+{
+  "community_rig": "Paddlefruit Community Rig v4.0.1",
+  "community_rig_sha256": "61d68007bacc71c6bb21d3a643cd4b7a22c97d96164c5405535627ed7ea27f64",
+  "body": "native PZ male body; not replaced globally",
+  "body_uv_source": "Community Rig OBJ-MaleBody (0), TEX-DefaultMale",
+  "community_native_uv_max_difference_before_bake": 0.0231159927572526,
+  "community_native_vertex_max_error": 1.006935441572381e-06,
+  "native_triangles_surface_baked": 814,
+  "community_uv_conversion": "shader bake onto installed native UVs, including corrected hand corners",
+  "head_triangles": 1799,
+  "head_vertices": 2367,
+  "head_bones": [
+    "Bip01_Head"
+  ],
+  "head_max_influences": 1,
+  "head_sha256": "7a8fdaec8fbbcf8f34596e2e8c83a90a0230f568fbef38d49a4e62c8f5434dcf",
+  "skin_sha256": "7feb1b031234303fc3777b2f7ae59972f028a243caca8d1d999471848c089f30",
+  "native_transparent_texels_preserved": 10672,
+  "skin_texture": "Body/Goblin/GoblinNativeSkin.png",
+  "runtime_head": "x:Skinned/Goblin/GoblinHead",
+  "native_facing_axis": "-Z",
+  "native_up_axis": "+Y",
+  "clothing": "Native Shirt_Priest, Trousers_Black, Shoes_BlackBoots and Hat_Beret ItemVisuals"
+}

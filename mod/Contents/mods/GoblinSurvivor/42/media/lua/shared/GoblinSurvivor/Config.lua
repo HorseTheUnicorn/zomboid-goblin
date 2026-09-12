@@ -6,8 +6,8 @@ local Config = {
     npcName = "Goblin",
     npcRole = "companion",
 
-    -- Full-body Goblin costume plus the player's requested vanilla uniform.
-    npcOutfit = "Survivor",
+    -- Community Rig skin on the native human body, with the native uniform.
+    npcOutfit = "GoblinCompanion",
     npcOutfitId = 4101,
     npcOutfitItems = {
         "Base.Shirt_Priest",
@@ -15,8 +15,9 @@ local Config = {
         "Base.Hat_Beret",
         "Base.Shoes_BlackBoots"
     },
-    npcVisualAsset = "Goblin_PZ_MysteryRig",
+    npcVisualAsset = "Goblin_Community_Human",
     npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody",
+    npcSkinTexture = "Goblin/GoblinNativeSkin",
 
     -- Goblin's permanent two-handed bodyguard weapon. Runtime defense keeps
     -- the two internal shells ready and enables the engine unlimited-ammo flag.
@@ -32,7 +33,7 @@ local Config = {
     commanders = {},
 
     spawnOffsetTiles = 4,
-    followPreferredDistance = 1,
+    followPreferredDistance = 3.0,
     followWalkDistance = 2,
     followRunDistance = 9,
     followHysteresis = 0.5,
@@ -58,12 +59,12 @@ local Config = {
     lootScanSeconds = 2.0,
     lootMaxItemsPerTask = 8,
 
-    -- Autonomous helper mode.  Player movement resets the idle clock.  After
-    -- two minutes Goblin starts choosing useful work until the owner moves
-    -- again or gives it a higher-priority explicit task.
+    -- Independent chores begin after 30 seconds stationary, or while offline.
+    -- Moving again cancels independent chores, never explicit player orders.
     autonomyEnabled = true,
-    autonomyIdleSeconds = 120,
+    autonomyIdleSeconds = 30,
     autonomyDecisionSeconds = 8,
+    autonomyExploreRadius = 24,
     autonomyWorkRadius = 10,
     autonomyBarricadeRadius = 8
 }
@@ -169,12 +170,13 @@ function Config.refresh()
 
     -- Asset registration and the companion loadout are fixed package contracts.
     Config.weaponType = "Base.DoubleBarrelShotgun"
-    Config.npcVisualAsset = "Goblin_PZ_MysteryRig"
+    Config.npcVisualAsset = "Goblin_Community_Human"
     Config.npcVisualItemType = "GoblinSurvivor.Goblin_MysteryBody"
+    Config.npcSkinTexture = "Goblin/GoblinNativeSkin"
 
     Config.protected = parseBoolean(option("GoblinNpcProtected", Config.protected), Config.protected)
     Config.trackerExactTelemetry = parseBoolean(option("GoblinTrackerExact", Config.trackerExactTelemetry), Config.trackerExactTelemetry)
-    Config.followPreferredDistance = boundedInteger(option("GoblinFollowDistance", Config.followPreferredDistance), Config.followPreferredDistance, 1, 8)
+    Config.followPreferredDistance = 3.0 -- outside the native chair-rest threat ring
     Config.followWalkDistance = boundedInteger(option("GoblinFollowWalkDistance", Config.followWalkDistance), Config.followWalkDistance, 2, 16)
     Config.followRunDistance = boundedInteger(option("GoblinFollowRunDistance", Config.followRunDistance), Config.followRunDistance, 6, 32)
     Config.spawnOffsetTiles = boundedInteger(option("GoblinSpawnOffset", Config.spawnOffsetTiles), Config.spawnOffsetTiles, 2, 16)
@@ -192,6 +194,7 @@ function Config.refresh()
     Config.autonomyEnabled = parseBoolean(option("GoblinAutonomyEnabled", Config.autonomyEnabled), Config.autonomyEnabled)
     Config.autonomyIdleSeconds = boundedNumber(option("GoblinAutonomyIdleSeconds", Config.autonomyIdleSeconds), Config.autonomyIdleSeconds, 30, 3600)
     Config.autonomyDecisionSeconds = boundedNumber(option("GoblinAutonomyDecisionSeconds", Config.autonomyDecisionSeconds), Config.autonomyDecisionSeconds, 2, 120)
+    Config.autonomyExploreRadius = boundedNumber(option("GoblinAutonomyExploreRadius", Config.autonomyExploreRadius), Config.autonomyExploreRadius, 8, 40)
     Config.autonomyWorkRadius = boundedNumber(option("GoblinAutonomyWorkRadius", Config.autonomyWorkRadius), Config.autonomyWorkRadius, 3, 32)
     Config.autonomyBarricadeRadius = boundedNumber(option("GoblinAutonomyBarricadeRadius", Config.autonomyBarricadeRadius), Config.autonomyBarricadeRadius, 2, 20)
 

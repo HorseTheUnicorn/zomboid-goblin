@@ -10,7 +10,8 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-PROTOCOL_VERSION = 1
+# Must match the packaged Lua Config.protocol (companion/authority envelope).
+PROTOCOL_VERSION = 2
 MAX_MESSAGE_BYTES = 256 * 1024
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 MESSAGE_TYPE_RE = re.compile(r"^[a-z][a-z0-9._:-]{0,63}$")

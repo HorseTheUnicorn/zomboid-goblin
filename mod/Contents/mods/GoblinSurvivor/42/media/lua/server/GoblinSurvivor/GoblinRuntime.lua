@@ -9,6 +9,7 @@ local Bridge = require("GoblinSurvivor/GoblinBridge")
 local Commands = require("GoblinSurvivor/GoblinCommands")
 local Telemetry = require("GoblinSurvivor/GoblinTelemetry")
 local ChatBridge = require("GoblinSurvivor/ChatBridge")
+local Persistence = require("GoblinSurvivor/GoblinPersistence")
 
 local Runtime = { started = false }
 local nextRosterAt = 0
@@ -37,14 +38,13 @@ end
 local function updateBody(body, timestamp)
     if not Body.isGoblin(body) or not Body.exists(body) then return end
     Body.applyInvariants(body)
-    local data = Body.data(body)
-    if data ~= nil and data.GoblinOwnerOnline == false then return end
     if timestamp >= (nextBrainAt[body] or 0) then
         nextBrainAt[body] = timestamp + 250
-        -- Finish/advance any current explicit or autonomous task first, then
-        -- let the idle scheduler choose new work only when appropriate.
-        Brain.update(body, timestamp)
+        -- Observe the owner first: movement cancels independent work before
+        -- another item is taken or another construction action is committed.
         Autonomy.update(body, timestamp)
+        Brain.update(body, timestamp)
+        Persistence.save(body,false)
     end
     Body.clearNativeTargets(body)
 end
@@ -52,6 +52,13 @@ end
 function Runtime.start()
     if not isAuthoritativeServer() then return false end
     if Runtime.started then return true end
+    if not Persistence.available() then
+        if not Runtime.missingJavaLogged then
+            Runtime.missingJavaLogged=true
+            log("SERVER_JAVA_REQUIRED start the dedicated server with Storm; clients do not need Storm")
+        end
+        return false
+    end
     Config.refresh()
     Spawner.load()
     pcall(IPC.initialize)
@@ -66,6 +73,7 @@ end
 function Runtime.tick()
     if not isAuthoritativeServer() then return end
     if not Runtime.started then Runtime.start() end
+    if not Runtime.started then return end
     if not Config.enabled then return end
     local timestamp = nowMs()
     -- Zombie events still run each update; roster scans/telemetry don't need
@@ -77,6 +85,7 @@ function Runtime.tick()
     Bridge.tick()
     for _, body in ipairs(Spawner.allBodies()) do Body.clearNativeTargets(body) end
     Spawner.syncClientState(false)
+    Spawner.syncOwnerMarkers(timestamp)
     Telemetry.write(false)
     Telemetry.writeExact(false)
 end
@@ -105,6 +114,15 @@ end
 
 function Runtime.snapshot()
     return Spawner.snapshotAll()
+end
+
+function Runtime.onPlayerDeath(player)
+    if isAuthoritativeServer() and Runtime.started then Spawner.onPlayerDeath(player) end
+end
+
+function Runtime.save()
+    if not Runtime.started or not isAuthoritativeServer() then return end
+    for _,body in ipairs(Spawner.allBodies()) do Persistence.save(body,true) end
 end
 
 return Runtime
