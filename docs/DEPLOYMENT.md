@@ -44,6 +44,26 @@ stop restoration rather than silently discarding possessions. Abrupt crashes
 can lose changes since the last checkpoint; world and inventory updates are
 not one filesystem transaction.
 
+## SteamCMD publication
+
+Use `tools/SteamCMD-GoblinSurvivor.vdf` to update existing Workshop item
+`3797199625`. Edit its local staging path if necessary. Its `contentfolder`
+must end at `GoblinSurvivor/Contents`, so the downloaded item contains
+`mods/GoblinSurvivor/42/mod.info` directly. Uploading the parent folder creates
+an extra `Contents` layer that the game's ordinary mod discovery does not load.
+
+After staging the tested package, run SteamCMD with `+login <your-account>` and
+`+workshop_build_item <absolute-path-to-the-vdf> +quit`. Authenticate privately
+in SteamCMD if prompted; do not put passwords in a script. The checked-in VDF
+intentionally omits preview, title, description and visibility keys to preserve
+the Workshop page's existing artwork and metadata on content-only updates.
+
+Keep backups outside every active `mods` folder: renaming a backup directory
+does not change the mod ID in its `mod.info`, and it can shadow the Workshop
+package. Validate publication with a downloaded package and a server startup
+that has no local Goblin fallback. Java-helper readiness alone is insufficient;
+the Lua `runtime ready` message and fresh bridge state must also appear.
+
 ## Bridge and Qwen
 
 The helper writes only fixed channels under `<PZ cachedir>/Lua/goblin-bridge`.
