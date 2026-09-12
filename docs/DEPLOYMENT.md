@@ -72,6 +72,11 @@ supported by the helper. Provision the marker/channels/config with
 `ops/pz-bridge/provision_bridge.sh` after verifying the cachedir and permissions.
 Never point the relay at world saves. See `ops/README.md` for the remote relay.
 
+On Linux, keep bridge channels setgid to the provisioned `goblinbridge` group
+(mode `2770`). Atomic bridge output uses `0660` so the separate relay account
+can read each replacement file. Private companion inventory snapshots still
+use owner-only temporary files; do not grant the relay access to world saves.
+
 Both Lua and Python use wire protocol **2**. The historical
 `.goblin-bridge-v1` marker names the filesystem layout, not the message version.
 Mixed Python/Lua versions are rejected. Update them together.

@@ -17,6 +17,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -57,7 +59,7 @@ public final class ServerSupport {
         byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
         if (bytes.length > 262144) return false;
         try {
-            atomicWrite(bridgePath(Path.of(ZomboidFileSystem.instance.getCacheDir()), relative), bytes);
+            atomicBridgeWrite(bridgePath(Path.of(ZomboidFileSystem.instance.getCacheDir()), relative), bytes);
             return true;
         } catch (IOException error) {
             System.err.println("[GoblinSurvivor] BRIDGE_WRITE_FAILED " + error.getClass().getSimpleName());
@@ -66,6 +68,14 @@ public final class ServerSupport {
     }
 
     static void atomicWrite(Path destination, byte[] bytes) throws IOException {
+        atomicWrite(destination, bytes, false);
+    }
+
+    static void atomicBridgeWrite(Path destination, byte[] bytes) throws IOException {
+        atomicWrite(destination, bytes, true);
+    }
+
+    private static void atomicWrite(Path destination, byte[] bytes, boolean sharedBridge) throws IOException {
         Files.createDirectories(destination.getParent());
         Path temporary = Files.createTempFile(destination.getParent(), ".goblin-", ".tmp");
         try {
@@ -73,6 +83,12 @@ public final class ServerSupport {
                 ByteBuffer data = ByteBuffer.wrap(bytes);
                 while (data.hasRemaining()) channel.write(data);
                 channel.force(true);
+            }
+            // createTempFile defaults to 0600 on Linux. Only bridge output is
+            // shared with the provisioned setgid goblinbridge directory group;
+            // inventory snapshots continue using the private writer above.
+            if (sharedBridge && Files.getFileAttributeView(temporary, PosixFileAttributeView.class) != null) {
+                Files.setPosixFilePermissions(temporary, PosixFilePermissions.fromString("rw-rw----"));
             }
             // Fail closed on filesystems without atomic replacement. Never publish
             // a ready marker over a partially written JSON or inventory snapshot.

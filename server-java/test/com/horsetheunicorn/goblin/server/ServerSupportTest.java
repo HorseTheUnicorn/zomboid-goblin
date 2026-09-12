@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Arrays;
 
 /** Run against the same PZ/Storm classpath; no game or network is started. */
@@ -46,11 +48,21 @@ public final class ServerSupportTest {
         Path temporary = Files.createTempDirectory("goblin-server-test-");
         Path file = temporary.resolve("test.ready");
         try {
+            boolean posix = Files.getFileAttributeView(temporary, PosixFileAttributeView.class) != null;
             ServerSupport.atomicWrite(file, nativeData);
             check(Arrays.equals(Files.readAllBytes(file), nativeData));
+            if (posix) check(Files.getPosixFilePermissions(file).equals(PosixFilePermissions.fromString("rw-------")));
+            ServerSupport.atomicBridgeWrite(file, snapshot);
+            check(Arrays.equals(Files.readAllBytes(file), snapshot));
+            if (posix) check(Files.getPosixFilePermissions(file).equals(PosixFilePermissions.fromString("rw-rw----")));
+            ServerSupport.atomicBridgeWrite(file, nativeData);
+            check(Arrays.equals(Files.readAllBytes(file), nativeData));
+            if (posix) check(Files.getPosixFilePermissions(file).equals(PosixFilePermissions.fromString("rw-rw----")));
             ServerSupport.atomicWrite(file, snapshot);
             check(Arrays.equals(Files.readAllBytes(file), snapshot));
+            if (posix) check(Files.getPosixFilePermissions(file).equals(PosixFilePermissions.fromString("rw-------")));
             try (var files = Files.list(temporary)) { check(files.count() == 1); }
+            System.out.println("POSIX bridge/private permission checks: " + (posix ? "executed" : "not supported on this filesystem"));
         } finally {
             Files.deleteIfExists(file);
             Files.delete(temporary);
