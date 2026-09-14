@@ -4,11 +4,17 @@ local Config = require("GoblinSurvivor/Config")
 local Hands = require("GoblinSurvivor/GoblinHands")
 local Motion = { paths = setmetatable({}, { __mode = "k" }) }
 local rejoined = setmetatable({}, {__mode="k"})
+local followGoals = setmetatable({}, { __mode = "k" })
+
+-- Far FOLLOW uses the engine's moving-character goal instead of repeatedly
+-- chasing the owner's last X/Y. Once close, ordinary location pathing keeps
+-- the existing three-tile bodyguard spacing and chair-rest clearance behavior.
+Motion.characterPathDistance = 6.0
 
 local function call(object, method, ...)
     if object == nil then return false, nil end
-    local ok, member = pcall(function() return object[method] end)
-    if not ok or type(member) ~= "function" then return false, nil end
+    local ok, member=pcall(function() return object[method] end)
+    if not ok or type(member)~="function" then return false, nil end
     return pcall(member, object, ...)
 end
 
@@ -78,8 +84,12 @@ function Motion.followGoal(body, owner)
     if math.floor(actor.z) == math.floor(leader.z) and gap <= preferred then
         return nil, gap
     end
-    -- Path to the owner square to retain native stair/door routing.
-    return leader, gap
+    -- Far away, tag this coordinate snapshot with a runtime-only moving target.
+    -- Motion.drive then asks IsoZombie.pathToCharacter(owner), so stairs/corners
+    -- keep tracking a moving player without a new A* request every time X/Y changes.
+    local goal={x=leader.x,y=leader.y,z=leader.z}
+    if gap >= Motion.characterPathDistance then followGoals[goal]=owner end
+    return goal, gap
 end
 
 function Motion.moveType(goal, gap, owner)
@@ -123,6 +133,15 @@ function Motion.rejoin(body, point, sequence, expires, timestamp)
     return ok
 end
 
+local function pathToCharacter(body,target)
+    local ok,result=call(body,"pathToCharacter",target)
+    if ok and result~=false then return true end
+    -- Some builds expose the moving-character goal only on PathFindBehavior2.
+    local _,behavior=call(body,"getPathFindBehavior2")
+    ok,result=call(behavior,"pathToCharacter",target)
+    return ok and result~=false
+end
+
 function Motion.drive(body, goal, moveType, timestamp)
     -- Before any native path call, including the first frame of a new order.
     if goal or Hands.travelling(body) then Hands.stow(body) end
@@ -157,15 +176,34 @@ function Motion.drive(body, goal, moveType, timestamp)
     if Motion.distance(point, path.point) > 0.1 then
         path.point, path.progressAt, path.failures = point, timestamp, 0
     end
+
+    local targetCharacter=followGoals[goal]
+    local wantedMode=targetCharacter and "character" or "location"
     local stuck = timestamp - path.progressAt >= Config.stuckTimeoutSeconds * 1000
-    local moved = not path.goal or Motion.distance(goal, path.goal) >= 0.75
-    if timestamp >= path.nextPathAt and (moved or stuck) then
-        -- Respect the engine repath cooldown; a moving leader doesn't reset
-        -- progress detection, so a frozen actor is still reported/retried.
+    local changed
+    if wantedMode=="character" then
+        changed=path.mode~="character" or path.character~=targetCharacter
+    else
+        changed=path.mode~="location" or not path.goal or Motion.distance(goal,path.goal)>=0.75
+    end
+
+    if timestamp >= path.nextPathAt and (changed or stuck) then
+        -- Respect the engine repath cooldown; a moving character goal updates
+        -- internally, so owner X/Y changes do not restart A* every 1.25 seconds.
         call(body, "setUseless", false)
-        local ok, result = call(body, "pathToLocationF", goal.x, goal.y, goal.z)
+        local ok,result,usedCharacter
+        if targetCharacter then
+            ok=pathToCharacter(body,targetCharacter)
+            usedCharacter=ok
+        end
+        if not ok then
+            ok,result=call(body,"pathToLocationF",goal.x,goal.y,goal.z)
+            usedCharacter=false
+        end
         path.nextPathAt = timestamp + Config.repathSeconds * 1000
         if not ok or result == false then return false, "native path rejected" end
+        path.mode=usedCharacter and "character" or "location"
+        path.character=usedCharacter and targetCharacter or nil
         path.goal = { x = goal.x, y = goal.y, z = goal.z }
         if stuck then
             path.failures = path.failures + 1
@@ -173,7 +211,7 @@ function Motion.drive(body, goal, moveType, timestamp)
             if path.failures == 1 then print("[GoblinSurvivor] MOVEMENT_BLOCKED native path retry") end
         end
     end
-    return true, "pathing"
+    return true, path.mode=="character" and "following character" or "pathing"
 end
 
 return Motion
