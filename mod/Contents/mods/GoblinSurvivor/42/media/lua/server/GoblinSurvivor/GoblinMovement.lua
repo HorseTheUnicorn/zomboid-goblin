@@ -89,7 +89,14 @@ end
 function Movement.snapshot(body)
     local record = Movement.active[body]
     if not record then return nil end
-    return { task = record.task, move_type = record.moveType, goal = record.goal }
+    local native = Motion.paths[body]
+    return {
+        task = record.task,
+        move_type = record.moveType,
+        goal = record.goal,
+        path_kind = native and native.mode or nil,
+        failures = native and (tonumber(native.failures) or 0) or 0
+    }
 end
 
 return Movement
