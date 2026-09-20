@@ -112,7 +112,7 @@ class QwenClient:
         owner = context.get("controlled_owner", "owner")
         branches = []
         for action in ("SAY", "HOLD_POSITION", "FOLLOW", "LOOT_AREA", "RETURN_TO_BASE",
-                       "SET_BASE", "SECURE_BASE", "BUILD", "ATTACK", "EQUIP", "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS",
+                       "SET_BASE", "SECURE_BASE", "BUILD", "ATTACK", "EQUIP", "OPEN_DOOR", "OPEN_WINDOW", "GAIN_ACCESS", "CLOSE_CURTAINS",
                        "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"):
             if action not in MODE_ALLOWED[mode]:
                 continue
@@ -124,6 +124,12 @@ class QwenClient:
                                "RETURN_TO_BASE": ("home_base", "delivery point")}[action]
                 props["target"] = {"type": "object", "properties": {
                     "kind": {"const": kind}, "label": {"const": label}},
+                    "required": ["kind", "label"], "additionalProperties": False}
+                required.append("target")
+            if action == "GAIN_ACCESS":
+                props["target"] = {"type": "object", "properties": {
+                    "kind": {"enum": ["building", "room", "yard", "vehicle", "container"]},
+                    "label": {"type": "string", "minLength": 1, "maxLength": 96}},
                     "required": ["kind", "label"], "additionalProperties": False}
                 required.append("target")
             if action in {"BUILD", "EQUIP"}:
@@ -163,11 +169,14 @@ class QwenClient:
             "the door' ARE commands, not questions about your abilities. Choose FOLLOW only for come/follow, "
             "HOLD_POSITION for wait/stay, LOOT_AREA for loot/scavenge, RETURN_TO_BASE for deliver/go home, "
             "SET_BASE for this is base, SECURE_BASE for secure/board/fortify the base, ATTACK for an explicit "
-            "kill command, OPEN_DOOR to open a door, OPEN_WINDOW to open a window, CLOSE_CURTAINS to close/shut "
+            "kill command, OPEN_DOOR to open a door, OPEN_WINDOW to open a window, GAIN_ACCESS for a least-destructive "
+            "route into a building/room/yard/vehicle/container, CLOSE_CURTAINS to close/shut "
             "curtains or blinds (never open the window), BUILD with item.name "
             "crate/wall/fence, or EQUIP with item.name Base.DoubleBarrelShotgun. OPEN_DOOR/OPEN_WINDOW have "
             "no target: the server resolves the nearest one within three tiles of the speaker. Locked or "
-            "barricaded targets are refused with a reason. CLOSE_CURTAINS has no target: it closes all accessible "
+            "barricaded targets are refused with a reason. GAIN_ACCESS requires a semantic target kind and label, "
+            "never coordinates; the server chooses the physical method. Model output can never authorize breach. "
+            "CLOSE_CURTAINS has no target: it closes all accessible "
             "curtains across the owner's current house, including other rooms/floors, and handles doors while walking. "
             "The owner must stand inside that house. Never replace an unsupported order with FOLLOW. "
             "FOLLOW requires target {kind:player,label:controlled_owner}; LOOT_AREA requires "

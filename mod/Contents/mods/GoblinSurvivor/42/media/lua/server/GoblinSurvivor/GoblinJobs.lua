@@ -15,7 +15,13 @@ local definitions={
         requirements={reusable_tools={"Base.Wrench"},
             consumables={"Base.EngineParts or installed fixing inputs"}}},
     CLOSE_CURTAINS={handler=require("GoblinSurvivor/GoblinCurtains"),destructive=false,
-        requirements={target="owner's bounded loaded house",consumables={}}}
+        requirements={target="owner's bounded loaded house",consumables={}}},
+    GAIN_ACCESS={handler=require("GoblinSurvivor/GoblinGainAccess"),destructive=true,
+        requirements={target_kinds={"BUILDING","ROOM","YARD","VEHICLE","CONTAINER"},
+            reusable_tools={"Base.Crowbar"},
+            available_but_unrouted_tools={"Base.BoltCutters"},
+            policy="least-destructive route; breach requires explicit online authorization",
+            consumables={}}}
 }
 
 local function serverReady()
@@ -48,7 +54,7 @@ for task,item in pairs(definitions) do
     })
 end
 if type(print)=="function" then
-    print("[GoblinSurvivor] CAPABILITY_REGISTRY_READY count=4 tasks=CLOSE_CURTAINS,CRAFT,FARM,REPAIR_VEHICLE")
+    print("[GoblinSurvivor] CAPABILITY_REGISTRY_READY count=5 tasks=CLOSE_CURTAINS,CRAFT,FARM,GAIN_ACCESS,REPAIR_VEHICLE")
 end
 
 function Jobs.handles(task) return Capabilities.handles(task) end

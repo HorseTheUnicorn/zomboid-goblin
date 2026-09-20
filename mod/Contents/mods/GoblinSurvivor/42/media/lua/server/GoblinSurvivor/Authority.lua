@@ -12,6 +12,7 @@ local privileged = {
     FARM = true, CRAFT = true, REPAIR_VEHICLE = true,
     OPEN_DOOR = true,
     OPEN_WINDOW = true,
+    GAIN_ACCESS = true,
     CLOSE_CURTAINS = true,
     FORM_SQUAD = true,
     DISMISS_SQUAD = true,
@@ -90,6 +91,7 @@ function Authority.consume(message)
     if not grant.commander and message.action ~= "BUILD" and message.action ~= "SECURE_BASE"
         and message.action ~= "ENTER_VEHICLE" and message.action ~= "EXIT_VEHICLE"
         and message.action ~= "OPEN_DOOR" and message.action ~= "OPEN_WINDOW"
+        and message.action ~= "GAIN_ACCESS"
         and message.action ~= "CLOSE_CURTAINS"
         and message.action ~= "FARM" and message.action ~= "CRAFT" and message.action ~= "REPAIR_VEHICLE" then return false end
     -- Grants are capabilities for one high-level mutation, not reusable

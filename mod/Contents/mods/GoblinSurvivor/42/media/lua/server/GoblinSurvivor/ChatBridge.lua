@@ -82,6 +82,10 @@ function ChatBridge.directIntent(text)
         if string.match(lower,"%f[%a]window%f[%A]") or contains(lower,"windows") then return Constants.TASK.OPEN_WINDOW end
         if string.match(lower,"%f[%a]door%f[%A]") or contains(lower,"doors") then return Constants.TASK.OPEN_DOOR end
     end
+    if contains(lower,"gain access") or contains(lower,"get into the building")
+        or contains(lower,"get inside the building") or lower:match("%f[%a]breach%f[%A]") then
+        return "GAIN_ACCESS"
+    end
     if string.match(lower,"%f[%a]craft%f[%A]") or contains(lower,"saw logs") or contains(lower,"make planks") then
         return Constants.TASK.CRAFT
     end
@@ -142,6 +146,9 @@ local function applyDirect(player, speaker, task, text)
     if task==Constants.TASK.CRAFT or task==Constants.TASK.FARM or task==Constants.TASK.REPAIR_VEHICLE then
         payload=ChatBridge.jobPayload(task,text)
     end
+    if task=="GAIN_ACCESS" then
+        payload=ChatBridge.accessPayload(text)
+    end
     if task == Constants.TASK.BUILD then
         payload.kind=contains(lower,"crate") and "crate" or contains(lower,"wall") and "wall" or contains(lower,"fence") and "fence" or nil
         payload.north=contains(lower,"north")
@@ -177,6 +184,14 @@ function ChatBridge.jobPayload(task,text)
     if name then recipe=name end
     if recipe then recipe=recipe:gsub("%s+please.*$",""):gsub("[%p]$","") end
     return {item={name=recipe,count=tonumber(count) or 1}}
+end
+
+function ChatBridge.accessPayload(text)
+    local lower=string.lower(text or "")
+    local kind=(contains(lower,"vehicle") or contains(lower,"car") or contains(lower,"truck")) and "VEHICLE"
+        or contains(lower,"yard") and "YARD" or contains(lower,"room") and "ROOM"
+        or contains(lower,"container") and "CONTAINER" or "BUILDING"
+    return {target={kind=kind},allow_breach=lower:match("%f[%a]breach%f[%A]")~=nil}
 end
 
 function ChatBridge.start()

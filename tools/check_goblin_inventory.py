@@ -185,6 +185,35 @@ def validate_inventory(inventory, commands, items, root):
         raise CatalogError("Unknown engine-tested capability")
     item_index = {r["full_type"]: r for r in items["records"]}
     root = Path(root).resolve()
+    toolkit = inventory.get("permanent_toolkit")
+    if inventory_status == complete_status:
+        if not isinstance(toolkit, dict):
+            raise CatalogError("Complete capability inventory lacks permanent toolkit catalog")
+        categories = toolkit.get("categories")
+        if not isinstance(categories, dict) or not categories:
+            raise CatalogError("Permanent toolkit categories missing")
+        toolkit_ids = []
+        for category, item_types in categories.items():
+            if not isinstance(category, str) or not category:
+                raise CatalogError("Invalid permanent toolkit category")
+            toolkit_ids.extend(names(item_types, f"{category} toolkit IDs"))
+        if len(toolkit_ids) != len(set(toolkit_ids)):
+            raise CatalogError("Permanent toolkit IDs overlap across categories")
+        for item in toolkit_ids:
+            installed = item_index.get(item)
+            if not installed or installed.get("enabled") is not True or installed.get("obsolete") is not False:
+                raise CatalogError(f"Permanent toolkit item is unavailable: {item}")
+        consumables = names(toolkit.get("excluded_consumables"), "excluded toolkit consumables")
+        if set(toolkit_ids) & consumables:
+            raise CatalogError("Permanent toolkit contains an excluded consumable")
+        source = toolkit.get("source")
+        if not isinstance(source, dict) or not source.get("path") or not source.get("sha256"):
+            raise CatalogError("Permanent toolkit source evidence missing")
+        resolved = (root / source["path"]).resolve()
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise CatalogError("Permanent toolkit source missing or outside workspace")
+        if hashlib.sha256(resolved.read_bytes()).hexdigest() != source["sha256"]:
+            raise CatalogError("Permanent toolkit source changed since audit")
     for record in records:
         label = record["id"]
         if record.get("origin") not in ("existing", "proposed"):

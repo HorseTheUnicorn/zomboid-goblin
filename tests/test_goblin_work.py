@@ -506,13 +506,14 @@ class CompanionWorkTests(unittest.TestCase):
             package.loaded['GoblinSurvivor/GoblinAccess']=nil
             Access=require('GoblinSurvivor/GoblinAccess')
             function routeDoor(name)
-                local value={name=name,opened=false,locked=true,keyLocked=true,syncs=0,silent=0,actorCalls=0}
+                local value={name=name,opened=false,locked=true,keyLocked=true,syncs=0,silent=0,actorCalls=0,keyId=42}
                 function value:isOpen() return self.opened end
                 value.IsOpen=value.isOpen
                 function value:isLocked() return self.locked end
                 function value:setLocked(flag) self.locked=flag end
                 function value:isLockedByKey() return self.keyLocked end
                 function value:setLockedByKey(flag) self.keyLocked=flag end
+                function value:getKeyId() return self.keyId end
                 function value:isBarricaded() return false end
                 function value:isDestroyed() return false end
                 function value:syncIsoObject() self.syncs=self.syncs+1 end
@@ -532,6 +533,10 @@ class CompanionWorkTests(unittest.TestCase):
             end
 
             local ordinary=routeDoor('ordinary')
+            assert(not Access.open(a,ordinary,false),'locked door opened without its native key')
+            assert(ordinary.locked and ordinary.keyLocked and ordinary.silent==0)
+            local matchingKey={}
+            function a.inv:haveThisKeyId(id) assert(id==42);return matchingKey end
             assert(Access.open(a,ordinary,false))
             assert(ordinary.opened and not ordinary.locked and not ordinary.keyLocked)
             assert(ordinary.silent==1 and ordinary.actorCalls==0 and ordinary.syncs>=2)
@@ -556,7 +561,7 @@ class CompanionWorkTests(unittest.TestCase):
             local safehouse={playerAllowed=function(_,owner) assert(owner=='horse');return allowed end}
             SafeHouse={getSafeHouse=function(square) assert(square==sq);return safehouse end}
             IsoDoor={getDoubleDoorIndex=function() return -1 end,getGarageDoorIndex=function() return -1 end}
-            local door={opened=false,locked=true,keyLocked=true}
+            local door={opened=false,locked=true,keyLocked=true,keyId=42}
             function door:getSquare() return sq end
             function door:isOpen() return self.opened end
             door.IsOpen=door.isOpen
@@ -564,10 +569,13 @@ class CompanionWorkTests(unittest.TestCase):
             function door:setLocked(value) self.locked=value end
             function door:isLockedByKey() return self.keyLocked end
             function door:setLockedByKey(value) self.keyLocked=value end
+            function door:getKeyId() return self.keyId end
             function door:isBarricaded() return false end
             function door:isDestroyed() return false end
             function door:ToggleDoorSilent() self.opened=not self.opened end
             function door:syncIsoObject() end
+            local matchingKey={}
+            function a.inv:haveThisKeyId(id) assert(id==42);return matchingKey end
             Access=require('GoblinSurvivor/GoblinAccess')
             assert(not Access.open(a,door,false))
             assert(not door.opened and door.locked and door.keyLocked)

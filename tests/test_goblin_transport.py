@@ -37,6 +37,17 @@ class PassengerTests(unittest.TestCase):
             assert(v.entries==0)
         ''')
 
+    def test_matching_vehicle_key_uses_native_isogamecharacter_unlock_before_entry(self):
+        self.lua.execute('''
+            v.locked=true;v.hasKey=true
+            local p,detail=Transport.prepare(a,player,'ENTER_VEHICLE',clock);assert(p,detail)
+            local point=Passenger.point(v,p.seat,'outside');a.x=point.x;a.y=point.y
+            local done,ok,result=Transport.board(a,p,clock+1)
+            assert(done and ok,result)
+            assert(not v.locked and v.nativeUnlocks==1 and v.doorTransmits>=2)
+            assert(a.vehicle==v and v.entries>=1)
+        ''')
+
     def test_seat_race_reselects_without_overwriting_player(self):
         self.lua.execute('''
             local p=assert(Transport.prepare(a,player,'ENTER_VEHICLE',clock))

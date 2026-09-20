@@ -8,7 +8,8 @@ local Motion = require("GoblinSurvivor/GoblinLocomotion")
 local Access = {
     nextAt = setmetatable({}, { __mode = "k" }),
     routes = setmetatable({}, { __mode = "k" }),
-    claims = setmetatable({}, { __mode = "k" })
+    claims = setmetatable({}, { __mode = "k" }),
+    approaches = setmetatable({}, { __mode = "k" })
 }
 
 local function call(object, method, ...)
@@ -108,6 +109,111 @@ local function buildingOf(square)
     if got and building then return buildingDefOf(building) or building end
     got, building = result(square, "getBuilding")
     return got and (buildingDefOf(building) or building) or nil
+end
+
+local function roomOf(square)
+    local ok, room = result(square, "getRoom")
+    return ok and roomDefOf(room) or nil
+end
+
+local function roomBounds(room)
+    local okX, x = result(room, "getX")
+    local okY, y = result(room, "getY")
+    local okX2, x2 = result(room, "getX2")
+    local okY2, y2 = result(room, "getY2")
+    local okZ, z = result(room, "getZ")
+    if not okX or not okY or not okX2 or not okY2 or not okZ then return nil end
+    for _, value in ipairs({ x, y, x2, y2, z }) do
+        if type(value) ~= "number" or value ~= value or value ~= math.floor(value) then return nil end
+    end
+    if x2 < x then x, x2 = x2, x end
+    if y2 < y then y, y2 = y2, y end
+    return { x = x, y = y, x2 = x2, y2 = y2, min_z = z, max_z = z }
+end
+
+local function expandBounds(bounds, room)
+    local value = roomBounds(room)
+    if not value then return bounds end
+    if not bounds then
+        return { x = value.x - 1, y = value.y - 1, x2 = value.x2 + 1,
+            y2 = value.y2 + 1, min_z = value.min_z, max_z = value.max_z }
+    end
+    bounds.x = math.min(bounds.x, value.x - 1)
+    bounds.y = math.min(bounds.y, value.y - 1)
+    bounds.x2 = math.max(bounds.x2, value.x2 + 1)
+    bounds.y2 = math.max(bounds.y2, value.y2 + 1)
+    bounds.min_z = math.min(bounds.min_z, value.min_z)
+    bounds.max_z = math.max(bounds.max_z, value.max_z)
+    return bounds
+end
+
+local function nearestRoomAndBuilding(point, radius)
+    local bestRoom, bestBuilding, bestDistance
+    for x = math.floor(point.x) - radius, math.floor(point.x) + radius do
+        for y = math.floor(point.y) - radius, math.floor(point.y) + radius do
+            local square = squareAt(x, y, math.floor(point.z))
+            local room = roomOf(square)
+            local building = room and buildingOf(square) or nil
+            local distance = (x + 0.5 - point.x)^2 + (y + 0.5 - point.y)^2
+            if room and building and (not bestDistance or distance < bestDistance) then
+                bestRoom, bestBuilding, bestDistance = room, building, distance
+            end
+        end
+    end
+    return bestRoom, bestBuilding
+end
+
+local function collectionValues(object, method)
+    local values = {}
+    local okList, list = result(object, method)
+    if not okList or not list then return values end
+    local okSize, size = result(list, "size")
+    for index = 0, (okSize and tonumber(size) or 0) - 1 do
+        local okValue, value = result(list, "get", index)
+        if okValue and value then values[#values + 1] = value end
+    end
+    return values
+end
+
+-- Resolve a bounded semantic search scope from the authenticated owner's live
+-- location. Engine objects remain prepare-time only; the chosen task payload
+-- persists just the final cardinal edge and re-resolves it before mutation.
+function Access.resolveTargetScope(owner, kind)
+    local point = Motion.position(owner)
+    if not point then return nil, "owner location is unavailable" end
+    kind = string.upper(tostring(kind or "BUILDING"))
+    if kind == "YARD" then
+        local radius = 12
+        return { bounds = { x = math.floor(point.x) - radius, y = math.floor(point.y) - radius,
+            x2 = math.floor(point.x) + radius, y2 = math.floor(point.y) + radius,
+            min_z = math.floor(point.z), max_z = math.floor(point.z) }, max_distance_squared = radius * radius }
+    end
+    if kind ~= "BUILDING" and kind ~= "ROOM" then return {}, nil end
+    local square = squareAt(math.floor(point.x), math.floor(point.y), math.floor(point.z))
+    local room, building = roomOf(square), buildingOf(square)
+    if not room or not building then room, building = nearestRoomAndBuilding(point, 12) end
+    if not room or not building then return nil, "no loaded " .. string.lower(kind) .. " is near the owner" end
+    if kind == "ROOM" then
+        local bounds = expandBounds(nil, room)
+        if not bounds then return nil, "the target room has invalid bounds" end
+        return { bounds = bounds, target_room = room, target_building = building }, nil
+    end
+    local rooms = collectionValues(building, "getRooms")
+    if #rooms < 1 or #rooms > 128 then return nil, "the target building is too large to inspect safely" end
+    local bounds, volume = nil, 0
+    for _, value in ipairs(rooms) do
+        local roomBuilding = select(2, result(value, "getBuilding"))
+        roomBuilding = buildingDefOf(roomBuilding) or roomBuilding
+        local rb = roomBuilding == building and roomBounds(value) or nil
+        if rb then
+            bounds = expandBounds(bounds, value)
+            volume = volume + (rb.x2 - rb.x + 3) * (rb.y2 - rb.y + 3)
+        end
+    end
+    if not bounds or volume > 250000 or bounds.max_z - bounds.min_z > 32 then
+        return nil, "the target building exceeds the safe inspection bound"
+    end
+    return { bounds = bounds, target_building = building }, nil
 end
 
 local function edgeSquares(edge)
@@ -250,12 +356,16 @@ local function doorGroup(object)
     return group
 end
 
-local function unlockDoor(object)
-    -- Goblin is an explicitly managed all-tools companion.  Door locks are
-    -- therefore an access tool boundary, not a reason to feed its IsoZombie
-    -- actor into the native IsoPlayer-only unlock branch.  Use the same native
-    -- lock fields and full-state sync as vanilla ISLockDoor, including every
-    -- double/garage segment.  Barricades and destroyed doors remain hard stops.
+local doorLocked, matchingDoorKey
+
+local function unlockDoor(object, body)
+    -- Match the installed ISLockDoor validity boundary: a key-locked door may
+    -- be changed only when this actor's real inventory contains the matching
+    -- key ID. A crowbar or permanent toolkit never becomes an invented
+    -- lock-pick mechanic. Keep the player-free state/sync adapter because the
+    -- installed actor-taking door toggle has an unsafe IsoPlayer tail cast.
+    if not doorLocked(object) then return true end
+    if not matchingDoorKey(body, object) then return false end
     for _, member in ipairs(doorGroup(object)) do
         local changed = false
         local ok, value = result(member, "isLocked")
@@ -318,7 +428,7 @@ local function toggleDoorWithoutPlayer(body, object, wantOpen)
     return toggled and opened(object) == wantOpen
 end
 
-function Access.blockReason(object, window, allowUnlock)
+function Access.blockReason(object, window, allowUnlock, actor)
     if not object then return "target is no longer present" end
     local ok, isOpen = result(object, window and "IsOpen" or "isOpen")
     if not ok then ok, isOpen = result(object, "IsOpen") end
@@ -328,7 +438,8 @@ function Access.blockReason(object, window, allowUnlock)
         local checked, blocked = result(object, method)
         if not checked then return "cannot inspect this target safely" end
         if blocked and not (allowUnlock == true and window ~= true
-            and (method == "isLocked" or method == "isLockedByKey")) then
+            and (method == "isLocked" or method == "isLockedByKey")
+            and matchingDoorKey(actor, object) ~= nil) then
             if method == "isBarricaded" then return "barricaded; remove the barricade first" end
             if method == "isDestroyed" then return "destroyed; it cannot be opened" end
             return "locked; unlock it first"
@@ -339,13 +450,13 @@ end
 
 function Access.open(body, object, window)
     if isClient() or not isServer() then return false end
-    if Access.blockReason(object, window, not window) then return false end
+    if Access.blockReason(object, window, not window, body) then return false end
     if not safehouseAllows(body, object) then return false end
     -- IsoThumpable:canInteractWith rejects a locked player-built door. Apply
     -- the managed all-tools unlock first, then retain its native interaction
     -- check for every non-lock restriction. Safehouse authorization must stay
     -- before this mutation so another player's lock is never changed.
-    if not window then unlockDoor(object) end
+    if not window and not unlockDoor(object, body) then return false end
     if not canInteract(object, body) then return false end
     local toggled
     if window then toggled = call(object, "ToggleWindow", body)
@@ -366,62 +477,320 @@ local function closeNative(body, object)
     return toggled and checked and isOpen == false
 end
 
-function Access.prepare(owner, window, now)
+doorLocked=function(object)
+    for _,method in ipairs({"isLocked","isLockedByKey","isLockedByPadlock"}) do
+        local checked,value=result(object,method)
+        if checked and value==true then return true end
+    end
+    local checked,code=result(object,"getLockedByCode")
+    return checked and tonumber(code) and tonumber(code)~=0 or false
+end
+
+matchingDoorKey=function(body, object)
+    if not body or not object then return nil end
+    local okKey, keyId = result(object, "checkKeyId")
+    if not okKey or type(keyId) ~= "number" or keyId < 0 then
+        okKey, keyId = result(object, "getKeyId")
+    end
+    if not okKey or type(keyId) ~= "number" or keyId < 0 then return nil end
+    local okInventory, inventory = result(body, "getInventory")
+    if not okInventory or not inventory then return nil end
+    local checked, key = result(inventory, "haveThisKeyId", keyId)
+    return checked and key or nil
+end
+
+function Access.prepare(owner, window, now, options)
+    options=type(options)=="table" and options or {}
     local point = Motion.position(owner)
     local _, dead = result(owner, "isDead")
     if not point or dead == true then return nil, "owner must be present to identify the target" end
-    local best, bestDistance
+    local best, bestScore, bestPriority, nearestBlocked, nearestBlockedDistance
     -- Resolve the nearest edge beside the speaking player, never model-supplied
     -- coordinates or another player's door. Keep this search on the same floor.
-    for x = math.floor(point.x) - 3, math.floor(point.x) + 3 do
-        for y = math.floor(point.y) - 3, math.floor(point.y) + 3 do
+    local bounds = options.bounds or { x = math.floor(point.x) - 3, y = math.floor(point.y) - 3,
+        x2 = math.floor(point.x) + 3, y2 = math.floor(point.y) + 3,
+        min_z = math.floor(point.z), max_z = math.floor(point.z) }
+    local z = math.floor(point.z)
+    for x = bounds.x, bounds.x2 do
+        for y = bounds.y, bounds.y2 do
             for _, delta in ipairs({ { 1, 0 }, { 0, 1 } }) do
-                local edge = { x = x, y = y, z = math.floor(point.z), dx = delta[1], dy = delta[2] }
+                local edge = { x = x, y = y, z = z, dx = delta[1], dy = delta[2] }
                 local distance = (x + 0.5 + delta[1] * 0.5 - point.x)^2
                     + (y + 0.5 + delta[2] * 0.5 - point.y)^2
-                if distance <= 9 and (not bestDistance or distance < bestDistance)
-                    and edgeObject(edge, window) then best, bestDistance = edge, distance end
+                local object=edgeObject(edge,window)
+                local here, there = edgeSquares(edge)
+                local scopeMatches = true
+                if options.target_room then
+                    scopeMatches = (roomOf(here) == options.target_room) ~= (roomOf(there) == options.target_room)
+                elseif options.target_building then
+                    scopeMatches = (buildingOf(here) == options.target_building)
+                        ~= (buildingOf(there) == options.target_building)
+                end
+                local within = options.bounds ~= nil
+                    or distance <= tonumber(options.max_distance_squared or 9)
+                if within and scopeMatches and object then
+                    local reason=Access.blockReason(object,window,not window,options.actor)
+                    local eligible=reason==nil or (reason=="already open" and options.include_open==true)
+                    if eligible then
+                        local priority
+                        if reason=="already open" then priority=1
+                        elseif window then priority=5
+                        elseif doorLocked(object) and matchingDoorKey(options.actor,object) then priority=3
+                        elseif doorLocked(object) then priority=7
+                        else priority=2 end
+                        local score=priority*100000+distance
+                        if not bestScore or score<bestScore then
+                            best,bestScore,bestPriority=edge,score,priority
+                        end
+                    elseif not nearestBlockedDistance or distance<nearestBlockedDistance then
+                        nearestBlocked,nearestBlockedDistance=reason,distance
+                    end
+                end
             end
         end
     end
     local kind = window and "window" or "door"
-    if not best then return nil, "no " .. kind .. " within three tiles of you on this floor" end
-    local reason = Access.blockReason(edgeObject(best, window), window, not window)
-    if reason then return nil, kind .. " is " .. reason end
-    return { edge = best, window = window == true, started_at = now },
+    if not best then
+        if nearestBlocked then return nil,kind.." is "..nearestBlocked end
+        return nil, "no eligible " .. kind .. " is loaded in the target scope"
+    end
+    return { edge = best, window = window == true, started_at = now, priority=bestPriority },
         "going to open the nearest " .. kind .. " beside you"
 end
 
-function Access.perform(body, payload, now)
+local function hoppableBetween(edge)
+    local here,there=edgeSquares(edge)
+    if not here or not there then return nil end
+    local ok,object=result(here,"getHoppableTo",there)
+    if ok and object then return object end
+    ok,object=result(there,"getHoppableTo",here)
+    return ok and object or nil
+end
+
+function Access.prepareFence(owner,now,options)
+    options=type(options)=="table" and options or {}
+    local point=Motion.position(owner)
+    if not point then return nil,"owner must be present to identify the target" end
+    local best,bestDistance
+    local bounds=options.bounds or {x=math.floor(point.x)-3,y=math.floor(point.y)-3,
+        x2=math.floor(point.x)+3,y2=math.floor(point.y)+3}
+    for x=bounds.x,bounds.x2 do
+        for y=bounds.y,bounds.y2 do
+            for _,delta in ipairs({{1,0},{0,1}}) do
+                local edge={x=x,y=y,z=math.floor(point.z),dx=delta[1],dy=delta[2]}
+                local object=hoppableBetween(edge)
+                local tall=object and select(2,result(object,"isTallHoppable"))==true
+                local distance=(x+0.5+delta[1]*0.5-point.x)^2
+                    +(y+0.5+delta[2]*0.5-point.y)^2
+                local within=options.bounds~=nil or distance<=tonumber(options.max_distance_squared or 9)
+                if object and not tall and within and (not bestDistance or distance<bestDistance) then
+                    best,bestDistance=edge,distance
+                end
+            end
+        end
+    end
+    if not best then return nil,"no climbable low fence within three tiles of you on this floor" end
+    return {edge=best,fence=true,started_at=now,priority=6},"going to cross the nearest low fence"
+end
+
+local function edgeSide(point,edge)
+    if not point or math.floor(point.z)~=edge.z then return nil end
+    local x,y=math.floor(point.x),math.floor(point.y)
+    if x==edge.x and y==edge.y then return 1 end
+    if x==edge.x+edge.dx and y==edge.y+edge.dy then return 2 end
+    return nil
+end
+
+local function approachEdge(body,edge,now)
+    local point=Motion.position(body)
+    if not point then return false,"cannot resolve Goblin position" end
+    local side=edgeSide(point,edge)
+    if side then return true,side end
+    local a={x=edge.x+0.5,y=edge.y+0.5,z=edge.z,radius=0.25}
+    local b={x=a.x+edge.dx,y=a.y+edge.dy,z=edge.z,radius=0.25}
+    local goal=Motion.distance(point,a)<=Motion.distance(point,b) and a or b
+    local Movement=require("GoblinSurvivor/GoblinMovement")
+    local active=Movement.active[body]
+    if not active or active.payload.x~=goal.x or active.payload.y~=goal.y then
+        Movement.command(body,"MOVE_TO",goal)
+    else Movement.update(body,now) end
+    return false,"walking to the access edge"
+end
+
+function Access.performFence(body,payload,runtime,now)
+    local edge=payload and payload.edge
+    if not validEdge(edge) then return true,false,"fence target changed","TARGET_CHANGED" end
+    local fence=hoppableBetween(edge)
+    if not fence then return true,false,"fence is no longer loaded","TARGET_UNLOADED" end
+    local Policy=require("GoblinSurvivor/GoblinAccessPolicy")
+    local allowed,code,detail=Policy.access(body,fence)
+    if not allowed then return true,false,detail,code end
+    local point=Motion.position(body)
+    local side=edgeSide(point,edge)
+    if runtime.fence_from then
+        if side and side~=runtime.fence_from then return true,true,"crossed the low fence","COMPLETE" end
+        if now-(runtime.fence_at or now)>5000 then
+            return true,false,"native fence climb did not cross the edge","BLOCKED"
+        end
+        return false,true,"climbing the low fence","WORKING"
+    end
+    local adjacent,from=approachEdge(body,edge,now)
+    if not adjacent then return false,true,from,"MOVING_TO_TARGET" end
+    local dx,dy=edge.dx,edge.dy
+    if from==2 then dx,dy=-dx,-dy end
+    local name=dx==1 and "E" or dx==-1 and "W" or dy==1 and "S" or "N"
+    local directions=rawget(_G,"IsoDirections")
+    local direction=directions and directions[name]
+    if not direction then return true,false,"native fence direction is unavailable","UNSUPPORTED" end
+    local invoked=call(body,"climbOverFence",direction)
+    if not invoked then return true,false,"native IsoGameCharacter fence climb failed","ENGINE_ERROR" end
+    runtime.fence_from=from;runtime.fence_at=now
+    return false,true,"climbing the low fence","WORKING"
+end
+
+function Access.prepareBreachWindow(owner,now,options)
+    options=type(options)=="table" and options or {}
+    local point=Motion.position(owner)
+    if not point then return nil,"owner must be present to identify the target" end
+    local best,bestDistance
+    local bounds=options.bounds or {x=math.floor(point.x)-3,y=math.floor(point.y)-3,
+        x2=math.floor(point.x)+3,y2=math.floor(point.y)+3}
+    local z=math.floor(point.z)
+    for x=bounds.x,bounds.x2 do
+        for y=bounds.y,bounds.y2 do
+            for _,delta in ipairs({{1,0},{0,1}}) do
+                local edge={x=x,y=y,z=z,dx=delta[1],dy=delta[2]}
+                local object=edgeObject(edge,true)
+                local distance=(x+0.5+delta[1]*0.5-point.x)^2
+                    +(y+0.5+delta[2]*0.5-point.y)^2
+                local smashed=object and select(2,result(object,"isSmashed"))==true
+                local barricaded=object and select(2,result(object,"isBarricaded"))==true
+                local destroyed=object and select(2,result(object,"isDestroyed"))==true
+                local here,there=edgeSquares(edge)
+                local scopeMatches=true
+                if options.target_room then
+                    scopeMatches=(roomOf(here)==options.target_room)~=(roomOf(there)==options.target_room)
+                elseif options.target_building then
+                    scopeMatches=(buildingOf(here)==options.target_building)
+                        ~=(buildingOf(there)==options.target_building)
+                end
+                local within=options.bounds~=nil or distance<=tonumber(options.max_distance_squared or 9)
+                if object and scopeMatches and not smashed and not barricaded and not destroyed and within
+                    and (not bestDistance or distance<bestDistance) then
+                    best,bestDistance=edge,distance
+                end
+            end
+        end
+    end
+    if not best then return nil,"no eligible window breach target within three tiles" end
+    return {edge=best,window=true,breach=true,started_at=now,priority=8},
+        "going to the explicitly authorized window breach"
+end
+
+function Access.performBreachWindow(body,payload,runtime,now)
+    local edge=payload and payload.edge
+    if not validEdge(edge) then return true,false,"window target changed","TARGET_CHANGED" end
+    local object=edgeObject(edge,true)
+    if not object then return true,false,"window is no longer loaded","TARGET_UNLOADED" end
+    if select(2,result(object,"isSmashed"))==true then return true,true,"window is breached","COMPLETE" end
+    local Policy=require("GoblinSurvivor/GoblinAccessPolicy")
+    local allowed,code,detail=Policy.breach(body,object,payload.target_kind,payload)
+    if not allowed then return true,false,detail,code end
+    local adjacent,status=approachEdge(body,edge,now)
+    if not adjacent then return false,true,status,"MOVING_TO_TARGET" end
+    local tool=require("GoblinSurvivor/GoblinTools").ensure(body,"Base.Crowbar")
+    if not tool then return true,false,"reserved crowbar is unavailable","MISSING_TOOL" end
+    local invoked=call(object,"smashWindow")
+    local smashed=select(2,result(object,"isSmashed"))==true
+    if not invoked or not smashed then return true,false,"native window breach failed","ENGINE_ERROR" end
+    call(object,"syncIsoObject",false,0,nil,nil)
+    markAccessChanged(body)
+    return true,true,"window breached by explicit order","COMPLETE"
+end
+
+local function approachRuntime(body, runtime, edge)
+    local state = runtime
+    if type(state) ~= "table" then
+        state = Access.approaches[body]
+        if type(state) ~= "table" then state = {}; Access.approaches[body] = state end
+    end
+    local key = Access.canonicalEdge(edge)
+    if state.access_approach_edge ~= key then
+        state.access_approach_edge = key
+        state.access_approach_side = nil
+        state.access_approach_switched = nil
+        state.access_approach_best = nil
+        state.access_approach_progress_at = nil
+    end
+    return state
+end
+
+local function clearApproach(body, runtime)
+    Access.approaches[body] = nil
+    if type(runtime) ~= "table" then return end
+    for _, key in ipairs({ "access_approach_edge", "access_approach_side",
+        "access_approach_switched", "access_approach_best", "access_approach_progress_at" }) do
+        runtime[key] = nil
+    end
+end
+
+function Access.perform(body, payload, now, runtime)
     if isClient() or not isServer() then return true, false, "server work is unavailable" end
     local edge = payload and payload.edge
     local kind = payload and payload.window and "window" or "door"
     if not validEdge(edge) then return true, false, "opening target is invalid; please order me again" end
     local object = edgeObject(edge, payload.window)
-    local reason = Access.blockReason(object, payload.window, not payload.window)
-    if reason == "already open" then return true, true, kind .. " is open" end
-    if reason then return true, false, kind .. " is " .. reason end
+    local reason = Access.blockReason(object, payload.window, not payload.window, body)
+    if reason == "already open" then clearApproach(body, runtime); return true, true, kind .. " is open" end
+    if reason then clearApproach(body, runtime); return true, false, kind .. " is " .. reason end
     if now - (tonumber(payload.started_at) or now) > 45000 then
+        clearApproach(body, runtime)
         return true, false, "cannot reach that " .. kind .. "; clear a path and try again"
     end
     local point = Motion.position(body)
-    if not point then return true, false, "cannot reach the " .. kind .. " from here" end
+    if not point then clearApproach(body, runtime); return true, false, "cannot reach the " .. kind .. " from here" end
     local bx, by, bz = math.floor(point.x), math.floor(point.y), math.floor(point.z)
     if bz == edge.z and ((bx == edge.x and by == edge.y)
         or (bx == edge.x + edge.dx and by == edge.y + edge.dy)) then
         local openedNow = Access.open(body, object, payload.window)
         if openedNow then print("[GoblinSurvivor] OPEN_ORDER_DONE kind=" .. kind) end
+        clearApproach(body, runtime)
         return true, openedNow, openedNow and kind .. " opened" or "could not open the " .. kind
     end
     local a = { x = edge.x + 0.5, y = edge.y + 0.5, z = edge.z, radius = 0.25 }
     local b = { x = a.x + edge.dx, y = a.y + edge.dy, z = edge.z, radius = 0.25 }
-    local goal = Motion.distance(point, a) <= Motion.distance(point, b) and a or b
+    local state = approachRuntime(body, runtime, edge)
+    if state.access_approach_side == nil then
+        state.access_approach_side = Motion.distance(point, a) <= Motion.distance(point, b) and 1 or 2
+    end
+    local goal = state.access_approach_side == 1 and a or b
+    local distance = Motion.distance(point, goal)
+    if state.access_approach_best == nil or distance < state.access_approach_best - 0.20 then
+        state.access_approach_best = distance
+        state.access_approach_progress_at = now
+    elseif now - (tonumber(state.access_approach_progress_at) or now) >= 6000
+        and state.access_approach_switched ~= true then
+        -- The nearer side can itself be behind a wall. After six seconds with
+        -- no material progress, try the other exact side once. This remains a
+        -- native path request; completion still requires real adjacency and an
+        -- observed open state.
+        require("GoblinSurvivor/GoblinMovement").clear(body)
+        state.access_approach_side = state.access_approach_side == 1 and 2 or 1
+        state.access_approach_switched = true
+        state.access_approach_best = nil
+        state.access_approach_progress_at = now
+        goal = state.access_approach_side == 1 and a or b
+    end
     local Movement = require("GoblinSurvivor/GoblinMovement")
     local active = Movement.active[body]
     if not active or active.payload.x ~= goal.x or active.payload.y ~= goal.y then
         Movement.command(body, "MOVE_TO", goal)
     else Movement.update(body, now) end
     return false, true, "walking to open the " .. kind
+end
+
+function Access.clearApproach(body)
+    clearApproach(body, nil)
 end
 
 local function nextPathSquare(body, here)
@@ -620,13 +989,21 @@ function Access.update(body, goal, now, scope, pendingOnly)
         -- A door just closed behind this actor remains adjacent until the
         -- actor leaves the far square. Do not immediately reopen it merely
         -- because the comprehensive adjacent-edge scan can still see it.
-        if not object or route.closedAfterCross[object] then return end
-        seenSquares[candidate] = true
+        -- A new/reversed task may legitimately need that same door before the
+        -- actor can leave either adjacent square, though. In that case the
+        -- native next step or a strictly goalward edge must override the
+        -- suppression; otherwise Goblin walks forever into the closed door.
+        if not object then return end
         local cx, cy = candidate:getX() + 0.5, candidate:getY() + 0.5
         local midpointX = (here:getX() + candidate:getX()) * 0.5 + 0.5
         local midpointY = (here:getY() + candidate:getY()) * 0.5 + 0.5
         local proximity = point and ((point.x - midpointX)^2 + (point.y - midpointY)^2) or 4
         local remaining = (goal.x - cx)^2 + (goal.y - cy)^2
+        local currentRemaining = (goal.x - (here:getX() + 0.5))^2
+            + (goal.y - (here:getY() + 0.5))^2
+        if route.closedAfterCross[object] and not nativeNext
+            and remaining >= currentRemaining then return end
+        seenSquares[candidate] = true
         choices[#choices + 1] = { square = candidate, object = object,
             score = nativeNext and -1000000 or proximity * 100 + remaining }
     end
@@ -664,6 +1041,7 @@ end
 function Access.clear(body)
     Access.routes[body] = nil
     Access.nextAt[body] = nil
+    Access.approaches[body] = nil
 end
 
 return Access

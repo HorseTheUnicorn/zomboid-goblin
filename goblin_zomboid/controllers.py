@@ -15,6 +15,7 @@ class Action(str, Enum):
     REPAIR_VEHICLE = "REPAIR_VEHICLE"
     OPEN_DOOR = "OPEN_DOOR"
     OPEN_WINDOW = "OPEN_WINDOW"
+    GAIN_ACCESS = "GAIN_ACCESS"
     CLOSE_CURTAINS = "CLOSE_CURTAINS"
     NOOP = "NOOP"
     SAY = "SAY"
@@ -200,6 +201,7 @@ class TacticalController:
         "CRAFT": Action.CRAFT,
         "REPAIR_VEHICLE": Action.REPAIR_VEHICLE,
         "OPEN_WINDOW": Action.OPEN_WINDOW,
+        "GAIN_ACCESS": Action.GAIN_ACCESS,
         "CLOSE_CURTAINS": Action.CLOSE_CURTAINS,
         "WAIT": Action.NOOP,
         "SAY": Action.SAY,

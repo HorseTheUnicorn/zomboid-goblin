@@ -34,7 +34,23 @@ class ExtendedJobTests(unittest.TestCase):
         self.lua.execute('''
             assert(Tools.ensureKit(a));local n=#a.inv.items
             assert(n==#Tools.types and Tools.ensureKit(a) and #a.inv.items==n)
+            local expected={
+                ['Base.BoltCutters']=true,['Base.Axe']=true,['Base.HandDrill']=true,
+                ['Base.File']=true,['Base.CarBatteryCharger']=true,
+                ['Base.MetalworkingPliers']=true,['Base.Tongs']=true,
+                ['Base.SheetMetalSnips']=true,['Base.MetalworkingChisel']=true
+            }
+            for _,item in ipairs(a.inv.items) do
+                assert(Tools.reserved(item));expected[item:getFullType()]=nil
+                if item.IsDrainable and item:IsDrainable() then assert(item.uses==0) end
+            end
+            assert(next(expected)==nil)
             assert(not Tools.ensure(a,'Base.Plank') and not Tools.ensure(a,'Base.EngineParts'))
+            for _,material in ipairs({'Base.PropaneTank','Base.WeldingRods','Base.Nails',
+                'Base.Screws','Base.Hinge','Base.Doorknob','Base.SheetMetal',
+                'Base.Wire','Base.Twine','Base.WaterBottleFull','Base.CarBattery'}) do
+                assert(not Tools.ensure(a,material))
+            end
             ordinary=a.inv:AddItem('Base.Hammer');Tools.ensureKit(a)
             assert(not Tools.reserved(ordinary) and #a.inv.items==n+1)
             assert(not Loot.hasCargo(a))
@@ -273,6 +289,7 @@ class ExtendedJobTests(unittest.TestCase):
             function door:isBarricaded() return false end
             function door:isDestroyed() return false end
             function door:isLockedByKey() return false end
+            function door:getKeyId() return 42 end
             function door:ToggleDoor(who) self.opened=true;self.calls=self.calls+1 end
             function near:getDoorTo(other) if other:getX()==5 and other:getY()==0 then return door end end
             p=Access.prepare(player,false,clock);assert(p and p.edge.x==4)
@@ -280,7 +297,8 @@ class ExtendedJobTests(unittest.TestCase):
             a.x=4.5;done,ok=Access.perform(a,p,clock+1000);assert(done and ok and door.calls==1)
             Access.perform(a,p,clock+2000);assert(door.calls==1)
             door.opened=false;door.locked=true
-            p,why=Access.prepare(player,false,clock);assert(p and why:find('open'))
+            function a.inv:haveThisKeyId(id) if id==42 then return item('Base.Key1') end end
+            p,why=Access.prepare(player,false,clock,{actor=a});assert(p and why:find('open'))
             done,ok=Access.perform(a,p,clock);assert(done and ok and not door.locked and door.calls==2)
             done,ok=Access.perform(a,{edge={}},clock);assert(done and not ok)
         ''')

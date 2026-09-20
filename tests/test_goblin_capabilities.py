@@ -23,7 +23,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.lua.execute('''
             local Jobs=require('GoblinSurvivor/GoblinJobs')
             local registry=Jobs.registry()
-            assert(#registry==4)
+            assert(#registry==5)
             local seen={}
             for _,entry in ipairs(registry) do
                 seen[entry.name]=entry
@@ -32,6 +32,7 @@ class CapabilityRegistryTests(unittest.TestCase):
             end
             assert(seen.FARM.destructive and seen.CRAFT.destructive)
             assert(seen.REPAIR_VEHICLE.destructive and not seen.CLOSE_CURTAINS.destructive)
+            assert(seen.GAIN_ACCESS.destructive and seen.GAIN_ACCESS.owner_required)
             local farm=Jobs.requirements('FARM',{})
             assert(farm.reusable_tools[1]=='Base.HandShovel')
             assert(Jobs.requirements('NOT_REAL',{})==nil)

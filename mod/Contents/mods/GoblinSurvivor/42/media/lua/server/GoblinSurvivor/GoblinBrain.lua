@@ -80,7 +80,8 @@ local function setTaskInternal(body, task, payload)
     local opening=task==Constants.TASK.OPEN_DOOR or task==Constants.TASK.OPEN_WINDOW
     local openingDetail
     if opening then
-        payload,openingDetail=Access.prepare(playerForOwner(body),task==Constants.TASK.OPEN_WINDOW,nowMs())
+        payload,openingDetail=Access.prepare(playerForOwner(body),task==Constants.TASK.OPEN_WINDOW,nowMs(),
+            {actor=body})
         if not payload then return false,openingDetail end
     end
     if task == Constants.TASK.BUILD then
@@ -160,7 +161,8 @@ function Brain.execute(message, body)
     if type(message) ~= "table" or type(message.action) ~= "string" then return false, "malformed Goblin command" end
     local action = string.upper(message.action)
     if action=="ENTER_VEHICLE" or action=="EXIT_VEHICLE" then return Brain.setTask(body,action,{}) end
-    if Jobs.handles(action) then return Brain.setTask(body,action,{job=message.job,item=message.item}) end
+    if Jobs.handles(action) then return Brain.setTask(body,action,{job=message.job,item=message.item,
+        target=message.target,allow_breach=message.allow_breach==true,autonomous=message.autonomous==true}) end
     if action=="OPEN_DOOR" or action=="OPEN_WINDOW" then return Brain.setTask(body,action,{}) end
     if action == "SAY" then return Brain.setTask(body, Constants.TASK.SPEAK, { text = message.text }) end
     if action == "EQUIP" then return Brain.setTask(body, Constants.TASK.EQUIP, {}) end

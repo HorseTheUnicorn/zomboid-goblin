@@ -16,15 +16,42 @@ local function say(body,text)
         print("[GoblinSurvivor] TRANSPORT owner="..Body.owner(body).." status="..text)
     end
 end
+local function doorAccessible(body,vehicle,part,door)
+    if not door then return true end
+    local inspected,locked=call(door,"isLocked")
+    if not inspected then return false end
+    if locked~=true then return true end
+    -- Exact installed BaseVehicle.canOpenDoor/canUnlockDoor accept an
+    -- IsoGameCharacter and inspect its inventory for the vehicle key without
+    -- casting to IsoPlayer. Do not clear a lock merely because Goblin owns a
+    -- generic toolkit.
+    local checked,allowed=call(vehicle,"canOpenDoor",part,body)
+    return checked and allowed==true
+end
 local function available(body,vehicle,seat)
     if not Passenger.validSeat(vehicle,seat) then return false end
     if select(2,call(vehicle,"isSeatInstalled",seat))~=true
         or select(2,call(vehicle,"isSeatOccupied",seat))~=false then return false end
     local _,part=call(vehicle,"getPassengerDoor",seat)
     local _,door=call(part,"getDoor")
-    if door and select(2,call(door,"isLocked"))~=false then return false end
+    if not doorAccessible(body,vehicle,part,door) then return false end
     local blocked,yes=call(vehicle,"isEnterBlocked",body,seat)
     return blocked and yes==false and Passenger.point(vehicle,seat,"outside")~=nil
+end
+local function unlockWithNativeKey(body,vehicle,seat)
+    local _,part=call(vehicle,"getPassengerDoor",seat)
+    local _,door=call(part,"getDoor")
+    if not door then return true,part,door end
+    local inspected,locked=call(door,"isLocked")
+    if not inspected then return false,part,door end
+    if locked~=true then return true,part,door end
+    local checked,allowed=call(vehicle,"canUnlockDoor",part,body)
+    if not checked or allowed~=true then return false,part,door end
+    local invoked=call(vehicle,"toggleLockedDoor",part,body,false)
+    local verified,newLocked=call(door,"isLocked")
+    if not invoked or not verified or newLocked==true then return false,part,door end
+    call(vehicle,"transmitPartDoor",part)
+    return true,part,door
 end
 local function choose(body,vehicle)
     local _,count=call(vehicle,"getMaxPassengers")
@@ -108,8 +135,8 @@ function Transport.board(body,payload,now)
     -- Recheck atomically on the authoritative game thread immediately before binding.
     if not available(body,vehicle,payload.seat) then return false,false,"seat changed; checking again" end
     Movement.clear(body)
-    local _,part=call(vehicle,"getPassengerDoor",payload.seat)
-    local _,door=call(part,"getDoor")
+    local unlocked,part,door=unlockWithNativeKey(body,vehicle,payload.seat)
+    if not unlocked then return true,false,"passenger door is locked and Goblin has no matching key" end
     if door then call(door,"setOpen",true);call(vehicle,"transmitPartDoor",part) end
     local ok,entered=call(vehicle,"enterRSync",payload.seat,body,vehicle)
     if not ok or entered~=true then return true,false,"native passenger entry failed" end

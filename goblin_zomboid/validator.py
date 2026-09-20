@@ -12,7 +12,7 @@ MAX_INTENT_BYTES = 16 * 1024
 MODES = {"SAFE", "ROAM", "PARTY", "HUNT"}
 INTENTS = {
     "FARM", "CRAFT", "REPAIR_VEHICLE",
-    "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS",
+    "OPEN_DOOR", "OPEN_WINDOW", "GAIN_ACCESS", "CLOSE_CURTAINS",
     "WAIT", "SAY", "EQUIP", "MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "HOLD_POSITION",
     "REGROUP", "SEARCH", "SCAVENGE", "LOOT_AREA", "RETREAT", "REST", "GO_HOME",
     "SET_BASE", "JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB",
@@ -29,6 +29,7 @@ MODE_ALLOWED = {
 TARGET_KINDS = {
     "nearby_building", "named_location", "area", "player", "home_base", "escape_route",
     "candidate", "current_position", "nearby_threat", "goblin", "squad", "base", "vehicle", "job",
+    "building", "room", "yard", "container",
 }
 ALLOWED_KEYS = {
     "intent", "mode", "text", "priority", "abort_if", "target", "item", "candidate", "loot_focus",
@@ -224,6 +225,7 @@ class IntentValidator:
             "JOIN_PARTY", "TRADE", "HELP", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD",
             "PATROL", "CLEAR_BUILDING", "FLEE", "RETREAT", "REGROUP",
             "GO_HOME", "RETURN_TO_BASE",
+            "GAIN_ACCESS",
         }
         if intent in target_required and "target" not in raw:
             raise IntentError(f"{intent} requires a target")

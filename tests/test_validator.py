@@ -62,6 +62,28 @@ class ValidatorTests(unittest.TestCase):
                 }
             )
 
+    def test_gain_access_requires_semantic_target_and_model_cannot_authorize_breach(self) -> None:
+        result = self.validator.validate(
+            {
+                "intent": "GAIN_ACCESS",
+                "mode": "ROAM",
+                "target": {"kind": "building", "label": "the nearby house"},
+            }
+        )
+        self.assertEqual(result.intent, "GAIN_ACCESS")
+        self.assertEqual(result.data["target"]["kind"], "building")
+        with self.assertRaises(IntentError):
+            self.validator.validate({"intent": "GAIN_ACCESS", "mode": "ROAM"})
+        with self.assertRaises(IntentError):
+            self.validator.validate(
+                {
+                    "intent": "GAIN_ACCESS",
+                    "mode": "ROAM",
+                    "target": {"kind": "building", "label": "the nearby house"},
+                    "allow_breach": True,
+                }
+            )
+
     def test_rejects_unknown_fields_and_code(self) -> None:
         with self.assertRaises(IntentError):
             self.validator.validate(

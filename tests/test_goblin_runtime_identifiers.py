@@ -28,6 +28,15 @@ class RuntimeIdentifierTests(unittest.TestCase):
                 self.assertIs(record['enabled'], True)
                 self.assertIs(record['obsolete'], False)
 
+    def test_cataloged_permanent_toolkit_exactly_matches_runtime_allowlist(self):
+        catalog = json.loads((ROOT / 'reference/goblin-capabilities.json').read_text())
+        categories = catalog['permanent_toolkit']['categories']
+        cataloged = [item for values in categories.values() for item in values]
+        runtime = list(self.lua.globals().Tools.types.values())
+        self.assertEqual(len(cataloged), len(set(cataloged)))
+        self.assertEqual(set(cataloged), set(runtime))
+        self.assertFalse(set(cataloged) & set(catalog['permanent_toolkit']['excluded_consumables']))
+
     def test_all_captured_recipe_ids_reach_exact_resolver_lookup(self):
         # Capture uses real ScriptManager lookup. These lightweight objects only
         # verify Lua routing of those IDs, not recipe execution or NPC support.

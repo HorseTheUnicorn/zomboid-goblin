@@ -12,7 +12,7 @@ local Bridge = { seen = {}, order = {}, maxSeen = 2048 }
 local actions = {
     ENTER_VEHICLE=true, EXIT_VEHICLE=true,
     FARM=true, CRAFT=true, REPAIR_VEHICLE=true,
-    OPEN_DOOR=true, OPEN_WINDOW=true, CLOSE_CURTAINS=true,
+    OPEN_DOOR=true, OPEN_WINDOW=true, GAIN_ACCESS=true, CLOSE_CURTAINS=true,
     NOOP=true, WAIT=true, SAY=true, EQUIP=true, FOLLOW=true, FOLLOW_GOBLIN=true,
     HOLD_POSITION=true, REGROUP=true, HELP=true, SEARCH=true, SCAVENGE=true,
     LOOT=true, LOOT_AREA=true, RETURN_TO_BASE=true, GO_HOME=true, RETURN=true,
@@ -28,6 +28,7 @@ local allowedKeys = {
 }
 local targetKeys = { kind=true, name=true, player=true, label=true }
 local itemKeys = { name=true, count=true, category=true }
+local accessTargetKinds = { BUILDING=true, ROOM=true, YARD=true, VEHICLE=true, CONTAINER=true }
 
 local function log(text)
     if type(print) == "function" then print("[GoblinSurvivor] " .. tostring(text)) end
@@ -44,6 +45,11 @@ local function validTarget(target)
     if type(target) ~= "table" then return false end
     for key in pairs(target) do
         if type(key) ~= "string" or not targetKeys[string.lower(key)] then return false end
+    end
+    if target.kind ~= nil then
+        if type(target.kind) ~= "string" or string.upper(target.kind) ~= target.kind
+            or accessTargetKinds[target.kind] ~= true then return false end
+        return true
     end
     return safeText(target.name or target.label or target.player, 96)
 end
@@ -77,6 +83,8 @@ local function valid(message)
     end
     if message.job~=nil and not safeText(message.job,32) then return false end
     if message.target ~= nil and not validTarget(message.target) then return false end
+    if action == "GAIN_ACCESS" and (type(message.target) ~= "table"
+        or accessTargetKinds[message.target.kind] ~= true) then return false end
     if message.item ~= nil then
         if type(message.item) ~= "table" then return false end
         for key in pairs(message.item) do

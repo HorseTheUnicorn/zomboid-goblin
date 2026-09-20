@@ -35,7 +35,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "29892ec66b389aec5bfb20d41a90546982706b158298992247fd190fe4a0f17e"
+    "sha256": "fcc24e822fff0894d23ba69a904ec25c846a0807febfbd81ea8c4a1d5244382a"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -123,6 +123,22 @@
         "evidence": [
           "REPO_EXISTING"
         ],
+        "engine_tested": false
+      },
+      {
+        "command": "access building",
+        "aliases": ["access room", "access yard", "access vehicle"],
+        "task": "GAIN_ACCESS",
+        "handler": "Brain.setTask",
+        "evidence": ["MILESTONE_3_IMPLEMENTED"],
+        "engine_tested": false
+      },
+      {
+        "command": "breach building",
+        "aliases": ["breach room", "breach yard"],
+        "task": "GAIN_ACCESS",
+        "handler": "Brain.setTask",
+        "evidence": ["MILESTONE_3_IMPLEMENTED"],
         "engine_tested": false
       },
       {
@@ -298,13 +314,25 @@
         "all",
         "engine",
         "bodywork"
+      ],
+      "access": [
+        "building",
+        "room",
+        "yard",
+        "vehicle",
+        "container"
+      ],
+      "breach": [
+        "building",
+        "room",
+        "yard"
       ]
     }
   },
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "326a1a85ffbeb4485a59ca11470847b82e57ebd18fd0e94a1a4da3c66c867d6f"
+      "sha256": "61b04a4f998e96b7952d48adb59252127493b9799f6c837b9168adc2e8d7bf92"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
@@ -314,6 +342,7 @@
       {"task": "CLOSE_CURTAINS", "example": "Goblin, close the curtains"},
       {"task": "OPEN_WINDOW", "example": "Goblin, open the window"},
       {"task": "OPEN_DOOR", "example": "Goblin, open the door"},
+      {"task": "GAIN_ACCESS", "example": "Goblin, gain access to the building", "semantic_payload": "building, room, yard, vehicle, or container; only an explicit deterministic breach phrase can authorize destructive window access"},
       {"task": "CRAFT", "example": "Goblin, craft 2 SawLogs", "semantic_payload": "recipe text plus bounded count"},
       {"task": "REPAIR_VEHICLE", "example": "Goblin, repair the engine", "semantic_payload": "all, engine or bodywork"},
       {"task": "FARM", "example": "Goblin, sow cabbage seeds", "semantic_payload": "plow, sow, water, harvest or tend plus optional crop"},
@@ -366,20 +395,6 @@
     },
     {
       "command": "stockpile",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
-      "command": "access",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
-      "command": "breach",
       "evidence": [
         "PROPOSED"
       ],
@@ -449,11 +464,11 @@
   "qwen_intent_transport": {
     "category": "model-generated schema-validated intent, not a player chat command, native API or RCON command",
     "sources": [
-      {"path": "goblin_zomboid/validator.py", "sha256": "6baf836a7210ae0eb36be1d8c45d1400449ac7cecb0c9427c6b2a8c626455644"},
-      {"path": "goblin_zomboid/qwen.py", "sha256": "b4dc2dc290951f1e487bce7c5fb56ae9918e2bb2ae11cf6b7a217d39b79e013e"},
+      {"path": "goblin_zomboid/validator.py", "sha256": "702f4e22ccb663ba3be4cb0a5f4a7a9b8aa2b7fe87a0f99fbd1ef276569bb291"},
+      {"path": "goblin_zomboid/qwen.py", "sha256": "c41ab3e9ba88e7ae0ed0ab275e81d7cb4c45bd50b42860b8734eab9f2b580f61"},
       {"path": "goblin_zomboid/service.py", "sha256": "bf0dd247465650e5bd807e4f0a419381c6f4d440e65cd87c8c95f6401b254b7f"}
     ],
-    "chat_generation_actions": ["SAY", "HOLD_POSITION", "FOLLOW", "LOOT_AREA", "RETURN_TO_BASE", "SET_BASE", "SECURE_BASE", "BUILD", "ATTACK", "EQUIP", "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS", "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"],
+    "chat_generation_actions": ["SAY", "HOLD_POSITION", "FOLLOW", "LOOT_AREA", "RETURN_TO_BASE", "SET_BASE", "SECURE_BASE", "BUILD", "ATTACK", "EQUIP", "OPEN_DOOR", "OPEN_WINDOW", "GAIN_ACCESS", "CLOSE_CURTAINS", "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"],
     "offline_actions": ["WAIT", "LOOT_AREA", "RETURN_TO_BASE", "SECURE_BASE", "EQUIP"],
     "authority": "NpcBodyDriver requires the selected npc_id and live engine contract; privileged and autonomous actions require an in-game authority token, and Lua rechecks owner/task generation before execution.",
     "known_gap": "Response validation currently uses the broader IntentValidator instead of the generation action set and does not bind returned mode to context; recorded above as expected-failure evidence, not accepted behavior."
@@ -473,7 +488,7 @@
   "limitations": [
     "Deterministic natural-language routing is inventoried and fixture-tested; external Qwen response gating retains the explicit expected-failure findings above.",
     "Argument descriptions and handler reach are source/fixture evidence, not native engine or multiplayer acceptance.",
-    "No new command registration or planner capability was performed.",
+    "GAIN_ACCESS and explicit breach are newly registered Milestone 3 commands; remaining proposed commands stay unregistered.",
     "No live-game acceptance evidence attached to this inventory."
   ]
 }

@@ -3,6 +3,40 @@
   "inventory_status": "complete_inventory_with_explicit_unimplemented_and_unverified_gaps",
   "baseline_revision": "ac74788f4b8a54f1b0520f173f7963a822c77e49",
   "engine_tested_capabilities": ["FOLLOW"],
+  "permanent_toolkit": {
+    "status": "RUNTIME_RESOLVED_AND_UNIT_TESTED_NOT_PHYSICAL_ACTION_PROOF",
+    "game_build": "42.20.4 b0bbce05d5",
+    "enabled_mods_fingerprint": "4f99f45372dfce785c7d6acddf62ae45333574a16575218e514548b24910596e",
+    "source": {
+      "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTools.lua",
+      "sha256": "b2321e111a5fd3fb4f515823ae274f41680b2c45946d9dbeaaafc9912a3fc0b9"
+    },
+    "categories": {
+      "access_breach": ["Base.Crowbar", "Base.BoltCutters", "Base.Sledgehammer", "Base.Axe", "Base.HandAxe"],
+      "carpentry": ["Base.Hammer", "Base.Saw", "Base.Screwdriver", "Base.HandDrill", "Base.File"],
+      "mechanics": ["Base.Wrench", "Base.PipeWrench", "Base.LugWrench", "Base.Jack", "Base.TirePump", "Base.CarBatteryCharger"],
+      "metalwork": ["Base.BlowTorch", "Base.WeldingMask", "Base.BallPeenHammer", "Base.MetalworkingPliers", "Base.Tongs", "Base.SheetMetalSnips", "Base.MetalworkingChisel"],
+      "farming_general": ["Base.Shovel", "Base.HandShovel", "Base.GardenHoe", "Base.Scythe", "Base.Needle", "Base.Scissors"]
+    },
+    "rules": [
+      "one reserved copy by default",
+      "repair reusable condition without creating charges or fluid",
+      "never deliver reserved tools as loot",
+      "never consume reserved tools as recipe materials",
+      "do not duplicate tools on repeated updates",
+      "only an installed recipe keep+tool slot may extend the fixed allowlist"
+    ],
+    "excluded_consumables": [
+      "Base.PropaneTank", "Base.PetrolCan", "Base.WeldingRods", "Base.Nails", "Base.Screws", "Base.Plank",
+      "Base.Hinge", "Base.Doorknob", "Base.ScrapMetal", "Base.SheetMetal", "Base.Wire", "Base.Twine",
+      "Base.WaterBottleFull", "Base.EngineParts", "Base.CarBattery1", "Base.Pills"
+    ],
+    "limitations": [
+      "Registry resolution proves identifiers, not that any particular world action supports the managed IsoZombie",
+      "Bolt cutters, sledgehammer and battery charger remain unavailable to planners until each native workflow is separately verified",
+      "Blowtorch provisioning deliberately creates no propane"
+    ]
+  },
   "capabilities": [
     {
       "id": "CRAFT",
@@ -102,29 +136,30 @@
       "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "ENGINE_TESTED_LOCAL", "MULTIPLAYER_VERIFIED_LOCAL"],
       "commands": ["open door"],
       "semantic_arguments": {"target": "Nearest door edge within three tiles of authenticated owner, same floor; no model coordinates"},
-      "target_class": "zombie.iso.objects.IsoDoor; constructed IsoThumpable variants require separate audit",
+      "target_class": "zombie.iso.objects.IsoDoor; door-like IsoThumpable variants are detected and unit-tested but not live multiplayer-verified",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true, "movement": "Existing Movement.command/update and simulation-owner framework, unchanged"},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "19302ff8a8273caafe14d3df42989759b7bd6447a4729362044ebf2ca6f6cde8"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseDoor.lua", "sha256": "7fc96ffa96f420640be769b0cc05c45281892aa994a453fc993733ee23fa2c21"},
+        {"installed_path": "media/lua/shared/TimedActions/ISLockDoor.lua", "sha256": "cde2ce556fa6e8a1a5d02be033deea0f9825a9f6a6f9c760a86b74df48d4626d"},
         {"installed_path": "media/lua/client/ISUI/ISWorldObjectContextMenu.lua", "sha256": "5404e09a64817bfd753ff121c6454bca8de785166ca86f414dab693758dc60a0", "entrypoint": "onOpenCloseDoor"},
         {"installed_path": "media/lua/server/ISObjectClickHandler.lua", "sha256": "1707fd726bbd8544bc9b7159766739cd1ad8972f87f41cecf5ab87ac1436a9fc", "entrypoint": "doClickDoor"}
       ],
       "native_api": {"signature": "ordinary: void IsoDoor.ToggleDoorSilent(); groups: static void IsoDoor.toggleDoubleDoor(IsoObject,boolean), static void IsoDoor.toggleGarageDoor(IsoObject,boolean); replication: void IsoObject.syncIsoObject(boolean,byte,UdpConnection,ByteBuffer)", "avoided_signature": "void IsoDoor.ToggleDoor(IsoGameCharacter) delegates to ToggleDoorActual(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoDoor.html", "compatibility": "PLAYER_FREE_ADAPTER_ENGINE_TESTED", "hazard": "Installed ToggleDoorActual casts the actor to IsoPlayer, mutates and syncs an ordinary door, then invokes IsoPlayer.isLocalPlayer without a null guard. The managed IsoZombie adapter therefore never uses this actor-taking entrypoint; it uses the installed player-free ordinary/group methods and verifies observed state."},
       "vanilla_chain": ["context menu resolves player and adjacent approach", "ISOpenCloseDoor facing lifecycle, duration zero", "complete invokes ToggleDoor", "native state mutation and sync(I)"],
       "required_items": [],
-      "item_recipe_resolution": "No inventory item or recipe is required. The all-tools companion policy may clear native ordinary/double/garage lock fields, but does not remove barricades, destroy objects or bypass another player's safehouse.",
-      "material_consumption": "None; native lock fields are cleared across the complete double/garage group and synchronized before opening",
+      "item_recipe_resolution": "No inventory item or recipe is required for an unlocked door. A locked door is eligible only when the managed actor's real inventory returns a matching key from ItemContainer.haveThisKeyId(checkKeyId/getKeyId). The permanent toolkit does not create lock-picking.",
+      "material_consumption": "None; when a real matching key exists, native lock fields are cleared across the complete double/garage group and synchronized before opening; the key is retained",
       "permission_checks": ["server-only mutation", "valid cardinal edge", "same-floor adjacent actor square at execution", "reject barricaded and destroyed targets", "reject a safehouse unless GoblinOwner is allowed by SafeHouse.playerAllowed", "native canInteractWith when exposed"],
-      "completion_evidence": "The adapter unlocks and opens ordinary, double and garage IsoDoor objects without passing the managed IsoZombie into the unsafe IsoPlayer path, verifies observed post-state, increments a replicated access revision and forces the simulation-owning client to issue a fresh native route. A disposable two-client Build 42.20.4 run opened/unlocked a locked ordinary door and a four-segment locked garage door; both no-Storm clients observed the group state, physical movement resumed without FOLLOW_REJOIN, and an earlier run of the same player-free group adapter observed exact passage from x=10713.9 to x=10708.44.",
+      "completion_evidence": "The player-free opening/group adapter was exercised in disposable two-client Build 42.20.4 runs. On 2026-09-20 the current adapter selected a real matching-key ordinary door through Brain -> Jobs -> GAIN_ACCESS, physically approached it, cleared both lock fields, opened it, crossed the exact edge, and replicated open/unlocked state plus access revision 1 to both ordinary no-Storm clients. Constructed IsoThumpable doors/gates and current double/garage matching-key behavior still require fresh live proof.",
       "completion_evidence_required": ["Actor reaches the exact adjacent edge", "Door changes from closed to open without bypassing barricades or unauthorized safehouses", "Both clients observe the same door and actor state", "Save/reload preserves the door state", "Post-mutation exceptions reconcile from observed state without toggling twice"],
       "replication_save_strategy": "Ordinary doors use ToggleDoorSilent plus full syncIsoObject; double/garage groups use their native replicated static toggles. Both ordinary clients observed all four garage segments become open and unlocked. Save/reload remains unverified.",
       "rollback_reconciliation": "Never retry the unsafe actor-taking toggle. Re-read exact open state, replicate a monotonically increasing access revision, and make only the simulation owner repath once after the server changes the obstruction.",
-      "limitations": ["Constructed IsoThumpable door variants remain a separate unverified target class", "Safehouse denial is unit-tested but not live-tested against a second player's claimed safehouse", "Door save/reload persistence has not yet been accepted"],
+      "limitations": ["Constructed IsoThumpable door/gate variants and current double/garage matching-key behavior remain live-multiplayer-unverified", "No native Build 42 lock-picking workflow was found, so a toolkit item alone never unlocks a door", "Safehouse denial is unit-tested but not live-tested against a second player's claimed safehouse", "Door save/reload persistence has not yet been accepted"],
       "verified_game": "42.20.4 b0bbce05d5",
       "verified_storm": "42.20.4_2.10.11-SNAPSHOT, registry test only",
-      "unit_tests": ["test_goblin_work.test_unlocked_door_and_window_use_native_entrypoints_and_window_guards_remain", "test_goblin_work.test_managed_door_access_unlocks_every_garage_segment_and_avoids_player_cast", "test_goblin_work.test_managed_door_access_never_unlocks_another_players_safehouse", "test_goblin_lua.test_opened_access_revision_forces_immediate_native_repath", "test_goblin_house.test_route_uses_native_next_edge_and_closes_only_exact_exterior_door", "test_goblin_house.test_route_finds_locked_player_built_door_without_server_path_next", "test_goblin_house.test_route_accepts_door_reported_only_from_opposite_square"],
-      "multiplayer_evidence": ["2026-09-20 disposable local Build 42.20.4: server-side Storm and two ordinary no-Storm clients. A locked/key-locked ordinary door became open/unlocked; a locked/key-locked four-segment garage group became open/unlocked on server and both clients. The access-revision build resumed client-owned physical movement, emitted no FOLLOW_REJOIN and logged no Goblin Lua error. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20 client-owned path regression: a temporary server-only precondition closed the loaded garage group while Horse's managed actor retained native client movement authority. With no server path-next square, the adjacent-edge fallback opened the group, advanced GoblinAccessRevision from 0 to 1, and the actor physically crossed edge 10708:9366:0|10709:9366 without a Goblin position write or FOLLOW_REJOIN."],
+      "unit_tests": ["test_goblin_work.test_unlocked_door_and_window_use_native_entrypoints_and_window_guards_remain", "test_goblin_work.test_managed_door_access_unlocks_every_garage_segment_and_avoids_player_cast", "test_goblin_work.test_managed_door_access_never_unlocks_another_players_safehouse", "test_goblin_lua.test_opened_access_revision_forces_immediate_native_repath", "test_goblin_house.test_route_uses_native_next_edge_and_closes_only_exact_exterior_door", "test_goblin_house.test_route_finds_locked_player_built_door_without_server_path_next", "test_goblin_house.test_route_accepts_door_reported_only_from_opposite_square", "test_goblin_access_v2.test_closed_door_approach_switches_to_opposite_side_after_no_progress"],
+      "multiplayer_evidence": ["2026-09-20 disposable local Build 42.20.4: server-side Storm and two ordinary no-Storm clients. A locked/key-locked ordinary door became open/unlocked; a locked/key-locked four-segment garage group became open/unlocked on server and both clients. The access-revision build resumed client-owned physical movement, emitted no FOLLOW_REJOIN and logged no Goblin Lua error. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20 client-owned path regression: a temporary server-only precondition closed the loaded garage group while Horse's managed actor retained native client movement authority. With no server path-next square, the adjacent-edge fallback opened the group, advanced GoblinAccessRevision from 0 to 1, and the actor physically crossed edge 10708:9366:0|10709:9366 without a Goblin position write or FOLLOW_REJOIN.", "2026-09-20 partial Milestone 3 disposable acceptance: with exactly two connected players/two managed Goblins, server-side Storm and two ordinary no-Storm clients, Horse's real Base.Key1 matched key ID 731903 on all loaded building doors. Brain -> Jobs -> GAIN_ACCESS selected edge 10995,9700,0|10995,9701,0, physically moved 2.261 tiles, opened/unlocked the door, crossed from a non-edge start to side 1, and both clients observed open=true, locked=false, lockedByKey=false and access revision 1. No Goblin position write occurred after measurement began."],
       "complete": false
     },
     {
@@ -136,7 +171,7 @@
       "target_class": "zombie.iso.objects.IsoWindow, not VehicleWindow",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "19302ff8a8273caafe14d3df42989759b7bd6447a4729362044ebf2ca6f6cde8"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseWindow.lua", "sha256": "8c1f81a01b79e1f95fa9793791f59f0ff4f1aeb6cec561f8366ae7f79ed1bfc7"}
       ],
       "native_api": {"signature": "void IsoWindow.ToggleWindow(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoWindow.html", "compatibility": "LOW_LEVEL_ACTOR_PATH_PRESENT_NOT_ENGINE_TESTED", "evidence": "Player music branch is null-guarded at offset167; native code explicitly branches on IsoZombie at94. Calls sync(I) at147 after changing open state. This is not the vanilla player animation lifecycle."},
@@ -157,6 +192,106 @@
       "complete": false
     },
     {
+      "id": "GAIN_ACCESS",
+      "origin": "existing",
+      "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "RUNTIME_ITEM_RESOLVED", "UNIT_TESTED"],
+      "commands": ["access", "breach"],
+      "semantic_arguments": {
+        "target.kind": "BUILDING, ROOM, YARD, VEHICLE or CONTAINER; no model coordinates or physical method",
+        "allow_breach": "trusted deterministic /goblin breach route only; excluded from Qwen model schema",
+        "current_resolution": "BUILDING scans the loaded same-floor perimeter of the owner's current or nearest building; ROOM scans the loaded same-floor room perimeter; YARD scans loaded door/low-fence edges within twelve tiles; vehicle delegates to passenger selection; container fails unsupported"
+      },
+      "target_class": "IsoDoor or door-like IsoThumpable; IsoWindow; low IsoObject returned by IsoGridSquare.getHoppableTo; BaseVehicle passenger door; container target intentionally unsupported",
+      "authority": {
+        "side": "server",
+        "route": ["authenticated OnClientCommand player or validated Qwen action", "ownBody", "Authority.check", "Jobs.prepare", "GoblinGainAccess.prepare/update", "GoblinAccessPolicy recheck immediately before mutation", "native target adapter"],
+        "owner_required_at_prepare": true,
+        "offline_breach_allowed": false,
+        "model_may_choose_physical_method": false
+      },
+      "sources": [
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "909d838066ce54ab949fddb7265d2b32fce68aeb2012006f9436e2c1014576bd"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "19302ff8a8273caafe14d3df42989759b7bd6447a4729362044ebf2ca6f6cde8"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccessPolicy.lua", "sha256": "675d26b9cb5981d5b9335e8714324d44d86ec1770858992737bf0fe867a6750a"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransport.lua", "sha256": "f5dc95232699e19729a2546f2c349716880e1894f132867ebfa0b245f2bf1e45"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTools.lua", "sha256": "b2321e111a5fd3fb4f515823ae274f41680b2c45946d9dbeaaafc9912a3fc0b9"},
+        {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseDoor.lua", "sha256": "7fc96ffa96f420640be769b0cc05c45281892aa994a453fc993733ee23fa2c21"},
+        {"installed_path": "media/lua/shared/TimedActions/ISLockDoor.lua", "sha256": "cde2ce556fa6e8a1a5d02be033deea0f9825a9f6a6f9c760a86b74df48d4626d"},
+        {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseWindow.lua", "sha256": "8c1f81a01b79e1f95fa9793791f59f0ff4f1aeb6cec561f8366ae7f79ed1bfc7"},
+        {"installed_path": "media/lua/client/Vehicles/TimedActions/ISUnlockVehicleDoor.lua"}
+      ],
+      "native_api": {
+        "signatures": [
+          "IsoGridSquare.getDoorTo(IsoGridSquare)",
+          "IsoDoor.ToggleDoorSilent(); IsoDoor.toggleDoubleDoor(IsoObject,boolean); IsoDoor.toggleGarageDoor(IsoObject,boolean)",
+          "IsoGridSquare.getHoppableTo(IsoGridSquare); IsoGameCharacter.climbOverFence(IsoDirections)",
+          "IsoWindow.smashWindow()",
+          "BaseVehicle.canOpenDoor(VehiclePart,IsoGameCharacter); BaseVehicle.canUnlockDoor(VehiclePart,IsoGameCharacter); BaseVehicle.toggleLockedDoor(VehiclePart,IsoGameCharacter,boolean)"
+        ],
+        "compatibility": "MIXED: door player-free adapter previously multiplayer tested; low-fence climb and house-window smash accept the managed actor/no actor in inspected bindings but await live replication proof; vehicle key methods accept IsoGameCharacter and are unit-tested but await live proof; containers unsupported",
+        "method_selection": "Lua ranks observed loaded alternatives; Qwen supplies only semantic target kind",
+        "unsupported": ["bolt-cutter barrier mutation", "locked-container mutation", "vehicle-window breach", "hotwire", "driving"]
+      },
+      "public_documentation_urls": [
+        "https://projectzomboid.com/modding/zombie/iso/objects/IsoDoor.html",
+        "https://projectzomboid.com/modding/zombie/iso/objects/IsoWindow.html",
+        "https://projectzomboid.com/modding/zombie/iso/IsoGridSquare.html",
+        "https://projectzomboid.com/modding/zombie/characters/IsoGameCharacter.html",
+        "https://projectzomboid.com/modding/zombie/vehicles/BaseVehicle.html"
+      ],
+      "required_items": ["Base.Crowbar"],
+      "reusable_inputs": "A reserved Base.Crowbar is required only for the currently implemented explicit house-window breach. Other resolved toolkit items are not treated as mechanics without their own verified adapter.",
+      "item_recipe_resolution": "Base.Crowbar and every permanent-toolkit type resolve enabled/nonobsolete in the captured Build 42.20.4 registry. Base.BoltCutters resolves, but no installed native barrier-cut workflow was verified and it is therefore not routed. No recipe is invoked.",
+      "material_consumption": "No materials are consumed by implemented routes; reserved tools are retained. Window glass is a destructive world-state change only after explicit authorization.",
+      "permission_checks": [
+        "server-only managed Goblin actor",
+        "authenticated owner and semantic target kind",
+        "loaded target re-resolved immediately before mutation",
+        "SafeHouse.playerAllowed for the Goblin owner",
+        "least-destructive observed route ranked before breach",
+        "breach requires explicit deterministic allow_breach=true",
+        "autonomous and offline breach denied",
+        "vehicle breach denied because ownership cannot currently be proven",
+        "non-empty container breach denied",
+        "barricaded/destroyed ordinary openings rejected"
+      ],
+      "completion_evidence": "Unit tests prove semantic routing, bounded building-wide candidate ranking, real-key authorization for building doors, rejection without a key, server policy denial, native low-fence call and observed side change, explicit window smash and observed post-state, native matching-key vehicle unlock, and honest unsupported outcomes. A disposable two-client run additionally proved the matching-key BUILDING route physically and on both replicas; the remaining fence, breach, vehicle and save/reload scenarios are not yet multiplayer accepted.",
+      "completion_evidence_required": [
+        "Two ordinary no-Storm clients each retain one Goblin while server-side Storm owns authority",
+        "Actor physically chooses and traverses an alternate unlocked building route instead of a nearer locked route",
+        "Actor physically climbs a loaded low fence and both clients observe the side change",
+        "Explicit breach changes exactly the permitted window and both clients observe it; automatic/offline and other-safehouse breach are denied",
+        "Matching-key vehicle door unlocks, replicates and passenger entry completes without driver takeover",
+        "Door/gate reversal cannot deadlock after Goblin closes the exterior door",
+        "Save/reload reconciles changed door/window state without a duplicate toggle"
+      ],
+      "replication_save_strategy": "Door and window adapters use native object synchronization and observed post-state; access revision forces the simulation owner to repath. Fence completion is observed from actor side change. Vehicle unlock transmits the VehiclePart door. No M3 save/reload acceptance exists yet.",
+      "rollback_reconciliation": "Persistent task data contains primitive target descriptors only. Every update re-resolves exact loaded objects and verifies post-state. Changed, unloaded, unauthorized or unsupported targets terminate with a structured failure rather than substituting another destructive target.",
+      "limitations": [
+        "Building and room resolution use bounded loaded perimeters; yard resolution remains a twelve-tile loaded-area search without a persistent yard identity",
+        "Ordinary gate handling inherits door-like discovery; no separate locked-gate or cuttable-barrier class has live proof",
+        "Vehicle alternate broken-window and breach routes are not implemented",
+        "Container access is intentionally unsupported",
+        "M3 has partial two-client physical proof for one matching-key ordinary building door; low-fence, breach, vehicle, gate and save/reload acceptance remain outstanding"
+      ],
+      "verified_game": "42.20.4 b0bbce05d5 installed registry/source/bytecode plus Lua unit tests; matching-key building access physically accepted locally, remaining M3 scenarios pending",
+      "verified_storm": "42.20.4_2.10.11-SNAPSHOT server-side only; matching-key building mutation and replication accepted with two ordinary no-Storm clients",
+      "unit_tests": [
+        "test_goblin_access_v2.test_access_prefers_alternate_unlocked_door_over_nearer_locked_door",
+        "test_goblin_access_v2.test_gain_access_is_registered_and_opens_real_selected_door",
+        "test_goblin_access_v2.test_closed_door_approach_switches_to_opposite_side_after_no_progress",
+        "test_goblin_access_v2.test_gain_access_uses_native_low_fence_climb_and_observed_crossing",
+        "test_goblin_access_v2.test_window_breach_requires_explicit_flag_and_observes_native_mutation",
+        "test_goblin_access_v2.test_breach_requires_explicit_online_order",
+        "test_goblin_access_v2.test_other_player_safehouse_denies_access_and_breach",
+        "test_goblin_access_v2.test_vehicle_breach_fails_closed_and_nonempty_container_is_protected",
+        "test_goblin_transport.test_matching_vehicle_key_uses_native_isogamecharacter_unlock_before_entry",
+        "test_goblin_house.test_route_reopens_just_closed_door_when_new_goal_reverses_across_it"
+      ],
+      "multiplayer_evidence": ["2026-09-20 partial Milestone 3 disposable acceptance: exactly two connected players retained exactly two managed Goblins. With server-side Storm and two ordinary no-Storm clients, Horse's real Base.Key1 matched key ID 731903, GAIN_ACCESS selected the exact ordinary-door edge 10995,9700,0|10995,9701,0, moved the actor 2.261 tiles, opened/unlocked and crossed it, and both replicas observed access revision 1 plus open=true/locked=false/lockedByKey=false. No Goblin position write occurred after measurement began. This does not certify the remaining M3 routes."],
+      "complete": false
+    },
+    {
       "id": "CLOSE_CURTAINS",
       "origin": "existing",
       "evidence": ["REPO_EXISTING", "STATIC_INSTALLED"],
@@ -167,7 +302,7 @@
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua", "sha256": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCurtains.lua", "sha256": "e7f3e7edec08499c99f4b258980383988831a7535cd71f8ccf094c2f1e7a8370"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua", "sha256": "271af06a18f972e7fe2e1480fb60080077815bd5d4944b1c3996be6ebffafd5b"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua", "sha256": "e7780452e583c08dbb4a1b85ecd983b4ab939f5c75d852919f809b2ba2b3f4bb"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseCurtain.lua", "sha256": "50e1b1bb829b12fef1baed79c64ddac7c8ba424ad982b886334f062852c490b6"}
       ],
       "native_api": {"signature": "void IsoCurtain.ToggleDoor(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoCurtain.html", "compatibility": "NO_PLAYER_CAST_IN_INSPECTED_ENTRYPOINT_NOT_ENGINE_TESTED", "evidence": "Changes open/sprite state, sends character sound from the server, then calls syncIsoObject at153. Inspected entrypoint has no IsoPlayer cast; this does not verify all nested reach/replication paths."},
@@ -405,7 +540,7 @@
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "6b558e023cf1385563f98b44cfe77cd9a42d510727c358babd1a496327031340"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "8975d70ebb47614c4d95f5bc72508c1f26b246000b300a28a0e98083c64b2f62"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "19302ff8a8273caafe14d3df42989759b7bd6447a4729362044ebf2ca6f6cde8"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/client/GoblinSurvivor/GoblinClient.lua"},
         {"installed_path": "media/lua/client/Vehicles/TimedActions/ISPathFindAction.lua"}
       ],

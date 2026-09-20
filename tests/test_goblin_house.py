@@ -162,10 +162,11 @@ class HouseAccessTests(unittest.TestCase):
             """
             Access=require('GoblinSurvivor/GoblinAccess')
             local near=cell:getGridSquare(4,4,0);local north=cell:getGridSquare(4,3,0)
-            local door={opened=false,locked=true,keyLocked=true,calls=0,syncs=0,square=near}
+            local door={opened=false,locked=true,keyLocked=true,calls=0,syncs=0,square=near,keyId=42}
             function door:isDoor() return true end
             function door:getSquare() return self.square end
             function door:getNorth() return true end
+            function door:getKeyId() return self.keyId end
             function door:isOpen() return self.opened end
             function door:isLocked() return self.locked end
             function door:setLocked(value) self.locked=value end
@@ -180,6 +181,8 @@ class HouseAccessTests(unittest.TestCase):
                 self.calls=self.calls+1;self.opened=not self.opened
             end
             function near:getSpecialObjects() return list({door}) end
+            local matchingKey={}
+            function a.inv:haveThisKeyId(id) assert(id==42);return matchingKey end
             -- The simulated server has no native path-next fields. The useful
             -- door is lateral to the direct goal, matching a client-owned
             -- path that must first leave through the north edge.
@@ -188,6 +191,40 @@ class HouseAccessTests(unittest.TestCase):
             assert(Access.update(a,{x=8.5,y=4.5,z=0},clock,{building=houseBuilding}))
             assert(door.opened and not door.locked and not door.keyLocked)
             assert(door.calls==1 and door.syncs>=1 and a.data.GoblinAccessRevision==1)
+            """
+        )
+
+    def test_route_reopens_just_closed_door_when_new_goal_reverses_across_it(self):
+        self.run_lua(
+            """
+            Access=require('GoblinSurvivor/GoblinAccess')
+            local left=cell:getGridSquare(8,4,0);local right=cell:getGridSquare(9,4,0)
+            local door={opened=false,calls=0}
+            function door:isOpen() return self.opened end
+            function door:isLocked() return false end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:isLockedByKey() return false end
+            function door:ToggleDoor(who)
+                assert(who==a);self.calls=self.calls+1;self.opened=not self.opened
+            end
+            function left:getDoorTo(other) if other==right then return door end end
+            function a:getPathFindBehavior2() return {} end
+            local scope={building=houseBuilding}
+
+            -- Cross rightward and let the exterior-door lifecycle close it.
+            a.x,a.y=8.5,4.5
+            Access.update(a,{x=11.5,y=4.5,z=0},clock,scope)
+            assert(door.opened and door.calls==1)
+            a.x=9.5
+            Access.update(a,{x=11.5,y=4.5,z=0},clock+1000,scope)
+            assert(not door.opened and door.calls==2)
+
+            -- The actor is still on a square touching the door. A reversed
+            -- goal must reopen it even when client ownership leaves the
+            -- server PathFindBehavior2 next-step fields unset.
+            assert(Access.update(a,{x=7.5,y=4.5,z=0},clock+2000,scope))
+            assert(door.opened and door.calls==3)
             """
         )
 

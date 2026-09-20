@@ -95,7 +95,7 @@ class EventGate:
                 if key in {"text", "direct_detail"} and _TEXT_LOCATION_RE.search(value):
                     raise ValueError("event text contains location coordinates")
             elif key == "direct_action":
-                if value not in {"FOLLOW", "WAIT", "SET_BASE", "RETURN_TO_BASE", "LOOT", "ATTACK", "BUILD", "FORTIFY", "OPEN_DOOR", "OPEN_WINDOW", "CLOSE_CURTAINS", "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"}:
+                if value not in {"FOLLOW", "WAIT", "SET_BASE", "RETURN_TO_BASE", "LOOT", "ATTACK", "BUILD", "FORTIFY", "OPEN_DOOR", "OPEN_WINDOW", "GAIN_ACCESS", "CLOSE_CURTAINS", "FARM", "CRAFT", "REPAIR_VEHICLE", "ENTER_VEHICLE", "EXIT_VEHICLE"}:
                     raise ValueError("invalid direct action")
             elif key in {"authorized", "direct_applied", "direct_reported", "addressed"}:
                 if not isinstance(value, bool):

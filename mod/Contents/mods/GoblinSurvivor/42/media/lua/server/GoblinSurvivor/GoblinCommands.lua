@@ -41,7 +41,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "follow | wait | enter/exit vehicle | open door/window | close curtains | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
+    reply(player, "follow | wait | enter/exit vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -85,6 +85,19 @@ local function handle(player, rawText)
         local kind=string.lower(parts[2] or "door")
         if kind~="door" and kind~="window" then reply(player,"use open door or open window");return end
         local ok,result=Brain.setTask(body,kind=="window" and Constants.TASK.OPEN_WINDOW or Constants.TASK.OPEN_DOOR,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="access" or command=="breach" then
+        local kind=string.upper(parts[2] or "BUILDING")
+        local allowed={BUILDING=true,ROOM=true,YARD=true,VEHICLE=true,CONTAINER=true}
+        if not allowed[kind] then reply(player,"use access building, room, yard, vehicle, or container");return end
+        if command=="breach" and (kind=="VEHICLE" or kind=="CONTAINER") then
+            reply(player,"vehicle/container breach is blocked; use a matching key or empty the container")
+            return
+        end
+        local ok,result=Brain.setTask(body,"GAIN_ACCESS",{
+            target={kind=kind},allow_breach=command=="breach"})
         Body.say(body,"Comrade, "..tostring(result)..".")
         return
     end

@@ -41,6 +41,12 @@ function v:getPassengerDoor(seat)
     return {getDoor=function() return {isLocked=function() return v.locked end,
         setOpen=function(_,value) v.doorOpen=value end} end}
 end
+function v:canOpenDoor(part,who) return not self.locked or self.hasKey==true end
+function v:canUnlockDoor(part,who) return self.locked and self.hasKey==true end
+function v:toggleLockedDoor(part,who,locking)
+    if locking then self.locked=true
+    elseif self:canUnlockDoor(part,who) then self.locked=false;self.nativeUnlocks=(self.nativeUnlocks or 0)+1 end
+end
 function v:getPassengerPosition(seat,position) return {seat=seat,position=position} end
 function v:getPassengerPositionWorldPos(def,out)
     out.v={self.x+(def.position=='inside' and 0 or 1),self.y+(def.seat-1),self.z};return out
