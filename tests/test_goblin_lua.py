@@ -209,6 +209,39 @@ class GoblinLuaTests(unittest.TestCase):
             assert(Motion.followSlots[a]~=5 and math.floor(goal.x)~=6)
         ''')
 
+    def test_follow_slot_cannot_finish_on_opposite_side_of_closed_door_or_wall(self):
+        self.lua.execute('''
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                local key=x..':'..y..':'..z
+                if not squares[key] then
+                    local square={x=x,y=y,z=z}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return self.z end
+                    function square:isFree() return self.x==0 and self.y==4 end
+                    function square:isBlockedTo(other)
+                        return self.x==0 and other.x==0
+                            and ((self.y==1 and other.y==2) or (self.y==2 and other.y==1))
+                    end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            a=actor(0.5,4.5,0);player.x,player.y=0.5,0.5
+            local goal,gap,context=Motion.followGoal(a,player,clock)
+            assert(goal and goal.x==player.x and goal.y==player.y)
+            assert(context.goal_type=='character' and context.goal_key=='character-fallback')
+            assert(Motion.followSlots[a]==nil)
+
+            -- Being inside the configured preferred distance is not arrival
+            -- when the actor and owner are still separated by a blocked edge.
+            squares={};a.x,a.y=0.5,2.5
+            goal,gap,context=Motion.followGoal(a,player,clock+100)
+            assert(gap<=3 and goal and goal.x==player.x and goal.y==player.y)
+            assert(context.goal_type=='character' and context.goal_key=='character-fallback')
+        ''')
+
     def test_stuck_recovery_repaths_once_blacklists_then_expires_without_looping(self):
         self.lua.execute('''
             a=actor(0,0,0);goal={x=10,y=0,z=0}

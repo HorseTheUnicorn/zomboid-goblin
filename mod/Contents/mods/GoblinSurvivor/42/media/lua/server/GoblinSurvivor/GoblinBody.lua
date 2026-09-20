@@ -468,6 +468,14 @@ function Body.snapshot(body)
         transport_status = data.GoblinTransportStatus,
         owner_idle_seconds = data.GoblinOwnerIdleSeconds or 0,
         job_progress = data.GoblinJobProgress,
+        job_result = type(data.GoblinLastJobResult) == "table" and {
+            task = data.GoblinLastJobResult.task,
+            done = data.GoblinLastJobResult.done == true,
+            success = data.GoblinLastJobResult.success == true,
+            code = data.GoblinLastJobResult.code,
+            detail = data.GoblinLastJobResult.detail,
+            progress = data.GoblinLastJobResult.progress
+        } or nil,
         job_tool = (data.GoblinJobActive or data.GoblinAction=="BUILD") and
             select(2,call(select(2,call(body,"getPrimaryHandItem")),"getFullType")) or nil,
         action_sequence = tonumber(data.GoblinActionSequence) or 0,

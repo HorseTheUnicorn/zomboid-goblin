@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "captured_at": "2026-09-20T09:54:41-04:00",
+  "captured_at": "2026-09-20T11:36:36-04:00",
   "scope": "disposable local multiplayer Milestone 1 acceptance",
   "game_build": "42.20.4 b0bbce05d5",
   "production_modified": false,
@@ -37,10 +37,10 @@
   ],
   "source_sha256": {
     "GoblinWorld.lua": "3baa2b8a89072d52e4dedb31766e5fb2816f93db89dea72666bc7292697b0e0d",
-    "GoblinAccess.lua": "a185a9eb35134ee5aea83c6be0ce999125446241f066b2489b237c4c4b77baac",
+    "GoblinAccess.lua": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66",
     "GoblinBody.lua": "29e748bb45955c8947c17e446bae8fb8d50465e2bb9fc9501ba17ab78b3578cf",
     "GoblinClient.lua": "d070f2be2e323c20ca63b6131fd60913d93d9191044815226d859691a372e1c5",
-    "GoblinLocomotion.lua": "74f55c68f399568ba6e1daeb25fa8d501934c18c112919983784afb63ca59cba",
+    "GoblinLocomotion.lua": "0012bc2f171c72338082f1fa79974d162e9863e8820b7f307e5dddcaba7a8e76",
     "GoblinSpawner.lua": "c8183687d8b39936558e847149e1199a4a60252698f02de3dd423c80ebdf3c4c"
   },
   "closed_door_follow": {
@@ -136,6 +136,52 @@
     "goblin_position_write": false,
     "notes": "One-second telemetry samples are intentionally too coarse to treat the largest inter-sample distance as a teleport test. Acceptance rests on the actor entering the free square west of the chair, never occupying the blocked chair square, then continuing north under native client authority without a FOLLOW_REJOIN event."
   },
+  "stair_follow": {
+    "result": "pass",
+    "actor": "goblin.primary.horse",
+    "staircase": {
+      "bottom": {"x": 10742, "y": 9458, "z": 0, "sprite": "fixtures_stairs_01_40"},
+      "middle": {"x": 10742, "y": 9457, "z": 0, "sprite": "fixtures_stairs_01_41"},
+      "top": {"x": 10742, "y": 9456, "z": 0, "sprite": "fixtures_stairs_01_42"},
+      "upper_landing": {"x": 10742, "y": 9455, "z": 1}
+    },
+    "ascent_observations": [
+      {"actor": {"x": 10740.500, "y": 9457.500, "z": 0.000}, "native_owner_player": "horse", "rejoin_sequence": null},
+      {"actor": {"x": 10742.151, "y": 9457.516, "z": 0.000}, "on_stair_square": true, "native_owner_player": "horse", "rejoin_sequence": null},
+      {"actor": {"x": 10742.500, "y": 9455.500, "z": 1.000}, "native_owner_player": "horse", "rejoin_sequence": null}
+    ],
+    "descent_owner_client_trace": [
+      {"frame": 1200, "player": {"x": 10742.082, "y": 9455.460, "z": 1.000}, "actor": {"x": 10742.615, "y": 9455.397, "z": 1.000}},
+      {"frame": 1230, "player": {"x": 10742.273, "y": 9455.340, "z": 1.000}, "actor": {"x": 10742.805, "y": 9458.575, "z": 0.190}, "native_target_player": "horse"},
+      {"frame": 1860, "actor": {"x": 10742.857, "y": 9459.025, "z": 0.010}},
+      {"frame": 1890, "actor": {"x": 10743.029, "y": 9459.156, "z": 0.000}}
+    ],
+    "follow_rejoin_during_measurement": false,
+    "goblin_position_write": false,
+    "notes": "The ascent observer was server-side and read-only; the descent observer ran on the ordinary simulation-owning Horse client and sampled the native actor transition through fractional stair Z values. Temporary RCON staged players only before measurement and is not counted as actor movement."
+  },
+  "running_owner_building_follow": {
+    "result": "pass",
+    "actor": "goblin.primary.horse",
+    "owner_run": {
+      "start": {"x": 10742.937, "y": 9455.094, "z": 0.000},
+      "furthest_observed": {"x": 10744.092, "y": 9440.755, "z": 0.000},
+      "delta_tiles": 14.386
+    },
+    "actor_route": [
+      {"x": 10743.029, "y": 9459.156, "z": 0.000},
+      {"x": 10741.500, "y": 9453.500, "z": 0.000},
+      {"x": 10741.500, "y": 9451.143, "z": 0.000, "native_state": "ClimbThroughWindowState"},
+      {"x": 10742.500, "y": 9449.409, "z": 0.000, "native_state": "PathFindState"},
+      {"x": 10742.675, "y": 9445.454, "z": 0.000}
+    ],
+    "owner_finish": {"x": 10742.913, "y": 9441.638, "z": 0.000},
+    "final_gap_tiles": 3.823,
+    "native_transition_observed": "ClimbThroughWindowState then PathFindState",
+    "follow_rejoin_during_measurement": false,
+    "goblin_position_write": false,
+    "notes": "Horse ran through the loaded structure. Goblin lagged, performed the existing bounded native repath, crossed the intervening window boundary with the installed zombie transition state and closed to its stable follow ring without teleport."
+  },
   "managed_door_access": {
     "result": "pass",
     "actors": ["goblin.primary.horse", "goblin.primary.unicorn"],
@@ -165,6 +211,19 @@
         "follow_rejoin": false
       }
     },
+    "client_owned_path_regression": {
+      "result": "pass",
+      "actor": "goblin.primary.horse",
+      "edge": "10708:9366:0|10709:9366",
+      "precondition": "A disposable server-only acceptance hook closed the loaded garage group after staging. It did not move Goblin or replace its native route.",
+      "initial": {"open": false, "access_revision": 0, "actor_x": 10709.482, "actor_y": 9366.141},
+      "opened": {"open": true, "access_revision": 1, "actor_x": 10709.483, "actor_y": 9366.140},
+      "crossed_threshold": true,
+      "outside_observation": {"actor_x": 10708.904, "actor_y": 9365.223},
+      "follow_rejoin": false,
+      "goblin_position_write": false,
+      "notes": "This regression run proves the comprehensive adjacent-edge scan can find, open and replicate a closed garage door when the dedicated server has no native path-next square for the client-owned IsoZombie. It does not add a new save/reload claim."
+    },
     "adapter": "ordinary ToggleDoorSilent plus full syncIsoObject; native toggleDoubleDoor/toggleGarageDoor for groups; no IsoPlayer actor cast",
     "safehouse_policy": "no claim allows access; claimed square requires SafeHouse.playerAllowed(GoblinOwner); denial is unit-tested, not live-accepted",
     "materials_consumed": [],
@@ -183,15 +242,37 @@
       "a reversible no-progress obstruction produced exactly one native repath, one terminal blocked result, bounded blacklist expiry, and resumed physical movement without teleport",
       "the installed engine transferred one managed IsoZombie from horse's client authority to unicorn's client authority as proximity changed, then reassigned it to horse after physical follow; no ownership field was written",
       "a managed IsoZombie took a one-tile lateral route around a loaded indoor chair, crossed from its south side to its north side without occupying the chair square, remained under native client authority, and did not invoke respawn rejoin",
-      "the player-free door adapter opened and unlocked a locked ordinary door and all four locked garage segments, both ordinary clients observed the garage state, and the replicated access revision resumed native movement without FOLLOW_REJOIN"
+      "the player-free door adapter opened and unlocked a locked ordinary door and all four locked garage segments, both ordinary clients observed the garage state, and the replicated access revision resumed native movement without FOLLOW_REJOIN",
+      "after a clean two-client restart, the adjacent-edge fallback found a deliberately closed garage group without a server path-next square, opened it, advanced access revision 0 to 1 and physically crossed its threshold without a Goblin position write",
+      "the Horse Goblin traversed the loaded three-tile staircase from z0 to its z1 landing and later descended through fractional stair Z positions to z0 under native client authority, without FOLLOW_REJOIN or a Goblin position write",
+      "while Horse ran 14.386 tiles through a loaded building, Goblin followed the route, entered native ClimbThroughWindowState at the intervening boundary, resumed PathFindState and closed to a 3.823-tile stable gap without FOLLOW_REJOIN"
     ],
     "does_not_prove": [
-      "stair traversal",
-      "owner running through a building",
       "door save/reload persistence",
       "constructed IsoThumpable door variants",
-      "live safehouse denial against another player's claim",
-      "Milestone 1 completion"
+      "live safehouse denial against another player's claim"
     ]
+  },
+  "milestone_1": {
+    "result": "pass",
+    "requirements": [
+      "stable follow slots",
+      "native follow investigation",
+      "expanded work approach search",
+      "staged stuck recovery",
+      "navigation telemetry",
+      "temporary route blacklist"
+    ],
+    "live_scenarios_accepted": [
+      "follow through open terrain",
+      "follow through house doorway",
+      "follow around furniture",
+      "follow upstairs/downstairs",
+      "owner runs through building",
+      "work target surrounded on some sides",
+      "path fails and recovers without teleport",
+      "two players plus two Goblins"
+    ],
+    "release_boundary": "Local milestone acceptance only. Nothing was committed, pushed, published, deployed or changed in production."
   }
 }

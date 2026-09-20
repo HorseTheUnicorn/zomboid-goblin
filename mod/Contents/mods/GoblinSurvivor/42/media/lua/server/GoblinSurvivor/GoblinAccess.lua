@@ -116,11 +116,65 @@ local function edgeSquares(edge)
     return here, there
 end
 
+local function listValues(object, method)
+    local values = {}
+    local okList, list = result(object, method)
+    if not okList or not list then return values end
+    local okSize, size = result(list, "size")
+    for index = 0, (okSize and tonumber(size) or 0) - 1 do
+        local okValue, value = result(list, "get", index)
+        if okValue and value then values[#values + 1] = value end
+    end
+    return values
+end
+
+local function thumpableDoorMatches(object, here, there)
+    local okDoor, isDoor = result(object, "isDoor")
+    if not okDoor or isDoor ~= true then return false end
+    local okSquare, square = result(object, "getSquare")
+    local okNorth, north = result(object, "getNorth")
+    local hx, hy, hz = squarePoint(here)
+    local tx, ty, tz = squarePoint(there)
+    local ox, oy, oz
+    if okSquare then ox, oy, oz = squarePoint(square) end
+    if not okNorth or not hx or not tx or not ox or hz ~= tz or hz ~= oz then return false end
+    local otherX, otherY = north == true and ox or ox - 1, north == true and oy - 1 or oy
+    return (hx == ox and hy == oy and tx == otherX and ty == otherY)
+        or (tx == ox and ty == oy and hx == otherX and hy == otherY)
+end
+
+local function doorBetween(here, there)
+    if not here or not there then return nil end
+    local okDoor, door = result(here, "getDoorTo", there)
+    if okDoor and door then return door end
+    -- Build 42 can report an IsoThumpable/player-built door only from the
+    -- square that stores the object, which may be the far side of this edge.
+    okDoor, door = result(there, "getDoorTo", here)
+    if okDoor and door then return door end
+    -- Keep a final representation-independent fallback for player-built
+    -- wooden/metal doors and gates. Vanilla stores these as IsoThumpable
+    -- special objects, with getNorth() identifying their exact square edge.
+    local seen = {}
+    for _, square in ipairs({ here, there }) do
+        for _, method in ipairs({ "getSpecialObjects", "getObjects" }) do
+            for _, object in ipairs(listValues(square, method)) do
+                if not seen[object] then
+                    seen[object] = true
+                    if thumpableDoorMatches(object, here, there) then return object end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function edgeObject(edge, window)
     local here, there = edgeSquares(edge)
     if not here or not there then return nil end
-    local _, object = result(here, window and "getWindowTo" or "getDoorTo", there)
-    return object
+    if not window then return doorBetween(here, there) end
+    local _, object = result(here, "getWindowTo", there)
+    if object then return object end
+    return select(2, result(there, "getWindowTo", here))
 end
 
 local function validEdge(edge)
@@ -286,9 +340,13 @@ end
 function Access.open(body, object, window)
     if isClient() or not isServer() then return false end
     if Access.blockReason(object, window, not window) then return false end
-    if not canInteract(object, body) then return false end
     if not safehouseAllows(body, object) then return false end
+    -- IsoThumpable:canInteractWith rejects a locked player-built door. Apply
+    -- the managed all-tools unlock first, then retain its native interaction
+    -- check for every non-lock restriction. Safehouse authorization must stay
+    -- before this mutation so another player's lock is never changed.
     if not window then unlockDoor(object) end
+    if not canInteract(object, body) then return false end
     local toggled
     if window then toggled = call(object, "ToggleWindow", body)
     else toggled = toggleDoorWithoutPlayer(body, object, true) end
@@ -442,7 +500,8 @@ local function routeFor(body, scope)
     local route = Access.routes[body]
     if not route then
         route = { scope = scope, lastSquare = nil, pendingCross = nil,
-            opened = setmetatable({}, { __mode = "k" }), pending = {} }
+            opened = setmetatable({}, { __mode = "k" }), pending = {},
+            closedAfterCross = setmetatable({}, { __mode = "k" }) }
         -- Keep the human-readable name used by diagnostics/tests while the
         -- table itself remains runtime-only (no userdata in ModData).
         route.Goblinopened = route.opened
@@ -483,6 +542,12 @@ local function observeCrossing(body, route, now)
     local square = currentSquare(body)
     if not square then return end
     local currentKey = squareKey(square)
+    for door, item in pairs(route.closedAfterCross) do
+        local a, b = edgeSquares(item.edge)
+        if currentKey ~= squareKey(a) and currentKey ~= squareKey(b) then
+            route.closedAfterCross[door] = nil
+        end
+    end
     local pending = route.pendingCross
     if pending and pending.from ~= currentKey then
         local a, b = edgeSquares(pending.edge)
@@ -522,7 +587,8 @@ local function processPending(body, route, now)
                     keep[#keep + 1] = item
                 else
                     Access.claims[door] = { body = body, expires = now + 1500 }
-                    if not closeNative(body, door) then keep[#keep + 1] = item end
+                    if not closeNative(body, door) then keep[#keep + 1] = item
+                    else route.closedAfterCross[door] = item end
                     if Access.claims[door] and Access.claims[door].body == body then Access.claims[door] = nil end
                 end
             else
@@ -546,66 +612,45 @@ function Access.update(body, goal, now, scope, pendingOnly)
     if not here then return false end
     local nextSquare = nextPathSquare(body, here)
     local choices = {}
-    if nextSquare then choices[#choices + 1] = { square = nextSquare, along = 1000 } end
-    if #choices == 0 then
-        local point = Motion.position(body)
-        local dx, dy = goal.x - point.x, goal.y - point.y
-        for _, delta in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-            local candidate = squareAt(here:getX() + delta[1], here:getY() + delta[2], here:getZ())
-            local along = dx * delta[1] + dy * delta[2]
-            if candidate and along > 0.25 and scopeAllows(scope, here, candidate) then
-                choices[#choices + 1] = { square = candidate, along = along }
-            end
-        end
-        table.sort(choices, function(a, b) return a.along > b.along end)
+    local point = Motion.position(body)
+    local seenSquares = {}
+    local function addChoice(candidate, nativeNext)
+        if not candidate or seenSquares[candidate] or not scopeAllows(scope, here, candidate) then return end
+        local object = doorBetween(here, candidate)
+        -- A door just closed behind this actor remains adjacent until the
+        -- actor leaves the far square. Do not immediately reopen it merely
+        -- because the comprehensive adjacent-edge scan can still see it.
+        if not object or route.closedAfterCross[object] then return end
+        seenSquares[candidate] = true
+        local cx, cy = candidate:getX() + 0.5, candidate:getY() + 0.5
+        local midpointX = (here:getX() + candidate:getX()) * 0.5 + 0.5
+        local midpointY = (here:getY() + candidate:getY()) * 0.5 + 0.5
+        local proximity = point and ((point.x - midpointX)^2 + (point.y - midpointY)^2) or 4
+        local remaining = (goal.x - cx)^2 + (goal.y - cy)^2
+        choices[#choices + 1] = { square = candidate, object = object,
+            score = nativeNext and -1000000 or proximity * 100 + remaining }
     end
+    -- The replicated server PathFindBehavior2 is authoritative when present.
+    -- With a client simulation owner it is often unset, so also inspect every
+    -- exact adjacent edge. Proximity makes the door the actor is physically
+    -- walking into win without assuming that every useful route is goalward.
+    addChoice(nextSquare, true)
+    for _, delta in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+        addChoice(squareAt(here:getX() + delta[1], here:getY() + delta[2], here:getZ()), false)
+    end
+    table.sort(choices, function(a, b) return a.score < b.score end)
     for _, choice in ipairs(choices) do
-        if scopeAllows(scope, here, choice.square) then
-            local edge = { x = here:getX(), y = here:getY(), z = here:getZ(),
-                dx = choice.square:getX() - here:getX(), dy = choice.square:getY() - here:getY() }
-            local object = select(2, result(here, "getDoorTo", choice.square))
-            if object then
-                local wasOpen = opened(object)
-                if wasOpen then
-                    registerDoor(body, edge, object, scope, now, here, true)
-                    return false
-                end
-                if Access.open(body, object, false) then
-                    registerDoor(body, edge, object, scope, now, here, false)
-                    return true
-                end
-            end
+        local edge = { x = here:getX(), y = here:getY(), z = here:getZ(),
+            dx = choice.square:getX() - here:getX(), dy = choice.square:getY() - here:getY() }
+        local object = choice.object
+        local wasOpen = opened(object)
+        if wasOpen then
+            registerDoor(body, edge, object, scope, now, here, true)
+            return false
         end
-    end
-    -- A path-next square is authoritative when it names a door (this is what
-    -- makes an L-shaped corridor work).  If that edge has no door, retain a
-    -- conservative final-direction fallback rather than getting stuck on an
-    -- unrelated ordinary floor square.
-    if nextSquare then
-        local point = Motion.position(body)
-        local dx, dy = goal.x - point.x, goal.y - point.y
-        local fallback = {}
-        for _, delta in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-            local candidate = squareAt(here:getX() + delta[1], here:getY() + delta[2], here:getZ())
-            local along = dx * delta[1] + dy * delta[2]
-            if candidate and candidate ~= nextSquare and along > 0.25
-                and scopeAllows(scope, here, candidate) then
-                fallback[#fallback + 1] = { square = candidate, along = along }
-            end
-        end
-        table.sort(fallback, function(a, b) return a.along > b.along end)
-        for _, choice in ipairs(fallback) do
-            local edge = { x = here:getX(), y = here:getY(), z = here:getZ(),
-                dx = choice.square:getX() - here:getX(), dy = choice.square:getY() - here:getY() }
-            local object = select(2, result(here, "getDoorTo", choice.square))
-            local wasOpen = object and opened(object)
-            if object and wasOpen then
-                registerDoor(body, edge, object, scope, now, here, wasOpen == true)
-                return false
-            elseif object and Access.open(body, object, false) then
-                registerDoor(body, edge, object, scope, now, here, false)
-                return true
-            end
+        if Access.open(body, object, false) then
+            registerDoor(body, edge, object, scope, now, here, false)
+            return true
         end
     end
     return false

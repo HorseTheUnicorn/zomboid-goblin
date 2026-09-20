@@ -102,14 +102,14 @@ local function safeInputs(body,logic)
 end
 
 function Craft.update(body,payload,job,now)
-    if (payload.remaining or 0)<1 then return true,true,"crafting finished" end
+    if (payload.remaining or 0)<1 then return true,true,"crafting finished","COMPLETE" end
     local recipe=Craft.resolve(payload.recipe)
     local allowed,reason=Craft.supported(recipe)
-    if not allowed then return true,false,reason end
+    if not allowed then return true,false,reason,"UNSUPPORTED" end
     local logic=job.logic or setup(body,recipe)
     job.logic=logic
     local ready,blocked=safeInputs(body,logic)
-    if blocked then return true,false,blocked end
+    if blocked then return true,false,blocked,"PERMISSION_DENIED" end
     if not ready then
         job.readyAt=nil
         local consumed={}
@@ -133,10 +133,11 @@ function Craft.update(body,payload,job,now)
             end,now,"more materials for "..payload.recipe)
             if #World.items(World.inventory(body))>before then job.nextSupplyScan=0 end
             job.logic=nil -- Refresh native input selection after supplies change.
+            return false,true,"waiting for more materials for "..payload.recipe,"WAITING_FOR_MATERIAL"
         else
             Support.status(body,"recipe blocked: check fuel, ingredient condition, and a nearby work surface for "..payload.recipe)
+            return false,true,"waiting for recipe fuel, condition, or work surface","WAITING_FOR_TARGET"
         end
-        return false
     end
     local square=World.square(payload.anchor)
     -- Native duration is a 30fps timed-action count (handcraft multiplies by 5).
@@ -145,10 +146,13 @@ function Craft.update(body,payload,job,now)
     if not Support.work(body,job,square,now,duration,animation,"crafting "..payload.recipe) then return false end
     logic=setup(body,recipe)
     ready,blocked=safeInputs(body,logic)
-    if not ready then job.readyAt=nil;return false end
+    if not ready then
+        job.readyAt=nil
+        return false,true,"recipe inputs changed; checking materials again","WAITING_FOR_MATERIAL"
+    end
     -- Once perform starts, never retry this batch after an exception: native
     -- recipes may already have consumed items. The job supervisor fails closed.
-    if not goblinServerCraft(body,logic) then return true,false,"native crafting refused the recipe; no completion claimed" end
+    if not goblinServerCraft(body,logic) then return true,false,"native crafting refused the recipe; no completion claimed","TARGET_CHANGED" end
     payload.remaining=payload.remaining-1
     local outputs=ArrayList.new();logic:getCreatedOutputItems(outputs)
     local inv=World.inventory(body)
@@ -165,7 +169,7 @@ function Craft.update(body,payload,job,now)
     payload.completed=(payload.completed or 0)+1
     job.readyAt=nil;job.logic=nil;Body.data(body).GoblinAction=""
     if payload.remaining==0 then
-        return true,true,"crafted "..payload.completed.." batch(es) of "..payload.recipe
+        return true,true,"crafted "..payload.completed.." batch(es) of "..payload.recipe,"COMPLETE"
     end
     Support.status(body,"crafted "..payload.completed.." batch(es); "..payload.remaining.." to go")
     return false

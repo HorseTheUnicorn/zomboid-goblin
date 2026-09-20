@@ -286,16 +286,16 @@ local function finishDetail(payload)
     local closed = tonumber(payload.completed) or 0
     local skipped = tonumber(payload.skipped) or 0
     if skipped > 0 then
-        return true, false, string.format("closed %d curtain(s); skipped %d unreachable curtain(s)", closed, skipped)
+        return true, false, string.format("closed %d curtain(s); skipped %d unreachable curtain(s)", closed, skipped), "BLOCKED"
     end
     if payload.partial_house == true then
-        return true, false, string.format("closed %d curtain(s); skipped unloaded house areas", closed)
+        return true, false, string.format("closed %d curtain(s); skipped unloaded house areas", closed), "TARGET_UNLOADED"
     end
     if payload.target_overflow == true then
-        return true, false, string.format("closed %d curtain(s); house target bound reached", closed)
+        return true, false, string.format("closed %d curtain(s); house target bound reached", closed), "BLOCKED"
     end
-    if closed == 0 then return true, true, "no open curtains in the owner's house" end
-    return true, true, string.format("closed %d curtain(s) in the owner's house", closed)
+    if closed == 0 then return true, true, "no open curtains in the owner's house", "COMPLETE" end
+    return true, true, string.format("closed %d curtain(s) in the owner's house", closed), "COMPLETE"
 end
 
 function Curtains.prepare(body, owner, payload)
@@ -323,19 +323,19 @@ end
 
 function Curtains.update(body, payload, job, now)
     if type(payload) ~= "table" or type(job) ~= "table" then
-        return true, false, "curtain job payload was lost; please order me again"
+        return true, false, "curtain job payload was lost; please order me again", "TARGET_CHANGED"
     end
-    if type(isClient) == "function" and isClient() then return true, false, "server work is unavailable" end
+    if type(isClient) == "function" and isClient() then return true, false, "server work is unavailable", "UNSUPPORTED" end
     local state = Curtains.targets[body]
     if not state or not state.scope
         or state.scope.id ~= (payload.house_id or payload.building_id) then
-        return true, false, "curtain house target was lost; please order me again"
+        return true, false, "curtain house target was lost; please order me again", "TARGET_CHANGED"
     end
     job.now = now
     if (payload.completed or 0) > 0 and payload.target_id == nil then return finishDetail(payload) end
     local target = state.current
     if not target or target.key ~= payload.target_id then
-        return true, false, "curtain target was lost; please order me again"
+        return true, false, "curtain target was lost; please order me again", "TARGET_CHANGED"
     end
     local square = target.square
     local cell = type(getCell) == "function" and getCell() or nil
@@ -355,7 +355,7 @@ function Curtains.update(body, payload, job, now)
         target = nextTarget; square = target.square
     end
     local inspected, opened = call(target.object, "IsOpen")
-    if not inspected then return true, false, "cannot inspect that curtain safely" end
+    if not inspected then return true, false, "cannot inspect that curtain safely", "ENGINE_ERROR" end
     if opened ~= true then
         -- Another actor closing the exact object is safe to accept.  A missing
         -- object above is terminal and is never replaced by a coordinate hit.
@@ -374,7 +374,7 @@ function Curtains.update(body, payload, job, now)
     end
 
     local inspectedAgain, stillOpen = call(target.object, "IsOpen")
-    if not inspectedAgain then return true, false, "cannot inspect that curtain safely" end
+    if not inspectedAgain then return true, false, "cannot inspect that curtain safely", "ENGINE_ERROR" end
     if stillOpen ~= true then
         payload.target_id = nil; state.current = nil
         local nextTarget = chooseNext(body, state.scope, payload, job)
@@ -382,7 +382,7 @@ function Curtains.update(body, payload, job, now)
         target = nextTarget; square = target.square
     end
     local point = Motion.position(body)
-    if not point then return true, false, "Goblin position is unavailable" end
+    if not point then return true, false, "Goblin position is unavailable", "TARGET_UNLOADED" end
     local goalSquare = approachSquare(target.object, body)
     if goalSquare and select(2, call(target.object, "canInteractWith", body)) == true then
         -- Guard the exact live object a final time.  Never issue a native
@@ -394,14 +394,14 @@ function Curtains.update(body, payload, job, now)
             -- was established.  Do not fall through and toggle a newly
             -- selected/distant target in this same tick; re-enter through the
             -- normal validation path on the next server tick.
-            return false, true, "curtain target changed; continuing safely"
+            return false, true, "curtain target changed; continuing safely", "WAITING_FOR_TARGET"
         end
         Movement.clear(body)
         call(body, "faceThisObjectAlt", target.object)
         local ran = call(target.object, "ToggleDoor", body)
         local checked, remainsOpen = call(target.object, "IsOpen")
         if not ran or not checked or remainsOpen == true then
-            return true, false, "the game refused to close that curtain"
+            return true, false, "the game refused to close that curtain", "ENGINE_ERROR"
         end
         payload.completed = (tonumber(payload.completed) or 0) + 1
         -- Scan after every close.  A newly opened curtain is eligible, but a
@@ -410,9 +410,9 @@ function Curtains.update(body, payload, job, now)
         payload.target_id = nil
         local nextTarget = chooseNext(body, state.scope, payload, job)
         if not nextTarget then return finishDetail(payload) end
-        return false, true, "curtain closed; continuing through the owner's house"
+        return false, true, "curtain closed; continuing through the owner's house", "WORKING"
     end
-    if not goalSquare then return false, true, "no clear approach to that curtain yet" end
+    if not goalSquare then return false, true, "no clear approach to that curtain yet", "WAITING_FOR_TARGET" end
     local goal = { x = goalSquare:getX() + 0.5, y = goalSquare:getY() + 0.5,
         z = goalSquare:getZ(), radius = 0.25 }
     local active = Movement.active[body]
@@ -422,7 +422,7 @@ function Curtains.update(body, payload, job, now)
     else
         Movement.update(body, now)
     end
-    return false, true, "walking to close the owner's house curtains"
+    return false, true, "walking to close the owner's house curtains", "MOVING_TO_TARGET"
 end
 
 function Curtains.clear(body)

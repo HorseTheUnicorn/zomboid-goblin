@@ -73,6 +73,87 @@ def names(value, label):
     return set(value)
 
 
+def validate_physical_evidence(record, root):
+    """Accept only the narrow, structured review format implemented here.
+
+    Free-text multiplayer_evidence remains descriptive and is never sufficient.
+    New capability kinds must add their own field-level review before they can be
+    marked complete or engine-tested.
+    """
+    label = record["id"]
+    review = record.get("physical_evidence_review")
+    if not isinstance(review, dict) or review.get("kind") != "MILESTONE_1_FOLLOW":
+        raise CatalogError(f"{label}: physical evidence review required")
+    if label != "FOLLOW":
+        raise CatalogError(f"{label}: unsupported physical evidence review kind")
+    path = review.get("path")
+    if not isinstance(path, str) or not path:
+        raise CatalogError(f"{label}: physical evidence review path missing")
+    resolved = (root / path).resolve()
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        raise CatalogError(f"{label}: physical evidence review missing or outside workspace")
+    evidence = read_catalog(resolved)
+    milestone = evidence.get("milestone_1")
+    required = {
+        "stable follow slots", "native follow investigation",
+        "expanded work approach search", "staged stuck recovery",
+        "navigation telemetry", "temporary route blacklist",
+    }
+    scenarios = {
+        "follow through open terrain", "follow through house doorway",
+        "follow around furniture", "follow upstairs/downstairs",
+        "owner runs through building", "work target surrounded on some sides",
+        "path fails and recovers without teleport", "two players plus two Goblins",
+    }
+    if (evidence.get("schema_version") != 1 or not isinstance(milestone, dict)
+            or milestone.get("result") != "pass"
+            or not required <= set(milestone.get("requirements", []))
+            or not scenarios <= set(milestone.get("live_scenarios_accepted", []))):
+        raise CatalogError(f"{label}: Milestone 1 acceptance is incomplete")
+    clients = evidence.get("clients")
+    if (not isinstance(clients, list) or len(clients) < 2
+            or any(client.get("ordinary_executable") is not True
+                   or client.get("storm") is not False for client in clients[:2])
+            or len({client.get("goblin_id") for client in clients[:2]}) != 2):
+        raise CatalogError(f"{label}: two-client/two-Goblin evidence is incomplete")
+    required_passes = (
+        "closed_door_follow", "durable_radius_two_staging",
+        "open_terrain_running_follow", "native_no_progress_recovery",
+        "native_simulation_ownership_handoff", "furniture_detour",
+        "stair_follow", "running_owner_building_follow",
+    )
+    if any(not isinstance(evidence.get(name), dict)
+           or evidence[name].get("result") != "pass" for name in required_passes):
+        raise CatalogError(f"{label}: required physical scenario did not pass")
+    running = evidence["open_terrain_running_follow"]
+    recovery = evidence["native_no_progress_recovery"]
+    handoff = evidence["native_simulation_ownership_handoff"]
+    furniture = evidence["furniture_detour"]
+    stairs = evidence["stair_follow"]
+    building = evidence["running_owner_building_follow"]
+    ascent_z = [row.get("actor", {}).get("z") for row in stairs.get("ascent_observations", [])]
+    descent_z = [row.get("actor", {}).get("z") for row in stairs.get("descent_owner_client_trace", [])]
+    route_states = {row.get("native_state") for row in building.get("actor_route", [])}
+    if (running.get("teleport_after_measurement") is not False
+            or recovery.get("native_repath_attempts") != 1
+            or recovery.get("teleport") is not False
+            or handoff.get("staging", {}).get("ownership_write") is not False
+            or handoff.get("staging", {}).get("goblin_teleport") is not False
+            or furniture.get("occupied_obstacle_square") is not False
+            or furniture.get("follow_rejoin_during_measurement") is not False
+            or furniture.get("goblin_position_write") is not False
+            or stairs.get("follow_rejoin_during_measurement") is not False
+            or stairs.get("goblin_position_write") is not False
+            or 0.0 not in ascent_z or 1.0 not in ascent_z
+            or not any(isinstance(z, (int, float)) and 0 < z < 1 for z in descent_z)
+            or building.get("owner_run", {}).get("delta_tiles", 0) < 10
+            or building.get("final_gap_tiles", 999) > 4
+            or not {"ClimbThroughWindowState", "PathFindState"} <= route_states
+            or building.get("follow_rejoin_during_measurement") is not False
+            or building.get("goblin_position_write") is not False):
+        raise CatalogError(f"{label}: structured physical evidence constraints failed")
+
+
 def validate_inventory(inventory, commands, items, root):
     if inventory.get("schema_version") != 1 or commands.get("schema_version") != 1:
         raise CatalogError("Unsupported inventory schema")
@@ -113,10 +194,8 @@ def validate_inventory(inventory, commands, items, root):
         evidence = record.get("multiplayer_evidence")
         if not isinstance(evidence, list):
             raise CatalogError(f"{label}: multiplayer evidence must be explicit")
-        # Evidence format/acceptance review is not implemented yet. Do not accept
-        # free-text claims as physical proof, even if somebody adds a nonempty list.
         if record["complete"] or label in tested:
-            raise CatalogError(f"{label}: physical evidence review required; this checker cannot certify completion")
+            validate_physical_evidence(record, root)
         for item in names(record.get("required_items", []), f"{label} required items"):
             installed = item_index.get(item)
             if not installed or installed.get("enabled") is not True or installed.get("obsolete") is not False:
@@ -214,7 +293,7 @@ def main():
     print(f"Consistency checked: {result[0]} records; remaining {result[1]} existing / {result[2]} proposed.")
     if inventory.get("inventory_status", "").startswith("complete_inventory") and commands.get("inventory_status", "").startswith("complete_inventory"):
         print("Section 31 catalog/compatibility inventory is structurally complete with explicit proof gaps.")
-    print("This does not certify any capability's physical or multiplayer behavior.")
+    print("Only capabilities with a supported structured physical-evidence review are certified complete or engine-tested.")
 
 
 if __name__ == "__main__":

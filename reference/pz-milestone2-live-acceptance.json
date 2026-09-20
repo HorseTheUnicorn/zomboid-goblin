@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-20T12:15:41-04:00",
+  "scope": "disposable local multiplayer Milestone 2 capability-framework acceptance",
+  "game_build": "42.20.4 b0bbce05d5",
+  "production_modified": false,
+  "published": false,
+  "server": {
+    "profile": "goblin-local",
+    "address": "127.0.0.1:16271",
+    "steam": false,
+    "storm_server_side": true
+  },
+  "clients": [
+    {
+      "username": "horse",
+      "ordinary_executable": true,
+      "storm": false,
+      "goblin_id": "dev.survivor.001.horse",
+      "spawn_generation": 1
+    },
+    {
+      "username": "unicorn",
+      "ordinary_executable": true,
+      "storm": false,
+      "goblin_id": "dev.survivor.001.unicorn",
+      "spawn_generation": 1
+    }
+  ],
+  "source_sha256": {
+    "GoblinCapabilities.lua": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2",
+    "GoblinJobs.lua": "271af06a18f972e7fe2e1480fb60080077815bd5d4944b1c3996be6ebffafd5b",
+    "GoblinFarming.lua": "c1b9812054ef257d04158192db0cfe5c69094eb0a95583d5c552669f267b0e13",
+    "GoblinCrafting.lua": "8640ee2f58a0ebfadce58e6ef1bff4c762b22e79f39b486b2da4431e78d4e4cd",
+    "GoblinVehicles.lua": "8f5bb40cb46f53db952bd64cfb880161d867d167a362ce58861c98c279d93c9e",
+    "GoblinCurtains.lua": "e7f3e7edec08499c99f4b258980383988831a7535cd71f8ccf094c2f1e7a8370",
+    "GoblinBrain.lua": "f94ad3e8001d3274bd75d9a3ad339e5bdbf30cb40ada0b7b7d19fb3e342c68c4",
+    "GoblinBody.lua": "f8a74cf2d692957e1d0b0e372a79c5338177ac452d6512a71e133678fd8ac20f"
+  },
+  "registry": {
+    "result": "pass",
+    "registered_capabilities": [
+      "CLOSE_CURTAINS",
+      "CRAFT",
+      "FARM",
+      "REPAIR_VEHICLE"
+    ],
+    "count": 4,
+    "required_metadata": [
+      "destructive",
+      "offline_allowed",
+      "owner_required",
+      "prepare",
+      "update",
+      "cancel",
+      "snapshot",
+      "requirements"
+    ],
+    "persistent_payload_policy": "primitive finite scalar/table values only; depth, entry count, cycles, functions and userdata are rejected",
+    "runtime_policy": "engine objects remain only in a weak body-keyed runtime table and are omitted from snapshots"
+  },
+  "native_craft_through_registry": {
+    "result": "pass",
+    "actor": "dev.survivor.001.horse",
+    "capability": "CRAFT",
+    "recipe": "SawLogs",
+    "requested_batches": 1,
+    "authority_route": "disposable server-only acceptance hook -> Brain.setTask -> Jobs.prepare -> capability registry -> GoblinCrafting -> server-side Storm native craft adapter",
+    "test_fixture": {
+      "item": "Base.Log",
+      "quantity_added": 1,
+      "scope": "disposable local acceptance session only"
+    },
+    "result_sequence": [
+      {
+        "done": false,
+        "success": true,
+        "code": "WORKING",
+        "progress": 0
+      },
+      {
+        "done": true,
+        "success": true,
+        "code": "COMPLETE",
+        "progress": 1,
+        "detail": "crafted 1 batch(es) of SawLogs"
+      }
+    ],
+    "material_observation": {
+      "Base.Log_before": 1,
+      "Base.Log_after": 0,
+      "Base.Plank_before": 0,
+      "Base.Plank_after": 3
+    },
+    "capability_errors": 0,
+    "job_errors": 0,
+    "notes": "The installed native recipe consumed the single explicit fixture log and produced three real plank instances in the managed Goblin inventory. The registry did not infer completion from dispatch; it reported COMPLETE only after the native craft adapter returned success."
+  },
+  "evidence_boundary": {
+    "proves": [
+      "the additive registry loads on the target game build with server-side Storm and ordinary clients",
+      "the four existing server job handlers are registered with explicit policy metadata",
+      "a real existing CRAFT order crosses the registry and emits structured active and terminal results",
+      "the representative native operation consumes a real Base.Log and produces three real Base.Plank items",
+      "one persistent Goblin still spawns for each of two connected players"
+    ],
+    "does_not_prove": [
+      "player-chat command authentication because the disposable acceptance hook called the existing internal Brain boundary",
+      "second-client observation of the crafted inventory delta",
+      "physical multiplayer completion of FARM, REPAIR_VEHICLE or CLOSE_CURTAINS",
+      "zero-player or unloaded-cell execution",
+      "completion of any later tools, access, logistics, survival, vehicle, Reflex, goal or Offline Life milestone"
+    ]
+  },
+  "milestone_2": {
+    "result": "pass",
+    "requirements": [
+      "capability registry",
+      "structured job results",
+      "adapt existing handlers without regression"
+    ],
+    "release_boundary": "Local milestone acceptance only. Nothing was committed, pushed, published, deployed or changed in production. Individual job abilities retain their separate catalog proof gaps."
+  }
+}

@@ -148,6 +148,36 @@ local slotOffsets = {
     { -4, 0 }, { -3, -3 }, { 0, -4 }, { 3, -3 }
 }
 
+local function localRouteClear(fromSquare, destination)
+    local target = squareAt(destination)
+    if not fromSquare or not target then return false end
+    local _, x = call(fromSquare, "getX")
+    local _, y = call(fromSquare, "getY")
+    local _, z = call(fromSquare, "getZ")
+    local _, targetX = call(target, "getX")
+    local _, targetY = call(target, "getY")
+    local _, targetZ = call(target, "getZ")
+    if type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number"
+        or type(targetX) ~= "number" or type(targetY) ~= "number"
+        or targetZ ~= z then return false end
+    local current = fromSquare
+    -- Follow slots are at most four tiles away. Walk the short grid line and
+    -- reject a slot on the other side of a closed door, wall or window. This
+    -- prevents a nominally valid slot from ending movement before Goblin ever
+    -- reaches the blocking edge where GoblinAccess can open the door.
+    for _ = 1, 12 do
+        if x == targetX and y == targetY then return true end
+        local stepX = targetX == x and 0 or (targetX > x and 1 or -1)
+        local stepY = targetY == y and 0 or (targetY > y and 1 or -1)
+        local nextSquare = squareAt({ x = x + stepX + 0.5, y = y + stepY + 0.5, z = z })
+        if not nextSquare then return false end
+        local checked, blocked = call(current, "isBlockedTo", nextSquare)
+        if checked and blocked == true then return false end
+        current, x, y = nextSquare, x + stepX, y + stepY
+    end
+    return false
+end
+
 local function leaderDirection(owner, leader, timestamp)
     local previous = Motion.leaderSamples[owner]
     Motion.leaderSamples[owner] = { x = leader.x, y = leader.y, at = timestamp }
@@ -169,6 +199,7 @@ local function stableFollowGoal(body, owner, actor, leader, timestamp)
         local freeOK, free = call(square, "isFree", false)
         local _, fire = call(square, "haveFire")
         if square and freeOK and free == true and fire ~= true and not occupied(square, body, owner)
+            and localRouteClear(square, leader)
             and not Motion.isBlacklisted(body, candidate, timestamp, "target") then
             local distance = (candidate.x-actor.x)^2 + (candidate.y-actor.y)^2
             local side = offset[1] * moveX + offset[2] * moveY
@@ -195,15 +226,25 @@ function Motion.followGoal(body, owner, timestamp)
     if math.floor(actor.z) ~= math.floor(leader.z) or gap > 6 then
         return leader, gap, { goal_type = "character", follow_target = owner, goal_key = "character" }
     end
+    local actorSquare, leaderSquare = squareAt(actor), squareAt(leader)
+    -- Missing streamed squares are not permission to fall back onto the
+    -- owner's tile.  At close range, wait until both ends can be inspected;
+    -- long-distance character following retains its earlier native path.
+    if gap <= (tonumber(Config.followPreferredDistance) or 3)
+        and (not actorSquare or not leaderSquare) then
+        return nil, gap, { goal_type = "follow_slot", goal_key = "squares-unavailable" }
+    end
+    local actorLocallyConnected = localRouteClear(actorSquare, leader)
     local adjacent = math.abs(math.floor(actor.x)-math.floor(leader.x)) <= 1
         and math.abs(math.floor(actor.y)-math.floor(leader.y)) <= 1
     local needsClearance = adjacent or gap < 2.5
-    if gap <= (tonumber(Config.followPreferredDistance) or 3) and not needsClearance then
+    if gap <= (tonumber(Config.followPreferredDistance) or 3) and not needsClearance
+        and actorLocallyConnected then
         return nil, gap, { goal_type = "follow_slot", goal_key = "arrived" }
     end
     local slot = stableFollowGoal(body, owner, actor, leader, timestamp)
     if not slot then
-        if gap <= (tonumber(Config.followPreferredDistance) or 3) then
+        if gap <= (tonumber(Config.followPreferredDistance) or 3) and actorLocallyConnected then
             return nil, gap, { goal_type = "follow_slot", goal_key = "clearance-unavailable" }
         end
         return leader, gap, { goal_type = "character", follow_target = owner, goal_key = "character-fallback" }

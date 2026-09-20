@@ -206,8 +206,75 @@ Production, main, Steam Workshop, Qwen and Discord remain unchanged by this work
   `SafeHouse.playerAllowed(GoblinOwner)` but has not yet been live-accepted.
   Constructed `IsoThumpable` door variants and door save/reload remain explicit
   proof gaps.
+- A later client-owned-path regression reproduced the missing server
+  `PathFindBehavior2` edge. A disposable server-only setup closed the loaded
+  four-segment garage group with Horse's Goblin at the threshold. The new
+  adjacent-edge fallback found the door, opened it, advanced the replicated
+  access revision from 0 to 1, and the actor physically crossed edge
+  `10708:9366:0|10709:9366` without a Goblin position write or
+  `FOLLOW_REJOIN`. The same build rejects follow slots separated from the
+  owner by a locally observed wall, closed door or window, preventing false
+  arrival on the wrong side before access handling can run.
 - Remaining Milestone 1 live gates are stairs and owner running through a
   building. Milestone 1 remains `complete: false`.
+
+## Milestone 1 local acceptance checkpoint
+
+- A real three-tile vanilla staircase was identified at
+  `10742,9458,0` through `10742,9456,0`, with its upper landing at
+  `10742,9455,1`. Horse's Goblin ascended from z0 to the z1 landing and later
+  descended through fractional stair Z positions (`0.190`, then `0.010`) to
+  z0. Native ownership remained with Horse, the respawn-rejoin sequence was
+  inactive, and no Goblin position write occurred.
+- Horse then ran 14.386 tiles through the loaded building. Goblin followed the
+  route, entered the installed engine's native `ClimbThroughWindowState` at
+  the intervening boundary, resumed `PathFindState`, and closed to a 3.823-tile
+  stable follow gap without `FOLLOW_REJOIN` or a Goblin position write.
+- The acceptance run used two ordinary no-Storm clients against the local
+  server-side-Storm session. Together with the earlier open-terrain, door,
+  furniture-detour, staging, stuck-recovery, ownership-transfer, respawn and
+  two-player/two-Goblin observations, all Milestone 1 requirements and relevant
+  live scenarios are locally accepted.
+- Milestone 1 is now `complete: true` for local acceptance. Nothing from this
+  checkpoint has been committed, pushed, published, deployed or changed in
+  production. Temporary acceptance probes and local RCON were removed, then a
+  clean server-side-Storm/two-client restart auto-connected `horse` and
+  `unicorn` without credential prompts and spawned exactly one Goblin for each.
+
+## Milestone 2 local acceptance checkpoint
+
+- Added an additive server-side capability registry around the existing
+  `FARM`, `CRAFT`, `REPAIR_VEHICLE` and `CLOSE_CURTAINS` handlers. Each
+  registration declares destructive policy, offline/owner requirements,
+  preparation, update, cancellation, snapshot and material/tool requirements.
+  Access, transport and later-milestone abilities remain on their existing
+  paths until their own milestone; no working handler was rewritten merely for
+  style.
+- Persisted job payloads now pass a bounded primitive-only validator. Functions,
+  userdata, cycles, excessive depth/entries and non-finite numbers are rejected.
+  Runtime engine references remain in a weak body-keyed table and are excluded
+  from snapshots.
+- Job updates now return `{done, success, code, detail, progress}`. Terminal
+  failures use the specification's standard codes, engine exceptions fail
+  closed as `ENGINE_ERROR`, and the latest primitive result is available in the
+  body snapshot for deterministic higher-level reasoning.
+- The initial full-suite baseline found two Milestone 1 regressions: close-range
+  follow fell back onto the owner when squares were unavailable, and an older
+  door test still expected locked doors to be rejected. The close-range path now
+  waits for loaded squares; the door test now verifies the intended all-tools
+  unlock/open behavior.
+- A disposable Build 42.20.4 two-client run loaded four registered capabilities
+  on server-side Storm while both ordinary clients remained Storm-free. A
+  server-only acceptance hook supplied exactly one `Base.Log` to Horse's
+  persistent Goblin and submitted one `SawLogs` job through the normal internal
+  Brain boundary. The registry emitted `WORKING` then `COMPLETE`; the log count
+  changed 1 -> 0 and the plank count changed 0 -> 3 with no capability/job
+  error. See `reference/pz-milestone2-live-acceptance.json`.
+- Milestone 2 is locally accepted as `complete: true` for the framework itself.
+  This does not mark the individual farm, repair or curtain abilities physically
+  multiplayer-complete, does not claim second-client inventory observation, and
+  does not advance any later milestone. Nothing was committed, pushed,
+  published, deployed or changed in production.
 
 ## Initial catalog implementation checkpoint
 

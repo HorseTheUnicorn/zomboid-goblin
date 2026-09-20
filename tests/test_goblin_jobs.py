@@ -67,9 +67,10 @@ class ExtendedJobTests(unittest.TestCase):
         self.lua.execute('''
             player.x,player.y=4.5,0.5;c=curtain(4);curtain(5).opened=false
             p=Jobs.prepare(a,player,'CLOSE_CURTAINS',{});assert(p)
-            assert(not Jobs.update(a,'CLOSE_CURTAINS',p,clock) and c.calls==0 and a.pathCalls==1)
-            a.x=3.5;done,ok=Jobs.update(a,'CLOSE_CURTAINS',p,clock+1000)
-            assert(done and ok and not c.opened and c.calls==1 and p.completed==1)
+            result=Jobs.update(a,'CLOSE_CURTAINS',p,clock)
+            assert(not result.done and result.success and result.code=='MOVING_TO_TARGET' and c.calls==0 and a.pathCalls==1)
+            a.x=3.5;result=Jobs.update(a,'CLOSE_CURTAINS',p,clock+1000)
+            assert(result.done and result.success and result.code=='COMPLETE' and not c.opened and c.calls==1 and p.completed==1)
             Jobs.update(a,'CLOSE_CURTAINS',p,clock+2000);assert(c.calls==1)
             assert(not Curtains.prepare(a,player,{}))
         ''')
@@ -222,10 +223,11 @@ class ExtendedJobTests(unittest.TestCase):
             p=Craft.prepare(a,player,{item={name='SawLogs'}})
             Jobs.update(a,'CRAFT',p,clock)
             goblinServerCraft=function() error('native partial failure') end
-            done,ok=Jobs.update(a,'CRAFT',p,clock+6000);assert(done and not ok)
+            result=Jobs.update(a,'CRAFT',p,clock+6000)
+            assert(result.done and not result.success and result.code=='ENGINE_ERROR')
             Jobs.clear(a);p=farmPayload('water');makePlant(1)
-            Jobs.update(a,'FARM',p,clock);done,ok=Jobs.update(a,'FARM',p,clock+300001)
-            assert(done and not ok)
+            Jobs.update(a,'FARM',p,clock);result=Jobs.update(a,'FARM',p,clock+300001)
+            assert(result.done and not result.success and result.code=='TIMEOUT')
         ''')
 
     def test_plain_chat_routes_commands_without_qwen_and_preserves_negation(self):
@@ -267,6 +269,7 @@ class ExtendedJobTests(unittest.TestCase):
             door={opened=false,calls=0}
             function door:isOpen() return self.opened end
             function door:isLocked() return self.locked==true end
+            function door:setLocked(value) self.locked=value end
             function door:isBarricaded() return false end
             function door:isDestroyed() return false end
             function door:isLockedByKey() return false end
@@ -277,7 +280,8 @@ class ExtendedJobTests(unittest.TestCase):
             a.x=4.5;done,ok=Access.perform(a,p,clock+1000);assert(done and ok and door.calls==1)
             Access.perform(a,p,clock+2000);assert(door.calls==1)
             door.opened=false;door.locked=true
-            p,why=Access.prepare(player,false,clock);assert(not p and why:find('locked'))
+            p,why=Access.prepare(player,false,clock);assert(p and why:find('open'))
+            done,ok=Access.perform(a,p,clock);assert(done and ok and not door.locked and door.calls==2)
             done,ok=Access.perform(a,{edge={}},clock);assert(done and not ok)
         ''')
 

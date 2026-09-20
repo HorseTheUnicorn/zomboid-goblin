@@ -92,7 +92,7 @@ local function setTaskInternal(body, task, payload)
     end
     Work.clear(body)
     Loot.clear(body)
-    Jobs.clear(body)
+    Jobs.clear(body, Jobs.handles(task) and task or nil)
     Transport.clear(body)
     local data = Body.data(body)
     data.GoblinAutonomous = payload.autonomous == true
@@ -248,13 +248,14 @@ function Brain.update(body, timestamp)
         return true
     end
     if Jobs.handles(task) then
-        local done,ok,detail=Jobs.update(body,task,payload,now)
-        if done then
-            local delivery=ok and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
+        local result=Jobs.update(body,task,payload,now)
+        if result.done then
+            local delivery=result.success and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
             Brain.setTask(body,delivery,{owner=Body.owner(body)})
-            data.GoblinWorkStatus=detail
-            Body.say(body,"Comrade, "..tostring(detail)..".")
-            log(body,"COMMAND_RESULT action="..task.." success="..tostring(ok).." detail="..tostring(detail))
+            data.GoblinWorkStatus=result.detail
+            Body.say(body,"Comrade, "..tostring(result.detail)..".")
+            log(body,"COMMAND_RESULT action="..task.." success="..tostring(result.success)
+                .." code="..tostring(result.code).." detail="..tostring(result.detail))
         end
         return true
     end
@@ -303,6 +304,7 @@ function Brain.snapshot(body)
     local result = Body.snapshot(body)
     if result == nil then return nil end
     result.movement = Movement.snapshot(body)
+    result.capability = Jobs.snapshot(body)
     return result
 end
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "inventory_status": "complete_inventory_with_explicit_unimplemented_and_unverified_gaps",
   "baseline_revision": "ac74788f4b8a54f1b0520f173f7963a822c77e49",
-  "engine_tested_capabilities": [],
+  "engine_tested_capabilities": ["FOLLOW"],
   "capabilities": [
     {
       "id": "CRAFT",
@@ -34,6 +34,7 @@
         "offline_allowed": null
       },
       "sources": [
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua", "sha256": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2"},
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCrafting.lua"
         },
@@ -104,7 +105,7 @@
       "target_class": "zombie.iso.objects.IsoDoor; constructed IsoThumpable variants require separate audit",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true, "movement": "Existing Movement.command/update and simulation-owner framework, unchanged"},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "a185a9eb35134ee5aea83c6be0ce999125446241f066b2489b237c4c4b77baac"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseDoor.lua", "sha256": "7fc96ffa96f420640be769b0cc05c45281892aa994a453fc993733ee23fa2c21"},
         {"installed_path": "media/lua/client/ISUI/ISWorldObjectContextMenu.lua", "sha256": "5404e09a64817bfd753ff121c6454bca8de785166ca86f414dab693758dc60a0", "entrypoint": "onOpenCloseDoor"},
         {"installed_path": "media/lua/server/ISObjectClickHandler.lua", "sha256": "1707fd726bbd8544bc9b7159766739cd1ad8972f87f41cecf5ab87ac1436a9fc", "entrypoint": "doClickDoor"}
@@ -122,8 +123,8 @@
       "limitations": ["Constructed IsoThumpable door variants remain a separate unverified target class", "Safehouse denial is unit-tested but not live-tested against a second player's claimed safehouse", "Door save/reload persistence has not yet been accepted"],
       "verified_game": "42.20.4 b0bbce05d5",
       "verified_storm": "42.20.4_2.10.11-SNAPSHOT, registry test only",
-      "unit_tests": ["test_goblin_work.test_unlocked_door_and_window_use_native_entrypoints_and_window_guards_remain", "test_goblin_work.test_managed_door_access_unlocks_every_garage_segment_and_avoids_player_cast", "test_goblin_work.test_managed_door_access_never_unlocks_another_players_safehouse", "test_goblin_lua.test_opened_access_revision_forces_immediate_native_repath", "test_goblin_house.test_route_uses_native_next_edge_and_closes_only_exact_exterior_door"],
-      "multiplayer_evidence": ["2026-09-20 disposable local Build 42.20.4: server-side Storm and two ordinary no-Storm clients. A locked/key-locked ordinary door became open/unlocked; a locked/key-locked four-segment garage group became open/unlocked on server and both clients. The access-revision build resumed client-owned physical movement, emitted no FOLLOW_REJOIN and logged no Goblin Lua error. See reference/pz-milestone1-live-acceptance.json."],
+      "unit_tests": ["test_goblin_work.test_unlocked_door_and_window_use_native_entrypoints_and_window_guards_remain", "test_goblin_work.test_managed_door_access_unlocks_every_garage_segment_and_avoids_player_cast", "test_goblin_work.test_managed_door_access_never_unlocks_another_players_safehouse", "test_goblin_lua.test_opened_access_revision_forces_immediate_native_repath", "test_goblin_house.test_route_uses_native_next_edge_and_closes_only_exact_exterior_door", "test_goblin_house.test_route_finds_locked_player_built_door_without_server_path_next", "test_goblin_house.test_route_accepts_door_reported_only_from_opposite_square"],
+      "multiplayer_evidence": ["2026-09-20 disposable local Build 42.20.4: server-side Storm and two ordinary no-Storm clients. A locked/key-locked ordinary door became open/unlocked; a locked/key-locked four-segment garage group became open/unlocked on server and both clients. The access-revision build resumed client-owned physical movement, emitted no FOLLOW_REJOIN and logged no Goblin Lua error. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20 client-owned path regression: a temporary server-only precondition closed the loaded garage group while Horse's managed actor retained native client movement authority. With no server path-next square, the adjacent-edge fallback opened the group, advanced GoblinAccessRevision from 0 to 1, and the actor physically crossed edge 10708:9366:0|10709:9366 without a Goblin position write or FOLLOW_REJOIN."],
       "complete": false
     },
     {
@@ -135,7 +136,7 @@
       "target_class": "zombie.iso.objects.IsoWindow, not VehicleWindow",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "a185a9eb35134ee5aea83c6be0ce999125446241f066b2489b237c4c4b77baac"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseWindow.lua", "sha256": "8c1f81a01b79e1f95fa9793791f59f0ff4f1aeb6cec561f8366ae7f79ed1bfc7"}
       ],
       "native_api": {"signature": "void IsoWindow.ToggleWindow(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoWindow.html", "compatibility": "LOW_LEVEL_ACTOR_PATH_PRESENT_NOT_ENGINE_TESTED", "evidence": "Player music branch is null-guarded at offset167; native code explicitly branches on IsoZombie at94. Calls sync(I) at147 after changing open state. This is not the vanilla player animation lifecycle."},
@@ -164,8 +165,9 @@
       "target_class": "zombie.iso.objects.IsoCurtain only in current scanner",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Jobs.prepare", "Curtains.prepare/update", "native IsoCurtain.ToggleDoor"], "owner_required_at_prepare": true},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCurtains.lua", "sha256": "715a0a778a46c0fcf05c8445339ba1bc2d4f858085c365f8d9a888151a8934ee"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua", "sha256": "26909dda106adb152bdcc7ba02a6d8f9564950fece1f3271dafbab180864220a"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua", "sha256": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCurtains.lua", "sha256": "e7f3e7edec08499c99f4b258980383988831a7535cd71f8ccf094c2f1e7a8370"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua", "sha256": "271af06a18f972e7fe2e1480fb60080077815bd5d4944b1c3996be6ebffafd5b"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseCurtain.lua", "sha256": "50e1b1bb829b12fef1baed79c64ddac7c8ba424ad982b886334f062852c490b6"}
       ],
       "native_api": {"signature": "void IsoCurtain.ToggleDoor(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoCurtain.html", "compatibility": "NO_PLAYER_CAST_IN_INSPECTED_ENTRYPOINT_NOT_ENGINE_TESTED", "evidence": "Changes open/sprite state, sends character sound from the server, then calls syncIsoObject at153. Inspected entrypoint has no IsoPlayer cast; this does not verify all nested reach/replication paths."},
@@ -255,6 +257,7 @@
       "target_class": "Managed IsoZombie with GoblinNPC=true",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand", "ownBody", "Brain.setTask", "Jobs.prepare", "Vehicles.prepare/update", "World.reserve or goblinServerRepair", "CompanionJobs.repair"], "owner_required_at_prepare": true},
       "sources": [
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua", "sha256": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinVehicles.lua"},
         {"path": "server-java/src/com/horsetheunicorn/goblin/server/CompanionJobs.java"},
         {"installed_path": "media/lua/shared/Vehicles/TimedActions/ISRepairEngine.lua", "sha256": "ded7b43c79738f55036c8800262f4189a5349f7b914b2508e3ec352aaeb616f9"},
@@ -287,7 +290,8 @@
       "target_class": "SPlantGlobalObject on loaded IsoGridSquare; actor is managed IsoZombie",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand", "ownBody", "Brain.setTask", "Jobs.prepare/update", "Farm.prepare/update", "SFarmingSystem and SPlantGlobalObject"], "owner_required_at_prepare": true, "offline_execution_verified": false},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinFarming.lua", "sha256": "2e95b0a6fa9b4ea550ef4fd3f8798901746e1a91cee68ac77951070b657cbc2d"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua", "sha256": "87c5a851ae4bad360773cd42c529e5481abdb87571b48322fe0c5086536f68c2"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinFarming.lua", "sha256": "c1b9812054ef257d04158192db0cfe5c69094eb0a95583d5c552669f267b0e13"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua"},
         {"path": "mod/Contents/mods/GoblinSurvivor/common/media/AnimSets/zombie/idle/goblinFarm.xml"},
         {"installed_path": "media/lua/server/Farming/SFarmingSystem.lua", "sha256": "28576002bbab0e0561c713bc6b8e2d829d6cd7b917f5b8a702cbfcef46b39914"},
@@ -393,33 +397,34 @@
       "id": "FOLLOW",
       "origin": "existing",
       "commands": ["follow"],
-      "evidence": ["REPO_EXISTING", "STATIC_INSTALLED"],
+      "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "ENGINE_TESTED_LOCAL", "MULTIPLAYER_VERIFIED_LOCAL"],
+      "physical_evidence_review": {"kind": "MILESTONE_1_FOLLOW", "path": "reference/pz-milestone1-live-acceptance.json"},
       "semantic_arguments": {"owner": "Server-resolved companion owner; no arbitrary actor selection"},
       "target_class": "Managed IsoZombie following its connected IsoPlayer owner",
       "authority": {"side": "Server selects goal; current native simulation owner drives actor", "route": ["authenticated command", "Brain.setTask", "Movement.command/update", "Motion.followGoal/drive", "client roster followAssist when client owns simulation"]},
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "6b558e023cf1385563f98b44cfe77cd9a42d510727c358babd1a496327031340"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "74f55c68f399568ba6e1daeb25fa8d501934c18c112919983784afb63ca59cba"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "a185a9eb35134ee5aea83c6be0ce999125446241f066b2489b237c4c4b77baac"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "8975d70ebb47614c4d95f5bc72508c1f26b246000b300a28a0e98083c64b2f62"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "b9d1c6df4c5e81b653eb9bbb313fcffc00ddde75e2b52ad701e3f41aeb3d2f66"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/client/GoblinSurvivor/GoblinClient.lua"},
         {"installed_path": "media/lua/client/Vehicles/TimedActions/ISPathFindAction.lua"}
       ],
-      "native_api": {"signatures": ["void IsoZombie.pathToCharacter(IsoGameCharacter)", "void IsoZombie.pathToLocationF(float,float,float)", "UdpConnection IsoZombie.getOwner()", "boolean IsoZombie.isRemoteZombie()"], "evidence": "Installed IsoZombie.pathToCharacter delegates through IsoGameCharacter to PathFindBehavior2.pathToCharacter without an IsoPlayer cast in the inspected entrypoints; live managed-actor acceptance is still required. pathToLocationF can return without submitting a path when allowRepathDelay is positive in path/walk states. Both return void, so a successful protected call is not native path acceptance. Goblin requires observed progress, performs one native repath, then blacklists the route temporarily and reports blocked."},
+      "native_api": {"signatures": ["void IsoZombie.pathToCharacter(IsoGameCharacter)", "void IsoZombie.pathToLocationF(float,float,float)", "UdpConnection IsoZombie.getOwner()", "boolean IsoZombie.isRemoteZombie()"], "evidence": "Installed IsoZombie.pathToCharacter delegates through IsoGameCharacter to PathFindBehavior2.pathToCharacter without an IsoPlayer cast in the inspected entrypoints. Local managed-actor acceptance observed physical open-terrain, building, furniture-detour and staircase movement under native client ownership. pathToLocationF can return without submitting a path when allowRepathDelay is positive in path/walk states. Both return void, so a successful protected call alone is not native path acceptance; Goblin requires observed progress, performs one native repath, then blacklists the route temporarily and reports blocked."},
       "public_documentation_urls": ["https://projectzomboid.com/modding/zombie/characters/IsoZombie.html", "https://projectzomboid.com/modding/zombie/pathfind/PathFindBehavior2.html"],
       "required_items": [],
       "item_recipe_resolution": "No inventory item or recipe is required for following.",
       "material_consumption": "None",
       "permission_checks": ["managed Goblin actor", "owner username resolves online", "server drives only when getOwner is nil", "client drives only when isRemoteZombie is false"],
-      "completion_evidence": "Continuous task, not one-shot completion. Long-distance follow targets the live owner character to avoid stale coordinates. Nearby follow selects and retains one of eight scored slots, excluding unloaded, occupied, burning, doorway and temporarily blacklisted candidates. Disposable Build 42.20.4 multiplayer runs verified that a managed IsoZombie opened the exact closed route door through GoblinAccess and crossed its edge in 3,900 ms, physically followed a running owner 8.72 tiles in 8,033 ms on a pre-verified straight outdoor corridor with a maximum observed step of 0.04 tile and no teleport after measurement began, transferred native simulation authority from horse to nearby unicorn before returning to horse as proximity changed, and physically detoured one tile around a loaded indoor chair without occupying its blocked square or invoking respawn rejoin. Stairs and running-owner traversal through a building remain pending.",
+      "completion_evidence": "Continuous task, not one-shot completion. Long-distance follow targets the live owner character to avoid stale coordinates. Nearby follow selects and retains one of eight scored slots, excluding unloaded, occupied, burning, doorway and temporarily blacklisted candidates. Disposable Build 42.20.4 multiplayer runs verified that a managed IsoZombie opened the exact closed route door through GoblinAccess and crossed its edge in 3,900 ms, physically followed a running owner 8.72 tiles in 8,033 ms on a pre-verified straight outdoor corridor with a maximum observed step of 0.04 tile and no teleport after measurement began, transferred native simulation authority from horse to nearby unicorn before returning to horse as proximity changed, physically detoured one tile around a loaded indoor chair without occupying its blocked square, traversed a real three-tile vanilla staircase up to z1 and back down through fractional stair Z positions, and followed an owner running 14.386 tiles through a loaded building using native ClimbThroughWindowState and PathFindState before closing to a 3.823-tile gap. These measurements did not invoke respawn rejoin or write Goblin position.",
       "replication_save_strategy": "Server roster publishes movement goal and physical state; simulation owner uses native zombie movement replication. Client recomputes FOLLOW goal from owner. Read-only server telemetry now reports the installed engine's getOwnerPlayer username; a two-client handoff horse -> unicorn -> horse was observed without writing ownership.",
       "rollback_reconciliation": "Clears local runtime path state on ownership loss; stops native path only on controlling peer. No-progress performs one native repath, then temporarily blacklists the route and returns blocked without teleport. Respawn rejoin remains a separate expiring sequence-gated teleport.",
-      "limitations": ["Stable slots are per companion; live multi-companion collision behavior is not yet accepted", "Path acceptance is inferred from observed movement because the native path methods return void", "Facing/animation and running depend on custom zombie-state safeguards", "Closed-door, open-terrain running and an indoor-chair detour are accepted locally, but stairs and running-owner traversal through a building remain unverified", "No proof of zero-player simulation; PauseEmpty and unloaded cells remain separate constraints"],
-      "verified_game": "42.20.4 b0bbce05d5; installed bytecode inspected and local multiplayer closed-door plus open-terrain running FOLLOW physically accepted",
-      "verified_storm": "42.20.4_2.10.11-SNAPSHOT, no live ownership-handoff acceptance",
+      "limitations": ["Stable slots are per companion; local two-player/two-Goblin separation is accepted, but exhaustive crowding behavior is not", "Path acceptance is inferred from observed movement because the native path methods return void", "Facing/animation and running depend on custom zombie-state safeguards", "No proof of zero-player simulation; PauseEmpty and unloaded cells remain separate constraints"],
+      "verified_game": "42.20.4 b0bbce05d5; installed bytecode inspected; local multiplayer closed-door, open-terrain running, indoor-detour, staircase and running-owner building FOLLOW physically accepted",
+      "verified_storm": "42.20.4_2.10.11-SNAPSHOT; local server-side-Storm two-client acceptance observed native horse -> unicorn -> horse ownership transfer without client-side Storm",
       "unit_tests": ["test_goblin_lua.test_follow_stops_at_three_tiles_and_resumes_when_owner_moves", "test_goblin_lua.test_follow_mirrors_owner_running_and_sprinting_without_waiting_for_a_large_gap", "test_goblin_lua.test_long_follow_uses_native_character_target_and_keeps_one_stable_slot_nearby", "test_goblin_lua.test_follow_slot_rejects_occupied_preference_and_selects_an_alternate", "test_goblin_lua.test_stuck_recovery_repaths_once_blacklists_then_expires_without_looping", "test_goblin_companion_contract.test_client_and_server_use_native_follow_pathing"],
       "completion_evidence_required": ["Stairs with observed position deltas", "Stable separation and multiple companions", "Running-owner building traversal", "Respawn-only rejoin cannot replay"],
-      "multiplayer_evidence": ["2026-09-19 disposable local Build 42.20.4: horse and unicorn fully connected concurrently; exactly one named, visualized and persistent Goblin was present for each owner; server telemetry reported simulation_owner=client for both.", "2026-09-19 23:11 EDT: ordinary no-Storm clients mossclaw_7a3d and scrapfang_b841 each had one generation-1 Goblin on a server-side-Storm session. The mossclaw Goblin opened a door verified closed on edge 10995,9701,0|10995,9700,0 through the real GoblinAccess boundary and crossed in 3,900 ms. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: ordinary no-Storm client pathfang_f2a1 ran 17.01 tiles on a pre-verified straight outdoor corridor; its Goblin physically moved 8.72 tiles in 8,033 ms, with maximum observed step 0.04 tile and no teleport after measurement began. Stairs and running through a building remain pending. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: read-only dedicated-server getOwnerPlayer telemetry observed Horse's managed IsoZombie transfer native authority horse -> unicorn when unicorn was 0.49 tile away and horse was 20.41 tiles away, then return to horse after physical follow. Temporary localhost RCON moved players only; no Goblin position or ownership field was written. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: a loaded chair at 10815,9986,0 was confirmed blocked. Horse's Goblin moved from its south side to its north side via the free square one tile west, never occupied the chair square, remained under horse client authority and emitted no FOLLOW_REJOIN during measurement. See reference/pz-milestone1-live-acceptance.json."],
-      "complete": false
+      "multiplayer_evidence": ["2026-09-19 disposable local Build 42.20.4: horse and unicorn fully connected concurrently; exactly one named, visualized and persistent Goblin was present for each owner; server telemetry reported simulation_owner=client for both.", "2026-09-19 23:11 EDT: ordinary no-Storm clients mossclaw_7a3d and scrapfang_b841 each had one generation-1 Goblin on a server-side-Storm session. The mossclaw Goblin opened a door verified closed on edge 10995,9701,0|10995,9700,0 through the real GoblinAccess boundary and crossed in 3,900 ms. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: ordinary no-Storm client pathfang_f2a1 ran 17.01 tiles on a pre-verified straight outdoor corridor; its Goblin physically moved 8.72 tiles in 8,033 ms, with maximum observed step 0.04 tile and no teleport after measurement began. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: read-only dedicated-server getOwnerPlayer telemetry observed Horse's managed IsoZombie transfer native authority horse -> unicorn when unicorn was 0.49 tile away and horse was 20.41 tiles away, then return to horse after physical follow. Temporary localhost RCON moved players only; no Goblin position or ownership field was written. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: a loaded chair at 10815,9986,0 was confirmed blocked. Horse's Goblin moved from its south side to its north side via the free square one tile west, never occupied the chair square, remained under horse client authority and emitted no FOLLOW_REJOIN during measurement. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: Horse's Goblin traversed the loaded vanilla staircase from z0 to the z1 landing and descended through fractional stair Z positions to z0 under native horse-client ownership, with respawn rejoin inactive and no Goblin position write. See reference/pz-milestone1-live-acceptance.json.", "2026-09-20: Horse ran 14.386 tiles through a loaded building; Goblin followed via native ClimbThroughWindowState and PathFindState and closed to a 3.823-tile stable gap without FOLLOW_REJOIN or a Goblin position write. See reference/pz-milestone1-live-acceptance.json."],
+      "complete": true
     },
     {
       "id": "MOVE_TO",
@@ -429,7 +434,7 @@
       "semantic_arguments": {"internal_payload": "x,y,z and optional radius supplied by server work/navigation code; not an advertised raw-coordinate chat command"},
       "target_class": "Managed IsoZombie moving to a server-selected location",
       "authority": {"side": "Server goal selection, native simulation owner movement", "route": ["server work adapter", "Movement.command", "Movement.update", "Access.update", "Motion.drive"]},
-      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "6b558e023cf1385563f98b44cfe77cd9a42d510727c358babd1a496327031340"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "74f55c68f399568ba6e1daeb25fa8d501934c18c112919983784afb63ca59cba"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "3baa2b8a89072d52e4dedb31766e5fb2816f93db89dea72666bc7292697b0e0d"}],
+      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "6b558e023cf1385563f98b44cfe77cd9a42d510727c358babd1a496327031340"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "8975d70ebb47614c4d95f5bc72508c1f26b246000b300a28a0e98083c64b2f62"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "3baa2b8a89072d52e4dedb31766e5fb2816f93db89dea72666bc7292697b0e0d"}],
       "native_api": {"signature": "void IsoZombie.pathToLocationF(float,float,float)", "compatibility": "NATIVE_ZOMBIE_ENTRYPOINT_NOT_ARRIVAL_PROOF"},
       "public_documentation_urls": ["https://projectzomboid.com/modding/zombie/characters/IsoZombie.html", "https://projectzomboid.com/modding/zombie/pathfind/PathFindBehavior2.html"],
       "required_items": [],
@@ -566,7 +571,7 @@
       "semantic_arguments": {"requestedType": "Ignored by both legacy and startup-overridden Body.ensureWeapon; not arbitrary-item equipping"},
       "target_class": "Managed IsoZombie inventory and hand equipment",
       "authority": {"side": "server", "route": ["Bootstrap.start installs Defense before Runtime.start", "Defense.installWeaponOverride replaces Body.ensureWeapon/refillWeapon", "authenticated own-companion command or invariant maintenance", "Brain.setTask", "overridden Body.ensureWeapon"]},
-      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinBody.lua", "sha256": "29e748bb45955c8947c17e446bae8fb8d50465e2bb9fc9501ba17ab78b3578cf"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/Config.lua"}],
+      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinBody.lua", "sha256": "f8a74cf2d692957e1d0b0e372a79c5338177ac452d6512a71e133678fd8ac20f"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/Config.lua"}],
       "native_api": {"entrypoints": ["ItemContainer.AddItem(fullType)", "IsoGameCharacter.setPrimaryHandItem", "IsoGameCharacter.setSecondaryHandItem", "resetEquippedHandsModels"], "compatibility": "EXISTING_HARDCODED_EQUIPMENT_PATH_NOT_GENERAL_EQUIP"},
       "public_documentation_urls": ["https://projectzomboid.com/modding/zombie/characters/IsoGameCharacter.html", "https://projectzomboid.com/modding/zombie/inventory/ItemContainer.html"],
       "required_items": ["Base.DoubleBarrelShotgun"],

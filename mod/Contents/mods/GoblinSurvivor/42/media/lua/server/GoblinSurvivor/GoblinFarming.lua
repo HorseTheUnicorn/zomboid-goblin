@@ -84,32 +84,32 @@ local function target(payload,job)
 end
 
 function Farm.update(body,payload,job,now)
-    if not system() then return true,false,"farming system became unavailable" end
+    if not system() then return true,false,"farming system became unavailable","ENGINE_ERROR" end
     if not job.square then
         job.square,job.operation=target(payload,job);job.targetAt=now
         if not job.square then
-            return true,true,"farm pass finished; "..tostring(payload.completed or 0).." operations completed"
+            return true,true,"farm pass finished; "..tostring(payload.completed or 0).." operations completed","COMPLETE"
         end
     end
     local square,op=job.square,job.operation
-    if World.square(World.point(square))~=square then return true,false,"farm tile unloaded; job stopped" end
+    if World.square(World.point(square))~=square then return true,false,"farm tile unloaded; job stopped","TARGET_UNLOADED" end
     local plant=system():getLuaObjectOnSquare(square)
     if op~="plow" and operation(plant,payload.job,payload.crop)~=op then
         job.square=nil;job.readyAt=nil;return false
     end
     local tool=Tools.ensure(body,op=="harvest" and (properties()[plant.typeOfSeed] or {}).scytheHarvest
         and "Base.Scythe" or "Base.HandShovel")
-    if not tool then return true,false,"the farming tool could not load" end
+    if not tool then return true,false,"the farming tool could not load","MISSING_TOOL" end
     local supply
     if op=="sow" then
         local props=properties()[payload.crop]
         local accepted={}
         for _,kind in ipairs(props.seedTypes or {props.seedName}) do accepted[kind]=true end
         supply=Support.supply(body,job,payload.anchor,function(i) return accepted[World.fullType(i)]==true end,now,payload.crop.." seeds")
-        if not supply then return false end
+        if not supply then return false,true,"waiting for "..payload.crop.." seeds","WAITING_FOR_MATERIAL" end
     elseif op=="water" then
         supply=Support.supply(body,job,payload.anchor,function(i) return Farm.waterUses(i)>0 end,now,"a container of water")
-        if not supply then return false end
+        if not supply then return false,true,"waiting for a container of water","WAITING_FOR_MATERIAL" end
     end
     if now-job.targetAt>60000 and not World.reachable(body,square) then
         job.skipped[square:getX()..":"..square:getY()]=true;job.square=nil;job.readyAt=nil
@@ -120,14 +120,14 @@ function Farm.update(body,payload,job,now)
     -- Revalidate immediately before mutation; never replay a partially executed operation.
     job.readyAt=nil
     if op=="plow" then
-        if not Farm.canPlow(square) then return true,false,"the marked dirt tile is no longer empty" end
+        if not Farm.canPlow(square) then return true,false,"the marked dirt tile is no longer empty","TARGET_CHANGED" end
         call(system(),"removeTallGrass",square)
         system():plow(square)
-        if not system():getLuaObjectOnSquare(square) then return true,false,"the furrow was not created" end
+        if not system():getLuaObjectOnSquare(square) then return true,false,"the furrow was not created","ENGINE_ERROR" end
     elseif op=="sow" then
-        if not World.reserve(body,{supply}) then return true,false,"the seed moved before planting" end
+        if not World.reserve(body,{supply}) then return true,false,"the seed moved before planting","TARGET_CHANGED" end
         plant:seed(payload.crop,body:getPerkLevel(Perks.Farming))
-        if plant.state~="seeded" then return true,false,"planting did not finish; inspect the plot before retrying" end
+        if plant.state~="seeded" then return true,false,"planting did not finish; inspect the plot before retrying","ENGINE_ERROR" end
     elseif op=="water" then
         local uses,fluid,unit=Farm.waterUses(supply)
         if uses<1 then return false end
@@ -137,11 +137,11 @@ function Farm.update(body,payload,job,now)
     elseif op=="harvest" then
         if not plant.hasVegetable then job.square=nil;return false end
         system():harvest(plant,body)
-        if plant.hasVegetable then return true,false,"harvest was not confirmed; job stopped" end
+        if plant.hasVegetable then return true,false,"harvest was not confirmed; job stopped","ENGINE_ERROR" end
     end
     payload.completed=(payload.completed or 0)+1
     job.square=nil;Body.data(body).GoblinAction=""
-    if op=="plow" then return true,true,"one furrow dug at your marked tile" end
+    if op=="plow" then return true,true,"one furrow dug at your marked tile","COMPLETE" end
     return false
 end
 

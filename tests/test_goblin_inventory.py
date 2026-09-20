@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -87,6 +88,46 @@ class InventoryTests(unittest.TestCase):
         self.inventory["capabilities"][0]["complete"] = True
         self.inventory["capabilities"][0]["multiplayer_evidence"] = ["it works"]
         with self.assertRaisesRegex(CatalogError, "physical evidence review"): self.check()
+
+    def test_follow_requires_field_checked_structured_physical_evidence(self):
+        record = self.inventory["capabilities"][0]
+        record.update(id="FOLLOW", complete=True, physical_evidence_review={
+            "kind": "MILESTONE_1_FOLLOW", "path": "acceptance.json",
+        })
+        self.commands["existing_goblin_chat"]["commands"][0]["task"] = "FOLLOW"
+        acceptance = {
+            "schema_version": 1,
+            "clients": [
+                {"ordinary_executable": True, "storm": False, "goblin_id": "one"},
+                {"ordinary_executable": True, "storm": False, "goblin_id": "two"},
+            ],
+            "milestone_1": {"result": "pass", "requirements": [
+                "stable follow slots", "native follow investigation",
+                "expanded work approach search", "staged stuck recovery",
+                "navigation telemetry", "temporary route blacklist",
+            ], "live_scenarios_accepted": [
+                "follow through open terrain", "follow through house doorway",
+                "follow around furniture", "follow upstairs/downstairs",
+                "owner runs through building", "work target surrounded on some sides",
+                "path fails and recovers without teleport", "two players plus two Goblins",
+            ]},
+            "closed_door_follow": {"result": "pass"},
+            "durable_radius_two_staging": {"result": "pass"},
+            "open_terrain_running_follow": {"result": "pass", "teleport_after_measurement": False},
+            "native_no_progress_recovery": {"result": "pass", "native_repath_attempts": 1, "teleport": False},
+            "native_simulation_ownership_handoff": {"result": "pass", "staging": {"ownership_write": False, "goblin_teleport": False}},
+            "furniture_detour": {"result": "pass", "occupied_obstacle_square": False, "follow_rejoin_during_measurement": False, "goblin_position_write": False},
+            "stair_follow": {"result": "pass", "ascent_observations": [{"actor": {"z": 0.0}}, {"actor": {"z": 1.0}}], "descent_owner_client_trace": [{"actor": {"z": 0.2}}], "follow_rejoin_during_measurement": False, "goblin_position_write": False},
+            "running_owner_building_follow": {"result": "pass", "owner_run": {"delta_tiles": 14}, "final_gap_tiles": 3.8, "actor_route": [{"native_state": "ClimbThroughWindowState"}, {"native_state": "PathFindState"}], "follow_rejoin_during_measurement": False, "goblin_position_write": False},
+        }
+        (self.root / "acceptance.json").write_text(
+            json.dumps(acceptance), encoding="utf-8")
+        self.assertEqual(self.check(), (1, 0, 1))
+        acceptance["stair_follow"]["goblin_position_write"] = True
+        (self.root / "acceptance.json").write_text(
+            json.dumps(acceptance), encoding="utf-8")
+        with self.assertRaisesRegex(CatalogError, "constraints failed"):
+            self.check()
 
     def test_reject_engine_tested_claim_without_review(self):
         self.inventory["engine_tested_capabilities"] = ["EXISTING"]

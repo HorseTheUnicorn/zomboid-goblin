@@ -157,6 +157,60 @@ class HouseAccessTests(unittest.TestCase):
             """
         )
 
+    def test_route_finds_locked_player_built_door_without_server_path_next(self):
+        self.run_lua(
+            """
+            Access=require('GoblinSurvivor/GoblinAccess')
+            local near=cell:getGridSquare(4,4,0);local north=cell:getGridSquare(4,3,0)
+            local door={opened=false,locked=true,keyLocked=true,calls=0,syncs=0,square=near}
+            function door:isDoor() return true end
+            function door:getSquare() return self.square end
+            function door:getNorth() return true end
+            function door:isOpen() return self.opened end
+            function door:isLocked() return self.locked end
+            function door:setLocked(value) self.locked=value end
+            function door:isLockedByKey() return self.keyLocked end
+            function door:setLockedByKey(value) self.keyLocked=value end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:canInteractWith(who) return who==a and not self.locked and not self.keyLocked end
+            function door:syncIsoObject() self.syncs=self.syncs+1 end
+            function door:ToggleDoor(who)
+                assert(who==a and self:canInteractWith(who))
+                self.calls=self.calls+1;self.opened=not self.opened
+            end
+            function near:getSpecialObjects() return list({door}) end
+            -- The simulated server has no native path-next fields. The useful
+            -- door is lateral to the direct goal, matching a client-owned
+            -- path that must first leave through the north edge.
+            function a:getPathFindBehavior2() return {} end
+            a.x,a.y=4.5,4.05
+            assert(Access.update(a,{x=8.5,y=4.5,z=0},clock,{building=houseBuilding}))
+            assert(door.opened and not door.locked and not door.keyLocked)
+            assert(door.calls==1 and door.syncs>=1 and a.data.GoblinAccessRevision==1)
+            """
+        )
+
+    def test_route_accepts_door_reported_only_from_opposite_square(self):
+        self.run_lua(
+            """
+            Access=require('GoblinSurvivor/GoblinAccess')
+            local left=cell:getGridSquare(2,2,0);local right=cell:getGridSquare(3,2,0)
+            local door={opened=false,calls=0}
+            function door:isOpen() return self.opened end
+            function door:isLocked() return false end
+            function door:isLockedByKey() return false end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:ToggleDoor(who) assert(who==a);self.calls=self.calls+1;self.opened=true end
+            function right:getDoorTo(other) if other==left then return door end end
+            function a:getPathFindBehavior2() return {} end
+            a.x,a.y=2.9,2.5
+            assert(Access.update(a,{x=5.5,y=2.5,z=0},clock,{building=houseBuilding}))
+            assert(door.opened and door.calls==1)
+            """
+        )
+
     def test_initially_open_interior_door_is_preserved_but_goblin_opened_interior_is_restored(self):
         self.run_lua(
             """
