@@ -110,7 +110,8 @@ local function handle(player, rawText)
     end
 
     if command == "follow" or command == "come" or command == "regroup" then
-        local ok, result = Brain.setTask(body, Constants.TASK.FOLLOW, { owner = playerName(player) })
+        local ok, result = Brain.setTask(body, Constants.TASK.FOLLOW,
+            { owner = playerName(player), manual = true })
         reply(player, ok and "Following you." or result)
         return
     end

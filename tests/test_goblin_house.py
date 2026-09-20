@@ -136,9 +136,8 @@ class HouseAccessTests(unittest.TestCase):
             function door:isDestroyed() return false end;function door:isLockedByKey() return false end
             function door:ToggleDoor(who) self.calls=self.calls+1;self.opened=not self.opened end
             function inside:getDoorTo(other) if other==outside then return door end end
-            local behavior={}
-            function behavior:pathNextIsSet() return true end
-            function behavior:pathNextX() return 7 end;function behavior:pathNextY() return 1 end
+            -- Exact Build 42 exposes these as public PathFindBehavior2 fields.
+            local behavior={pathNextIsSet=true,pathNextX=7,pathNextY=1}
             function a:getPathFindBehavior2() return behavior end
             a.x,a.y=6.5,1.5
             local scope={building=houseBuilding}

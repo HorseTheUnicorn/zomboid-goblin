@@ -27,6 +27,10 @@ function actor(x, y, z)
     function a:setPath2(v) end
     function a:setPathing(v) end
     function a:pathToLocationF(x,y,z) self.pathCalls=self.pathCalls+1; self.destination={x=x,y=y,z=z} end
+    function a:pathToCharacter(target)
+        self.pathCalls=self.pathCalls+1;self.characterPathCalls=(self.characterPathCalls or 0)+1
+        self.destination={x=target.x,y=target.y,z=target.z};self.pathTarget=target
+    end
     function a:getPathFindBehavior2() return {cancel=function() a.cancelCalls=a.cancelCalls+1 end} end
     function a:getItemVisuals() return self.visuals end
     a.human = {skin='MaleBody01',hair='RandomHair',beard='RandomBeard'}

@@ -3,6 +3,7 @@ package com.horsetheunicorn.goblin.server;
 import io.pzstorm.storm.event.core.StormEventDispatcher;
 import io.pzstorm.storm.event.core.SubscribeEvent;
 import io.pzstorm.storm.event.lua.OnServerStartedEvent;
+import io.pzstorm.storm.event.lua.OnTickEvenPausedEvent;
 import io.pzstorm.storm.event.zomboid.OnLuaManagerInitEvent;
 import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.util.StormEnv;
@@ -25,7 +26,14 @@ public final class GoblinServerMod implements ZomboidMod {
     }
 
     @SubscribeEvent public void luaReady(OnLuaManagerInitEvent event) { expose(); }
-    @SubscribeEvent public void serverReady(OnServerStartedEvent event) { expose(); }
+    @SubscribeEvent public void serverReady(OnServerStartedEvent event) {
+        expose();
+    }
+    @SubscribeEvent public void tick(OnTickEvenPausedEvent event) {
+        // Reference export is JVM-property opt-in and waits until the vanilla
+        // OnServerStarted Lua callbacks have initialized their effective tables.
+        RuntimeCatalogExporter.exportOnce();
+    }
 
     private static void expose() {
         if (!StormEnv.isStormServer() || LuaManager.env == null || LuaManager.exposer == null) return;

@@ -1,0 +1,7 @@
+{
+  "authoring_sha256": "6361f76fb226c561d99b095d0648688e37d973092d40f5df1951cc84ffc7af89",
+  "runtime_sha256": "6361f76fb226c561d99b095d0648688e37d973092d40f5df1951cc84ffc7af89",
+  "uv_v_flipped": false,
+  "all_fbx_bytes_verified_unchanged": true,
+  "texture_pipeline": "Single costume ItemVisual, m_MasksFolder=none; PZ handles UV origin conversion."
+}

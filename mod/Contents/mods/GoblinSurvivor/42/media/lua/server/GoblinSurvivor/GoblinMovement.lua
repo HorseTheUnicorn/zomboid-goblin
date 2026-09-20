@@ -16,12 +16,12 @@ local function findOwner(body)
     end
 end
 
-local function targetFor(body, record)
+local function targetFor(body, record, timestamp)
     if record.task == Constants.TASK.FOLLOW then
         local owner = findOwner(body)
         if not owner then return nil, 0, "owner offline" end
-        local target, gap = Motion.followGoal(body, owner)
-        return target, gap, target and "pathing" or "arrived", owner
+        local target, gap, navigation = Motion.followGoal(body, owner, timestamp)
+        return target, gap, target and "pathing" or "arrived", owner, navigation
     end
     local target = record.payload
     if record.task == Constants.TASK.RETURN_TO_BASE then
@@ -53,6 +53,7 @@ end
 function Movement.command(body, task, payload, scope)
     if not Body.isGoblin(body) then return false, "body is not Goblin" end
     Movement.clear(body)
+    if task ~= Constants.TASK.FOLLOW then Motion.clearFollowSlot(body) end
     if task ~= Constants.TASK.FOLLOW and task ~= Constants.TASK.MOVE_TO and task ~= Constants.TASK.RETURN_TO_BASE then
         return true, "task does not move"
     end
@@ -67,7 +68,8 @@ function Movement.update(body, timestamp)
     if not Body.isGoblin(body) then return false, "body is not Goblin" end
     local record = Movement.active[body]
     if not record then return true, "idle" end
-    local target, gap, detail, owner = targetFor(body, record)
+    timestamp = timestamp or getTimestampMs()
+    local target, gap, detail, owner, navigation = targetFor(body, record, timestamp)
     if not target then
         if record.task==Constants.TASK.FOLLOW and detail=="arrived" then record.payload.rejoin_run=nil end
         Movement.clear(body)
@@ -78,18 +80,26 @@ function Movement.update(body, timestamp)
     local move = Motion.moveType(target, gap, owner)
     if record.task==Constants.TASK.FOLLOW and record.payload.rejoin_run then move=Constants.MOVE_TYPE.RUN end
     record.goal, record.moveType = target, move
-    Access.update(body,target,timestamp or getTimestampMs(),record.scope)
+    local obstructionCleared = Access.update(body,target,timestamp,record.scope)
     Body.data(body).GoblinMovementGoal = { x = target.x, y = target.y, z = target.z }
     Body.setPhysicalState(body,
         record.task == Constants.TASK.RETURN_TO_BASE and Constants.PHYSICAL.RETURNING or Constants.PHYSICAL.PATHING,
         move, Constants.COMBAT.NONE)
-    return Motion.drive(body, target, move, timestamp or getTimestampMs())
+    navigation = navigation or {
+        goal_type = record.payload.approach_type or "location",
+        goal_key = record.payload.goal_key,
+        blacklist_kind = record.payload.blacklist_kind
+    }
+    navigation.obstruction_cleared = obstructionCleared == true
+    record.navigation = navigation
+    return Motion.drive(body, target, move, timestamp, navigation)
 end
 
 function Movement.snapshot(body)
     local record = Movement.active[body]
     if not record then return nil end
-    return { task = record.task, move_type = record.moveType, goal = record.goal }
+    return { task = record.task, move_type = record.moveType, goal = record.goal,
+        navigation = Motion.snapshot(body) }
 end
 
 return Movement

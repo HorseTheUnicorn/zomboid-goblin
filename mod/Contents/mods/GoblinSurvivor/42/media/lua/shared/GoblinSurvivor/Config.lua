@@ -54,6 +54,7 @@ local Config = {
     recoveryHitPulseSeconds = 0.15,
     stuckTimeoutSeconds = 6.0,
     maxRecoveryAttempts = 4,
+    navigationBlacklistSeconds = 30,
 
     lootRadius = 8,
     lootScanSeconds = 2.0,
@@ -188,6 +189,7 @@ function Config.refresh()
     Config.rangedCooldownSeconds = boundedNumber(option("GoblinRangedCooldownSeconds", Config.rangedCooldownSeconds), Config.rangedCooldownSeconds, 0.2, 5)
     Config.stuckTimeoutSeconds = boundedNumber(option("GoblinStuckTimeoutSeconds", Config.stuckTimeoutSeconds), Config.stuckTimeoutSeconds, 2, 60)
     Config.maxRecoveryAttempts = boundedInteger(option("GoblinMaxRecoveryAttempts", Config.maxRecoveryAttempts), Config.maxRecoveryAttempts, 0, 8)
+    Config.navigationBlacklistSeconds = boundedNumber(option("GoblinNavigationBlacklistSeconds", Config.navigationBlacklistSeconds), Config.navigationBlacklistSeconds, 5, 300)
     Config.lootRadius = boundedNumber(option("GoblinLootRadius", Config.lootRadius), Config.lootRadius, 1, 20)
     Config.lootScanSeconds = boundedNumber(option("GoblinLootScanSeconds", Config.lootScanSeconds), Config.lootScanSeconds, 0.5, 30)
     Config.lootMaxItemsPerTask = boundedInteger(option("GoblinLootMaxItemsPerTask", Config.lootMaxItemsPerTask), Config.lootMaxItemsPerTask, 1, 32)

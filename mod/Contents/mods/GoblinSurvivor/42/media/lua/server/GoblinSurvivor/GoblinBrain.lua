@@ -166,7 +166,7 @@ function Brain.execute(message, body)
     if action == "EQUIP" then return Brain.setTask(body, Constants.TASK.EQUIP, {}) end
     if action == "WAIT" or action == "NOOP" or action == "HOLD_POSITION" or action == "REST" then return Brain.setTask(body, Constants.TASK.WAIT, {autonomous=message.autonomous==true}) end
     if action == "FOLLOW" or action == "FOLLOW_GOBLIN" or action == "REGROUP" or action == "HELP" or action == "DEFEND_PLAYER" then
-        return Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body) })
+        return Brain.setTask(body, Constants.TASK.FOLLOW, { owner = Body.owner(body), manual = true })
     end
     if action == "SET_BASE" or action == "REMEMBER_BASE" then return Brain.setTask(body, Constants.TASK.SET_BASE, {}) end
     if action == "SECURE_BASE" or action == "FORTIFY" then return Brain.setTask(body, Constants.TASK.FORTIFY, {autonomous=message.autonomous==true}) end

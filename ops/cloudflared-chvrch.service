@@ -1,0 +1,19 @@
+[Unit]
+Description=CHVRCH Goblin map Cloudflare Tunnel
+After=network-online.target goblin-zomboid-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredential=tunnel-token:/etc/cloudflared/chvrch.token
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run --token-file %d/tunnel-token
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

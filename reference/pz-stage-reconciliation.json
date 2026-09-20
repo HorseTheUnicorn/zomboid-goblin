@@ -1,0 +1,1400 @@
+{
+  "schema_version": 1,
+  "kind": "pz-stage-reconciliation",
+  "export_timestamp": "2026-09-19T20:52:13.906230400Z",
+  "game_build": "42.20.4 b0bbce05d5",
+  "runtime_enabled_mods_fingerprint": "4f99f45372dfce785c7d6acddf62ae45333574a16575218e514548b24910596e",
+  "captured_selected_mods_fingerprint": "749a839d215ae7c2f6a4a57ec23fc17e8d5294c33995d067cedc48b7d7869bfa",
+  "captured_selected_mods": [
+    {
+      "mod_id": "storm-core-b42-dev",
+      "sha256": "01f248d8a86dd2a11c02c78a8c43ec7170f07072cf142beb36c3e2cfae94236b",
+      "roots": [
+        {
+          "bytes": 35149,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "228096155f3633c9fe68ff517b6c9fdb8cf1a3e582f257078e584cb7b83e4e8c",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 19864319,
+          "file_count": 32,
+          "path": "42",
+          "sha256": "8f49b27810cd0c7d748dcfb80f5552559a5f577b8de55e98be3f7a1b350d184d",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "FH",
+      "sha256": "13d94033720d5d32a767024d05b41a1a515e396abfd0c5106a2e621fb7cd16b0",
+      "roots": [
+        {
+          "bytes": 4919059,
+          "file_count": 279,
+          "path": "common",
+          "sha256": "33ba954fc57f2eeb5519a3884deab5a03b865902e20b86c4efd12990d8307191",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 116430,
+          "file_count": 3,
+          "path": "42",
+          "sha256": "7d4c3c97b44f2514d0d4d67a20c2e63253baa990a3c0d423213a983afc7509e6",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "P4HasBeenRead",
+      "sha256": "f0e5691444fbffb1dbf48f0caf322758c9f2a0db3043144b8eda8d4cbce22db2",
+      "roots": [
+        {
+          "bytes": 1819,
+          "file_count": 7,
+          "path": "common",
+          "sha256": "898e191dc798ba4baccb9d02975142e15631ddc096b9b3841246fa0c5e9bd88f",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 313928,
+          "file_count": 20,
+          "path": "42.15",
+          "sha256": "696e2cdd7b8cd2c7368dd73ea73f37e36bad0cc34064ebb88a8a7fb952d57dc7",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "IMWSEnergyDrinksNEW",
+      "sha256": "5023bf3282e89210bc252daf4c1cd64efbea7d93979f28d44decf556ed9f66e1",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 348695,
+          "file_count": 38,
+          "path": "42.16",
+          "sha256": "9aeb16a0912c6a813ee842edde5b97df23771bd57236fb8303d13cf8b11e300f",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "IMWSEnergyDrinks",
+      "sha256": "4ebf650aceacac6bf99bde820a00aacefd19d6a24a0ba445029601049f5bcc79",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 424517,
+          "file_count": 34,
+          "path": "42.0",
+          "sha256": "af3af728e5548cb297ecddfec5ed2cabbd08091cc5f74e81534e48cbe9542de3",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "P4TidyUpMeister",
+      "sha256": "de0c64f358ff04d77310e56bc97a9b63d8260cce40d7273dafeb798b1b113806",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 258381,
+          "file_count": 24,
+          "path": "42.20",
+          "sha256": "951f3748775529b2e846b3cb2ab14ddb591a5b97d08a64d625defb3c08a986be",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ProximityInventory",
+      "sha256": "63e34a854d3119e513ad179256fc158502ad0646adb475d05fb282ba066e1116",
+      "roots": [
+        {
+          "bytes": 365518,
+          "file_count": 42,
+          "path": "common",
+          "sha256": "7ebc400882deee3274647df16c430dc07a9363681959e64906030e412708c596",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 146,
+          "file_count": 1,
+          "path": "42",
+          "sha256": "c2aba2135aad7e14a4f7339ed6d66285956f28f725fe0c1c3dbbb7f77aa7b71d",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "RainCleansBlood",
+      "sha256": "7acd9b7e3d57e913cec9af9d9d875b8668cd74f36139b5b63a87a52113435887",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "59616ead53b7a6f7dbe79c422d3a1e4eaf871c47fd432fd2cf9e2a78c2ab4bce",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 1175867,
+          "file_count": 20,
+          "path": "42",
+          "sha256": "95991ee0dc8143a0c81d33aa3e83ef414dcc54df050cc132a35968ac3da7b8c0",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "AMMS_Standalone",
+      "sha256": "2ba7a2fa62ce6da9ea68841dd1823145cc372fdbabb9c33bde197cc445614edd",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 904714,
+          "file_count": 104,
+          "path": "42",
+          "sha256": "08e53b64d81d88465933cdebffc3c67bc3c4f539a47d396cd7854586710e7f05",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ETO_B",
+      "sha256": "1ecd62427673c9cc588b0b6b9407930adb87d111b493714d1570dd16337bf907",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 142102953,
+          "file_count": 6143,
+          "path": "42",
+          "sha256": "2a0509707f16f7b4a491cc8aac6ae6627cc05ced64f762bfbe302b4a6a790668",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ETO_P",
+      "sha256": "a6cf730d2f591037b81dc67e49d5e05e87088d0082a2103346cc68191d451b72",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 125931474,
+          "file_count": 6143,
+          "path": "42",
+          "sha256": "c9f598f694507b3a9d6effef7c24eae40b2da5b69b6f8e2e5e3a88fb39d9101f",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "AatheomEMVFSM",
+      "sha256": "5881a0be308f0153fa39ae06b3d4593dcdac3d4dc482ef29c588b691bf0cf90a",
+      "roots": [
+        {
+          "bytes": 769968,
+          "file_count": 40,
+          "path": "common",
+          "sha256": "6ce87979b9902f61bf1ad4e731361343a483a9009f9412aa63ae45e2ca47fc95",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 683651,
+          "file_count": 5,
+          "path": "42",
+          "sha256": "1789c959733289a291662b6cab59162b199322b259b7dd3134f6d9af2341ee99",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "DetailedDescriptionsForOccupationsAndTraits",
+      "sha256": "fc105a03b960144e92228a52838ac6bdf83abd71af8e62e7aa10edc97baa9deb",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 565679,
+          "file_count": 17,
+          "path": "42",
+          "sha256": "24bb551e0dc02dbb1de74b660e1e37b20f72f01e1c1842cb20658a7a71850b4b",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "B42MoodleDescriptionsExpanded",
+      "sha256": "ca5bfebe67dd4ed1a4c6e0fe13d3d4764b3b59c5fdb0004be7d4181affd0f970",
+      "roots": [
+        {
+          "bytes": 75130,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "0e658d94e1aeb5b5a6f9b87c6292d0c6f391d5f142163be65e24be37b6cbe142",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 379681,
+          "file_count": 23,
+          "path": "42",
+          "sha256": "5901af37b6e379b75bf85c1d6a3bbf529201a38077fbd1b292b1eb7221160b3f",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MoodleFramework",
+      "sha256": "1f74b0add2e816de589e2b322bb5521022c4fe71abb0dfb1a8729aa24d0d6dc1",
+      "roots": [
+        {
+          "bytes": 60832,
+          "file_count": 7,
+          "path": "common",
+          "sha256": "e43d10238159cf8d0a83a342a1702e87eb05fe6678e5804fcc0ad342bc051391",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 28611,
+          "file_count": 1,
+          "path": "42.20",
+          "sha256": "85d3bc38452781301153559f086b4bcbafbc9b11281f298b8150ea1b7bdec2e8",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Run and Reload",
+      "sha256": "d187036afb6b9d0be07220f6565ae0f7e4d4d189b249d414430437bc7b8503a5",
+      "roots": [
+        {
+          "bytes": 175074,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "8a1dd4a55636219024514fb1b830d0934d47192682eb0f5c0174927bf1ff430c",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 398301,
+          "file_count": 9,
+          "path": "42",
+          "sha256": "257a37c50deb5a1b3cf42ead11c53c6618d9fca3cbd6a24e3e7e1636583058a3",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "tsarslib",
+      "sha256": "50a1cbd6c94f48f9d18201839731b144f2b22368b3fc84f7fb14e5675da9e995",
+      "roots": [
+        {
+          "bytes": 9635603,
+          "file_count": 434,
+          "path": "common",
+          "sha256": "04f8b995fdbba56fdba8ea3d7c0fcc61cc199ecde8ea6a98786dc7f2a4fef626",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 417674,
+          "file_count": 60,
+          "path": "42.17",
+          "sha256": "e1e36492d3b3cd08e7e5a7559e88ec787e95265e73b6fcdfecf40b398ed8ef2e",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "BetterFlashlightsFixed",
+      "sha256": "9b9fee56f318a24c88ae7dc8ea368a9801eebd8f13f2fe54409b5cdf30ea4c8d",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 2103998,
+          "file_count": 174,
+          "path": "42.0",
+          "sha256": "e938b2d98d4c6a021b7a04e21c5fbdbf489fec49cfe71929e50c349f41e19ad8",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ModLoadOrderSorter_b42",
+      "sha256": "661665ee2e669809a6a25e02cb0d54706d4b2c4438aa31809b9e6a97e5e86bd9",
+      "roots": [
+        {
+          "bytes": 18883,
+          "file_count": 11,
+          "path": "common",
+          "sha256": "89b3e450fd55fbc33d296f8f836fb8d125965068d867bb5cab3f4e2df94a3f33",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 179808,
+          "file_count": 13,
+          "path": "42.0",
+          "sha256": "e1f0ecc3e5d17aa9427bfc4f3d132c0d3ba4be9f6e0eef5abd05dae4c46baf8b",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "NeatUI_Framework",
+      "sha256": "faf48d5fea1482e853482280ebbcbfb101f5b311b0fd8ff81c528ccfe72d5fc0",
+      "roots": [
+        {
+          "bytes": 388,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "4555932f90a019f23b500756566555f9a24bb2736065979d3a536d2bbd19ecd0",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 2300528,
+          "file_count": 92,
+          "path": "42",
+          "sha256": "1f190dc7e558e7847d3034085be8d790dc978fcd2786e8ee11d6ec5df0b45844",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "CleanUI",
+      "sha256": "44d4853da21d039ab5bb5c2e7073d794d909063fd3c51a1c28ce60e48fd2e1b3",
+      "roots": [
+        {
+          "bytes": 4083,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "6ed7a7242a84237abe5db831213864fd97a3448a99e8769779f42cf154d7f217",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 2176616,
+          "file_count": 158,
+          "path": "42.19",
+          "sha256": "7fe27b932dc4b910840b3c6bba2d5ad272d6486ddc2a925d808b31d8dc5bf450",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "NepHighBeams",
+      "sha256": "c96c2484dd0a05d2e0423e0983468c66f1bc77ad7068207419d78da84a29b9aa",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 101560,
+          "file_count": 8,
+          "path": "42.15",
+          "sha256": "5c5c41aeb8299e077efa2960242567e92f7e86e86cdc2180750507457a5357cc",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "DELRAN_CLICK_TO_WEAR",
+      "sha256": "18f91e55e75e86ab624807ea7ab2424f980483fa82166aca8886be338f78e1f2",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "59616ead53b7a6f7dbe79c422d3a1e4eaf871c47fd432fd2cf9e2a78c2ab4bce",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 91729,
+          "file_count": 6,
+          "path": "42",
+          "sha256": "691b3b7cd95fae842a58d13dd279d46e76921face1f9452b3c0c1c2b30bd51c7",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "CleanHotBar",
+      "sha256": "31af93af1c575cd6e1e6d6d7ad94b9dab84e8a9618717ca9b270798af0a81110",
+      "roots": [
+        {
+          "bytes": 638812,
+          "file_count": 133,
+          "path": "common",
+          "sha256": "31fa1783e8a373398eaedd5cade2b67f58039e7c07b502bf6825bbbf3a89ed46",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 55290,
+          "file_count": 20,
+          "path": "42.15",
+          "sha256": "84ee1217309ba8201c6a0e9ecc855afb7c31a1085fda74e0a2d34862b4d57f54",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "OpenAllContainers",
+      "sha256": "8e0b61295d636de6d1a5d1332adfaadd2084b603d3753dc5f8f5dd2b97944c92",
+      "roots": [
+        {
+          "bytes": 13950374,
+          "file_count": 42,
+          "path": "common",
+          "sha256": "7050e93ce8f7d4a4b7ead6d2cec39ddb59030ec88f1f5a5c7f9bd15180e004c8",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 336613,
+          "file_count": 21,
+          "path": "42",
+          "sha256": "f70239f55e81ed155857a89bdbc3feb9496e25c293fa55ce64e16debe9b48c48",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Neat_Crafting",
+      "sha256": "8100b3fe70243158da5ed4956594b89e0ea9c03924f30c59356ae242ef8488eb",
+      "roots": [
+        {
+          "bytes": 3523342,
+          "file_count": 211,
+          "path": "common",
+          "sha256": "bd9d5390b05ba0052f8374e386d42fc9ac664e30a018f7a30761c431cdb80b38",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 75664,
+          "file_count": 7,
+          "path": "42.13",
+          "sha256": "3672d6582f40eae4500ad1d38d217609b6ce18dfc2d7dbec39fdb91899dd5f47",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Neat_Building",
+      "sha256": "2125d36e5568c684dabbb17ac29dbd06dd383de64aedc758e08a6ec071e047b6",
+      "roots": [
+        {
+          "bytes": 7893641,
+          "file_count": 495,
+          "path": "common",
+          "sha256": "8ebf53b2750cf5c7c8b6f93f2102b22ec2048a312f7c502ec2dad3af9a161f59",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 818713,
+          "file_count": 472,
+          "path": "42.15",
+          "sha256": "b1b2d930db4b71f69878b75f9a5796ef9eeef74512268708973806e892cc97d5",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Neat_Building_Buildables_SESCompat",
+      "sha256": "9773be61e7eaed0925c0ef8905f5d9affe388edd9b40d14da487fceb70bda89b",
+      "roots": [
+        {
+          "bytes": 7790014,
+          "file_count": 486,
+          "path": "common",
+          "sha256": "24c5b4f6feea8d2be703761a9db0df5bc7aecb8d9b7e9ed8a3d5121fd7f94ab3",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 595809,
+          "file_count": 451,
+          "path": "42.15",
+          "sha256": "d1c66dbc2978420fd8494546723732b12c56fe3cab00905fedde3a41db2b49cd",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Neat_Building_Railings",
+      "sha256": "21e3cdc89a312b1a0820be5c27f83d0435999c231a626b1607d3e5e281d54b45",
+      "roots": [
+        {
+          "bytes": 7745338,
+          "file_count": 483,
+          "path": "common",
+          "sha256": "136261d48530ef6335a65b76bb6c9559af1be2c4f8ba79cc25e0df7924f47046",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 78995,
+          "file_count": 14,
+          "path": "42.15",
+          "sha256": "312eac02156f689ef1a9773cb9d8ecc446f4a80576229e006a63c29c64f7ae6d",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Neat_Building_UIOnly",
+      "sha256": "a048481297469474ee44403149fb35f219d4ef533167166247c9b47ef1547be0",
+      "roots": [
+        {
+          "bytes": 7831645,
+          "file_count": 491,
+          "path": "common",
+          "sha256": "faf6076047c49c79184e530c810d25a226a6850fb18bb0a4be94bec537a2bbd5",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 292585,
+          "file_count": 29,
+          "path": "42.15",
+          "sha256": "9f9814aad52d57d7cd701a69434c7199384c51553314317d6d811f84187b9d98",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "TheOnlyCure",
+      "sha256": "df03d99019343af7e87866ea0baadbe2e40e0f2a91f07732071c25770558394f",
+      "roots": [
+        {
+          "bytes": 3707,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "075cc9b8e2413ad6b8694599037871b0ba9c3f54151391718caed713623a6faf",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 8710404,
+          "file_count": 269,
+          "path": "42",
+          "sha256": "035f30a9d2ccf9f793322d87268c4533d608c31df75b60d44f208717b9f3eed9",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "CheckthePapers",
+      "sha256": "585475803aba7f045134898ec5f72244f3bc748b9ca74f71108213e749e6097d",
+      "roots": [
+        {
+          "bytes": 64930,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "b3652c6cbf371ea364a5f4a8713cf61e059859f2e6648dccb4497258b15c96ee",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 32839850,
+          "file_count": 4053,
+          "path": "42",
+          "sha256": "a2b47753d7d3a82111c2a0eb8096aa0497ea82e4cf61a3b674080669b3ad5809",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "HereGoesTheSun",
+      "sha256": "59e299dcc4fd2298e74f06c3d45dc379a75c327cbb71c5e557dc8d6ebe84d341",
+      "roots": [
+        {
+          "bytes": 1467555,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "6825b582aed19e2beeb9dba015f4fccb2cd11624c27f9f6618f0a8e68126abf6",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 521497,
+          "file_count": 22,
+          "path": "42.15",
+          "sha256": "4468d5c222e3dbf8434e346f6f4e6088c090c4842499bbb2aaae54121ba8ff1e",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "Ladders4220",
+      "sha256": "1ec46a869c0c791accdb557d0f5213226c61bc3c26881b86b8250fb3ed78877c",
+      "roots": [
+        {
+          "bytes": 513605,
+          "file_count": 104,
+          "path": "common",
+          "sha256": "a9c185e742c4413b19005194e509bb5822efad2d7e8537200532bc86e60f9b16",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 13337,
+          "file_count": 2,
+          "path": "42.20",
+          "sha256": "aa855ec28ed6769085497ea6757d8773c12fd518055fdcf05de81e3da2ff9881",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ContextMenuIconsCore",
+      "sha256": "ab800e7a418488894fbc348ef26de447d8cc69c981cdde2a3d7a8f0aabe7a5dd",
+      "roots": [
+        {
+          "bytes": 108450,
+          "file_count": 8,
+          "path": "common",
+          "sha256": "7f2ddc777026680e599a3d227b06cfdd890aa47782ea57c93e2c1611453f509d",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 6692,
+          "file_count": 4,
+          "path": "42",
+          "sha256": "e20b6d56dce724452b13cbde87ace73822bff2750ef002e06531ca3c24cd2db2",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "SimpleContextMenuIcons",
+      "sha256": "6a24584ee7349530970cc970f613f4d1f3b46e1bc7a02acbdb66bc7cfa554d8e",
+      "roots": [
+        {
+          "bytes": 170763,
+          "file_count": 86,
+          "path": "common",
+          "sha256": "5352cbdcf577bc45964e584e30303278d32cc9a9691c8b2e0e7a0b6758e1e3b7",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 8207,
+          "file_count": 7,
+          "path": "42",
+          "sha256": "4ec0f9440c27986cceff8f2407d30919e010cdd8f005770a5521b0899b665660",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "dustinguished_bolt_cutters",
+      "sha256": "2bb38fa80e7d7da3e0f7df7774d785e94f6104690b5fd5e13f5598246182ba78",
+      "roots": [
+        {
+          "bytes": 422870,
+          "file_count": 65,
+          "path": "common",
+          "sha256": "c5d4929066cab271a7eeda4935e22954e41c78168a8411973eab7acb9ee31252",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 311,
+          "file_count": 2,
+          "path": "42.15",
+          "sha256": "821a5992c01140e30323f76d80253eff8114b3afec9a074620fa0dc91e28f04e",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "EQUIPMENT_UI_B42",
+      "sha256": "c7fccb2727298feae63b821d72153fd47bf2a1e5d647d987a1a40ae48ed9dde7",
+      "roots": [
+        {
+          "bytes": 5678,
+          "file_count": 15,
+          "path": "common",
+          "sha256": "f670bcbeea5d517d5b2570e1276ec15a275a3a80849aa5b6ca9844dbd57f42dc",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 268223,
+          "file_count": 47,
+          "path": "42.20",
+          "sha256": "7197570085e59a118465323794fe58c386b4efe759ee43cae754e39df6090355",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "EQUIPMENT_UI",
+      "sha256": "b6b4e66d0ba3395900e049bfacb94ba117fc59b4be9d920f0087c8ae5066784c",
+      "roots": [
+        {
+          "bytes": 5678,
+          "file_count": 15,
+          "path": "common",
+          "sha256": "f670bcbeea5d517d5b2570e1276ec15a275a3a80849aa5b6ca9844dbd57f42dc",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 268349,
+          "file_count": 47,
+          "path": "42.20",
+          "sha256": "52bc5ab6b193280f5566609de6cceb38d47a7ee09a9856482b7180b90ea17c77",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "equipmentuipatch",
+      "sha256": "fa5eecd83ce766fda88cd3ac9ad1393ed86ec2f006004cba07a27b87a69bd02d",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 108271,
+          "file_count": 17,
+          "path": "42.15",
+          "sha256": "ec7d151045e50ab3a53d5b7e99ffdb8ad56514858aee2e76f1239a884e318158",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "TaillightsAndStoplights",
+      "sha256": "ae87bc01187d4b54e45ea5f6381421f4eeaf41932928e58de2f6c217fe3b60ec",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 332177,
+          "file_count": 10,
+          "path": "42",
+          "sha256": "d6e0ee2a27d129e7a910d865adf21d550663f79ec52c07a88074d302351cd0c4",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MultipleGeneratorsB42",
+      "sha256": "2ab847f6402766a96451f6fa08bf94bb8d3b9bc94ffbbbe4727453125195de21",
+      "roots": [
+        {
+          "bytes": 469,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "32665dfedb3d164cb00511dac6d2d65af01022133cf33bd5509af0f5aaf92374",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 190423,
+          "file_count": 21,
+          "path": "42",
+          "sha256": "b909bd5b8e6c666e45c11b1d553c6cb9885545d31e0c53a7b2d9ca0ef29f71f7",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "VHSSkillNameInTooltip",
+      "sha256": "d732e75009d3f18ad7abadc86df5d13134207f00c30f6ef9c016609cd333f23a",
+      "roots": [
+        {
+          "bytes": 58061,
+          "file_count": 8,
+          "path": "common",
+          "sha256": "2571222010864e52d289791ac1335e0a80f7887d3cefc2326dddc0e100960ee8",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "42.0",
+          "sha256": null,
+          "status": "ABSENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "BB_CommonSenseFix",
+      "sha256": "52d34edad062c9aa22f3feedcd07a9717ea2657af2e91cee247df25f8f6b76db",
+      "roots": [
+        {
+          "bytes": 251,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "9c6d531c676a0fe70bd646856bcc331a1ebed251a6f93c1d3d48876ddee170b2",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 712415,
+          "file_count": 184,
+          "path": "42",
+          "sha256": "5d7746144ba1379547e65abbeea653f8ec9acffd525124438de76f4a43de2005",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "PSR",
+      "sha256": "bbc4201fc257459968d7c0cb104c586e6550fca288f0bfe8903f165bf3fc22bd",
+      "roots": [
+        {
+          "bytes": 801250,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "80ab2bbbe869fcfa5a9855503d68335b71f11ec141c184f97ea35ee4fcc23dd1",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 3112684,
+          "file_count": 247,
+          "path": "42.1",
+          "sha256": "75a8b7ca72ad2adf3119cd05ff3b20589950b50ec594befb765b577e9d83d0a3",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "RetroDashboard",
+      "sha256": "378d5bb0bcf307d8d7d363e2989bfe68650a70136497deef8fcf4f6e4d7c949b",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 2501150,
+          "file_count": 54,
+          "path": "42",
+          "sha256": "3f2e7db8dc3f1fbd0c1b82b55cc99ef02da6269730da141103e2c7c5510319e2",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "TrippingZombies",
+      "sha256": "a4294ff4e7cf95c21322d35fbeed98bd5645ee76ad35c0c071eda15c232e4521",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 195431,
+          "file_count": 6,
+          "path": "42",
+          "sha256": "b24df638558b20a3599705726db98430b18cc3229e6bfeb2be14cd1ec5c40535",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "dustinguished_cleaning_wipes",
+      "sha256": "fa853736f0a5df8bcab83e77fab67b929fef71cf6ea5f19e5734ce8fb4a33f31",
+      "roots": [
+        {
+          "bytes": 245091,
+          "file_count": 110,
+          "path": "common",
+          "sha256": "084f35cdcb55fe460b90bb4c33e786acdd7238f51c09bb6d6f0eb38912130277",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "42.0",
+          "sha256": null,
+          "status": "ABSENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "GasPumpIndicator",
+      "sha256": "16d4fbd4ee1dfecfc305f2cdf08e882d42a6c99535ac94b8deb1e5b4dfd95b77",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 124224,
+          "file_count": 9,
+          "path": "42",
+          "sha256": "c5cd6f8207295a981b95e4cc85d266f42374f04bedac87b94de2b95bac883602",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "PlumbedSinkMainsFix",
+      "sha256": "105d33dff2b6fbee727c882c75823ddda953757ec542c01155b1dc4371b0fa79",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 42886,
+          "file_count": 4,
+          "path": "42",
+          "sha256": "81f0e3e983f801038280e0a875b779131d169e1888439d6812c87cd4ec064c7b",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "TrueWeight",
+      "sha256": "70f2512ae756f243d31ce1d7e02e2101116343c772fe3af3d0f9e3e671ac33e7",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 374735,
+          "file_count": 6,
+          "path": "42.0",
+          "sha256": "885a6a5448b2139d0366ef2e6c6af24b49c99f95548ff8407bb8ac0a80bd4a8d",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "RadArchery",
+      "sha256": "dd7eebb82dd1d0fa1f2e20efa5272f421149cf4d0f8f2e188583a6e1bd014868",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 30976870,
+          "file_count": 294,
+          "path": "42",
+          "sha256": "5217665b919437859032aeaf0c29ece35a7914b9b12e08adcc74a914a33132d3",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ZeroWeightKeys_B42",
+      "sha256": "f3d8bb4680fd8bea26b3f504b50059d2a6e2c1af5c78d867b195403513c6b075",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 13784,
+          "file_count": 5,
+          "path": "42",
+          "sha256": "4b845ce16c931ae98ad700f8a277226767059e70e38a6ec3083956f3fcab5e28",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "SkillJournal",
+      "sha256": "0740ce874b4de111ad316af78e87e79435a77f71af7895f94125c3c4f09d9b27",
+      "roots": [
+        {
+          "bytes": 137,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "5c12dd4a7869e12226b458f5f8fe7b98dce9e43c674b06b5fbc0c51a25876d2b",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 1014420,
+          "file_count": 52,
+          "path": "42",
+          "sha256": "a5ad45d4c911dc1ae9d05dd574a87df0bf4db72457237857b49fa7772c1baaee",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "TOCRightClickFix",
+      "sha256": "3acda3d86a93abb502e636eef984d4901a7262de6e62e637a6256f2a4839200b",
+      "roots": [
+        {
+          "bytes": 29194,
+          "file_count": 4,
+          "path": "common",
+          "sha256": "ca764ad94ab8cb2f0671c6eedd4237966ff7d5fc65505f52fb8ec721617b1c75",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "42.0",
+          "sha256": null,
+          "status": "ABSENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "SkullysZombieCollision",
+      "sha256": "87e62c38a1d7796bad9fb044c368909f8b09381d64c309bb95970879ddad2853",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 281781,
+          "file_count": 16,
+          "path": "42",
+          "sha256": "9582a1125bf62350f182dfd90717b8a0ce3d039605584d79478c6a3a96de7a7e",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "FixedLightOnBeltAF",
+      "sha256": "7c0f88ddf5e8eed78c3d4a2553aefc0b6e52b010b175232da7d0c6f43639446b",
+      "roots": [
+        {
+          "bytes": 4,
+          "file_count": 2,
+          "path": "common",
+          "sha256": "f1f39c8e6e181ad19b9406c8066169636499ebfb33aa819f62c5891584d0b0d8",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 536463,
+          "file_count": 15,
+          "path": "42.20",
+          "sha256": "371b16c27b4e1b3bc57babe7f3d7d35768d0b3fb936e90e31d5e18f599460afd",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MedicineMoodlesB42",
+      "sha256": "8caf2096e1bc63ab7cf2f5871bed78a90205157a5262f7b5b9c3ed842c8d2481",
+      "roots": [
+        {
+          "bytes": 246746,
+          "file_count": 12,
+          "path": "common",
+          "sha256": "26189e005930e4f3b62addb113f4cd273fb2231d204297ac3da42c593504ceca",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 25590,
+          "file_count": 2,
+          "path": "42",
+          "sha256": "bb88901957bd2b3b86d5d38b528c2e8d3e9fbca3713b332f078622409e14b83c",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MedicineMoodlesSkillRequirementsB42",
+      "sha256": "59dc59b20311ace14c9fc0009833c5648ec6fcb0185e0c2c5fa1f14d7fcc9f51",
+      "roots": [
+        {
+          "bytes": 2340,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "be8701f916dc725b1b568e3f79f7dd27c3ed36694793635bd79a13bdab0b354d",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 123350,
+          "file_count": 2,
+          "path": "42",
+          "sha256": "a602d5dce857e23fbcb278be2bc9496769ed7ab309f8fd513b1ac959970be492",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ExactMinuteClock",
+      "sha256": "a520c73a36e0a8a47412706df236104632d9a5aed3b4a35f093c6bb58b81849a",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 136223,
+          "file_count": 17,
+          "path": "42",
+          "sha256": "afd7a34532c800f3d40455e7c0dbfd66a5b3a74c2cf282c0be03044219f4d097",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "ImprovisedSilencers",
+      "sha256": "ea3ab52e3913cfa3b1e5bb133e90ab3dcc236f523bdc2c5b803c25887b6d6719",
+      "roots": [
+        {
+          "bytes": 2662115,
+          "file_count": 85,
+          "path": "common",
+          "sha256": "a9cbe9f413873b508c9e64cb6ad3d1ca3d829d3a9dd1929bc918c4694544cfc5",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 2,
+          "file_count": 2,
+          "path": "42.0",
+          "sha256": "d5ff5b4efc3d8114b8ed385fb9edd13edd2d819aa65ab2e871307f72dfc108e6",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "LGExtendedPlumbing",
+      "sha256": "53917e320e022f5c42ca9c42fdec333c6316227c4d3569705d8cae63679d09da",
+      "roots": [
+        {
+          "bytes": 211732,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "8385afd93dc5c05270b861fbf00601c96acbcbef885ba7d1dda0848b1c4b4dbc",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 1072082,
+          "file_count": 134,
+          "path": "42.20",
+          "sha256": "d320e63dc136309881a086bf3800222d8789900a6b2705d5127f4c66131f72ad",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "QuitSmokerAfter30",
+      "sha256": "4a95e9c6abf7368eb9c876bc308cd9fbd401861cbf8914158388d0374609a3fb",
+      "roots": [
+        {
+          "bytes": 4853,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "376e5b9ad8cd27257130807b33d5942bb0ee667fc3699c8bbc1013509f8d2c33",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 5089,
+          "file_count": 2,
+          "path": "42",
+          "sha256": "32a7e7007cecc8970240c43a238aff2c3b8b917b4c839d9d53c84db97b96dd13",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "CyesPushDoors",
+      "sha256": "14b95f727e65ca8c7de3e075f1bfcd831fb1074c805929b33e4f4193f45718da",
+      "roots": [
+        {
+          "bytes": 2,
+          "file_count": 3,
+          "path": "common",
+          "sha256": "18d379d5a1fbaf325930f372517b57efdaa38da207dc66c5b7f0b50a36af67bd",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 1186489,
+          "file_count": 42,
+          "path": "42",
+          "sha256": "e2100f47251da029e706ac652c2f522196df8bbcef280add37d0e8ef8c03f112",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MultipleGeneratorsB42Patch",
+      "sha256": "445706004fbe5e9564a2d44e276e318eeb5e64c3fc55ed403997f8b754d273ee",
+      "roots": [
+        {
+          "bytes": 284,
+          "file_count": 1,
+          "path": "common",
+          "sha256": "ae1d0108f924a6dcd81257134ef230a8a10f3e4968a3c93ffc1f380899e81ed0",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 195077,
+          "file_count": 8,
+          "path": "42",
+          "sha256": "57bbfc6d30567b62e6da7429e98ea7449a2a19406d2692db330a5c3767d0c372",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "MuzzleSmoke",
+      "sha256": "68aaf2e92bc525dad212ea15bd165b44ba4756c27e3a83bf9464d25315669e16",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 225733,
+          "file_count": 34,
+          "path": "42",
+          "sha256": "15cbfc89f313a048f455aadfb5b55e97a84afb38bc8404a4fa6ae6cb5ea4a6a2",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "GoblinSurvivor",
+      "sha256": "3ac540d09316b8118b96e0f1e66da0729a435678d1364ed859e82a5064641557",
+      "roots": [
+        {
+          "bytes": 8068723,
+          "file_count": 106,
+          "path": "common",
+          "sha256": "34d02c51a16c04c1b6821227255572a9addcc659123972c0624eda70b101b19f",
+          "status": "PRESENT"
+        },
+        {
+          "bytes": 378735,
+          "file_count": 54,
+          "path": "42",
+          "sha256": "4e90f0ae251668c70887cfc252857459bc42f01d729dde552921ae9add686e5f",
+          "status": "PRESENT"
+        }
+      ]
+    },
+    {
+      "mod_id": "PZ_Map",
+      "sha256": "d158f28e7e06225255e855d871b407bc12f3c396e16b86cbe0aa9f2d75e2b108",
+      "roots": [
+        {
+          "bytes": 0,
+          "file_count": 0,
+          "path": "common",
+          "sha256": null,
+          "status": "ABSENT"
+        },
+        {
+          "bytes": 24164902,
+          "file_count": 272,
+          "path": "42",
+          "sha256": "93b7c4d19f4797da519e55666ef8a71b4a3f5bb72bafe3867468d99033a8e503",
+          "status": "PRESENT"
+        }
+      ]
+    }
+  ],
+  "vanilla_sources": [
+    {
+      "bytes": 7023865,
+      "file_count": 1004,
+      "path": "media/scripts",
+      "sha256": "54a521bc7493a3303e2d89492b95c9c7233c1c61742c68ad57a3b63c3ee349a7",
+      "status": "PRESENT"
+    },
+    {
+      "bytes": 126985593,
+      "file_count": 2680,
+      "path": "media/lua",
+      "sha256": "e984d53e1fa3e5bc9f4ce98f7f1ba732d516308dbd53f0013b66765d8478cfc5",
+      "status": "PRESENT"
+    }
+  ],
+  "allowed_candidate_differences": [
+    {
+      "mod_id": "GoblinSurvivor",
+      "path": "42/goblin-server.jar",
+      "captured_sha256": "93300d7e9b659c5e1f49be335d702b7bf63d18aeb2921a6afd9b7a3d539cbf4f",
+      "candidate_sha256": "e258464ca7d60625b791fae6524916b1652485d80a14247185a050375952de41"
+    }
+  ],
+  "result": "MATCH_EXCEPT_EXPLICIT_CANDIDATE_HELPER",
+  "limitations": [
+    "Not a registry export executed on production.",
+    "No physical ability or multiplayer acceptance is implied.",
+    "Per-file stable reads, not an atomic whole-install snapshot."
+  ]
+}

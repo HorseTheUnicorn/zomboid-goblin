@@ -15,7 +15,8 @@ local Client = {
     statesByOnline = {},
     lastRequestAt = 0,
     lastScanAt = 0,
-    nextFollowAt = setmetatable({}, { __mode = "k" })
+    nextFollowAt = setmetatable({}, { __mode = "k" }),
+    accessRevisions = setmetatable({}, { __mode = "k" })
 }
 
 local function call(object, method, ...)
@@ -164,17 +165,24 @@ local function followAssist(zombie, state)
     end
     -- A nearby peer can own simulation even after Goblin's player logs out.
     -- In that case follow server work goals, not the disconnected player.
-    local goal, gap, owner = state.movement_goal, nil, nil
+    local goal, gap, owner, navigation = state.movement_goal, nil, nil, nil
     if state.task == "FOLLOW" and not state.transport_active and state.combat_state ~= "READY" and state.combat_state ~= "ATTACKING" then
         owner = playerForOwner(state.owner)
-        if owner ~= nil then goal, gap = Motion.followGoal(zombie, owner) else goal = nil end
+        if owner ~= nil then goal, gap, navigation = Motion.followGoal(zombie, owner, nowMs()) else goal = nil end
     elseif state.task == "WAIT" then
         goal = nil
     end
     gap = gap or (goal and Motion.distance(Motion.position(zombie), goal))
     local move = Motion.moveType(goal, gap, owner)
     if goal and state.task=="FOLLOW" and state.rejoin_run then move="RUN" end
-    Motion.drive(zombie, goal, move, nowMs())
+    local accessRevision = tonumber(state.access_revision) or 0
+    local previousRevision = tonumber(Client.accessRevisions[zombie]) or 0
+    Client.accessRevisions[zombie] = accessRevision
+    if accessRevision > previousRevision then
+        navigation = navigation or {}
+        navigation.obstruction_cleared = true
+    end
+    Motion.drive(zombie, goal, move, nowMs(), navigation)
 end
 
 local function apply(zombie)

@@ -137,7 +137,7 @@ local function applyDirect(player, speaker, task, text)
     end
     local body, detail = Spawner.ensureForPlayer(player, false)
     if body == nil then return false, tostring(detail or "Goblin unavailable") end
-    local payload = { owner = speaker }
+    local payload = { owner = speaker, manual = task == Constants.TASK.FOLLOW }
     local lower=string.lower(text or "")
     if task==Constants.TASK.CRAFT or task==Constants.TASK.FARM or task==Constants.TASK.REPAIR_VEHICLE then
         payload=ChatBridge.jobPayload(task,text)

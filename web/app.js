@@ -4,18 +4,23 @@
   const $ = (id) => document.getElementById(id);
   const ui = {
     canvas: $("map-canvas"), viewport: $("map-viewport"), mapEmpty: $("map-empty"),
-    mapName: $("map-name"), mapCoords: $("map-coordinates"), mapStatus: $("map-status"),
-    mapBuild: $("map-build"), connectionDot: $("connection-dot"), connectionLabel: $("connection-label"),
-    lastSeen: $("last-seen"), goblinState: $("goblin-state"), bodyMode: $("body-mode"),
-    serverStatus: $("server-status"), playerCount: $("player-count"), npcCount: $("npc-count"),
-    goblinNote: $("goblin-note"), rosterCount: $("roster-count"), rosterList: $("roster-list"),
-    eventCount: $("event-count"), eventList: $("event-list"),
-    historyCount: $("history-count"),
+    mapName: $("map-name"), mapCoordinates: $("map-coordinates"), mapStatus: $("map-status"),
+    connectionDot: $("connection-dot"), connectionLabel: $("connection-label"),
+    lastSeen: $("last-seen"), playerCount: $("player-count"), npcCount: $("npc-count"),
+    focusSelect: $("focus-entity"),
   };
   const ctx = ui.canvas.getContext("2d");
-  const model = { state: {}, events: [], history: [], manifest: null, sequence: 0, connected: false, lastUpdate: 0 };
-  const camera = { x: 8000, y: 8000, scale: 0.12, dragging: false, pointerX: 0, pointerY: 0 };
+  const model = { state: {}, events: [], history: [], manifest: null, sequence: 0, connected: false, lastUpdate: 0, positioned: false };
+  const camera = { x: 8000, y: 8000, scale: 0.75, dragging: false, pointerX: 0, pointerY: 0 };
   const imageCache = new Map();
+  let framePending = false;
+  let focusOptionsKey = "";
+
+  function requestDraw() {
+    if (framePending) return;
+    framePending = true;
+    window.requestAnimationFrame(() => { framePending = false; drawMap(); });
+  }
 
   function safeNumber(value) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -69,15 +74,22 @@
     return { x: camera.x + (screenX - size.width / 2) / camera.scale, y: camera.y + (screenY - size.height / 2) / camera.scale };
   }
 
-  function tileImage(tx, ty) {
-    const key = `${tx}:${ty}`;
-    if (imageCache.has(key)) return imageCache.get(key);
+  function tileImage(tx, ty, level = 0) {
+    const key = `${level}:${tx}:${ty}`;
+    if (imageCache.has(key)) {
+      const cached = imageCache.get(key);
+      imageCache.delete(key); imageCache.set(key, cached);
+      return cached;
+    }
     const image = new Image();
     image.decoding = "async";
-    image.src = `/map/biomemap_${tx}_${ty}.png`;
-    image.addEventListener("load", () => drawMap(), { once: true });
-    image.addEventListener("error", () => imageCache.set(key, null), { once: true });
+    image.src = model.manifest?.kind === "native-pyramid"
+      ? `/map/native/${level}/tile${tx}x${ty}.png?v=${encodeURIComponent(model.manifest.source_sha256 || model.manifest.build)}`
+      : `/map/biomemap_${tx}_${ty}.png`;
+    image.addEventListener("load", requestDraw, { once: true });
+    image.addEventListener("error", () => { if (imageCache.get(key) === image) imageCache.set(key, null); }, { once: true });
     imageCache.set(key, image);
+    while (imageCache.size > 384) imageCache.delete(imageCache.keys().next().value);
     return image;
   }
 
@@ -101,22 +113,30 @@
     ctx.restore();
   }
 
-  function drawTiles(size) {
+  function tileLayout(size) {
     const config = mapConfig();
-    const tileSize = Number(config.tile_size) || 256;
+    const native = config.kind === "native-pyramid";
+    const level = native ? Math.max(config.min_level, Math.min(config.max_level,
+      Math.floor(Math.log2(1 / (camera.scale * (window.devicePixelRatio || 1)))))) : 0;
+    const tileSize = (Number(config.tile_size) || 256) * 2 ** level;
     const tiles = config.tiles || {};
     const left = camera.x - size.width / (2 * camera.scale);
     const right = camera.x + size.width / (2 * camera.scale);
     const top = camera.y - size.height / (2 * camera.scale);
     const bottom = camera.y + size.height / (2 * camera.scale);
-    const tx0 = Math.max(Number(tiles.x_min), Math.floor(left / tileSize));
-    const tx1 = Math.min(Number(tiles.x_max), Math.floor(right / tileSize));
-    const ty0 = Math.max(Number(tiles.y_min), Math.floor(top / tileSize));
-    const ty1 = Math.min(Number(tiles.y_max), Math.floor(bottom / tileSize));
+    const tx0 = Math.max(native ? 0 : Number(tiles.x_min), Math.floor(left / tileSize));
+    const tx1 = Math.min(native ? Math.ceil(config.world.x_max / tileSize) - 1 : Number(tiles.x_max), Math.floor(right / tileSize));
+    const ty0 = Math.max(native ? 0 : Number(tiles.y_min), Math.floor(top / tileSize));
+    const ty1 = Math.min(native ? Math.ceil(config.world.y_max / tileSize) - 1 : Number(tiles.y_max), Math.floor(bottom / tileSize));
+    return { level, tileSize, tx0, tx1, ty0, ty1 };
+  }
+
+  function drawTiles(size) {
+    const { level, tileSize, tx0, tx1, ty0, ty1 } = tileLayout(size);
     if (tx1 < tx0 || ty1 < ty0) return;
     for (let tx = tx0; tx <= tx1; tx += 1) {
       for (let ty = ty0; ty <= ty1; ty += 1) {
-        const image = tileImage(tx, ty);
+        const image = tileImage(tx, ty, level);
         if (!image || !image.complete || !image.naturalWidth) continue;
         const topLeft = screenPoint(tx * tileSize, ty * tileSize);
         ctx.drawImage(image, topLeft.x, topLeft.y, tileSize * camera.scale, tileSize * camera.scale);
@@ -126,43 +146,53 @@
 
   function allEntities() {
     const state = model.state || {};
-    const output = [];
-    const seen = new Set();
+    const merged = new Map();
     for (const source of [state.entities, state.npcs]) {
       if (!Array.isArray(source)) continue;
       for (const entity of source) {
         if (!entity || typeof entity !== "object") continue;
         const id = entity.npc_id || entity.entity_id || entity.id || entity.name;
-        if (!id || seen.has(id)) continue;
-        seen.add(id); output.push({ ...entity, id });
+        if (!id) continue;
+        // Exact telemetry supplies positions; roster telemetry supplies names.
+        merged.set(id, { ...entity, ...merged.get(id), id });
       }
     }
-    if (state.npc_id && !seen.has(state.npc_id) && safeNumber(state.x) !== null && safeNumber(state.y) !== null) {
-      output.push({ id: state.npc_id, npc_id: state.npc_id, x: state.x, y: state.y, z: state.z, kind: "npc", alive: state.npc_alive });
+    if (state.npc_id && !merged.has(state.npc_id) && safeNumber(state.x) !== null && safeNumber(state.y) !== null) {
+      merged.set(state.npc_id, { id: state.npc_id, npc_id: state.npc_id, x: state.x, y: state.y, z: state.z, kind: "goblin", alive: state.npc_alive });
     }
-    return output;
+    return [...merged.values()];
   }
 
   function entityKind(entity) {
     const id = String(entity.npc_id || entity.id || "").toLowerCase();
     const kind = String(entity.kind || "").toLowerCase();
-    if (id === "goblin.primary" || id.includes("goblin")) return "goblin";
-    if (kind === "player" || entity.online === true) return "player";
+    if (kind === "player" || id.startsWith("player.")) return "player";
+    if (kind === "goblin" || id.startsWith("goblin.")) return "goblin";
     return "npc";
   }
 
   function drawTrail() {
-    const points = [];
+    const trails = new Map();
     for (const row of model.history.slice(-80)) {
       const entities = row && row.state ? (row.state.entities || row.state.npcs || []) : [];
-      const goblin = Array.isArray(entities) ? entities.find((entity) => entity && (entity.npc_id || entity.id) === "goblin.primary") : null;
-      const x = safeNumber(goblin && goblin.x); const y = safeNumber(goblin && goblin.y);
-      if (x !== null && y !== null) points.push(screenPoint(x, y));
+      for (const entity of Array.isArray(entities) ? entities : []) {
+        if (!entity) continue;
+        const id = entity.entity_id || entity.npc_id || entity.id;
+        if (entityKind({ ...entity, id }) !== "goblin") continue;
+        const x = safeNumber(entity.x); const y = safeNumber(entity.y);
+        if (x === null || y === null) continue;
+        if (!trails.has(id)) trails.set(id, []);
+        trails.get(id).push(screenPoint(x, y));
+      }
     }
-    if (points.length < 2) return;
-    ctx.save(); ctx.beginPath(); ctx.strokeStyle = "rgba(153, 227, 107, .52)"; ctx.lineWidth = 2;
-    points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
-    ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = "rgba(153, 227, 107, .52)"; ctx.lineWidth = 2;
+    for (const points of trails.values()) {
+      if (points.length < 2) continue;
+      ctx.beginPath();
+      points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawMarker(entity) {
@@ -175,7 +205,7 @@
     if (kind === "goblin") { ctx.shadowBlur = 14; ctx.shadowColor = colors.goblin; }
     ctx.fillStyle = colors[kind]; ctx.beginPath(); ctx.arc(point.x, point.y, radius, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0; ctx.fillStyle = "#071009"; ctx.font = "600 10px Segoe UI, sans-serif";
-    const label = kind === "goblin" ? "GOBLIN" : String(entity.name || entity.id || kind).slice(0, 18);
+    const label = String(entity.name || (kind === "player" ? String(entity.id).replace(/^player\./, "") : entity.id) || kind).slice(0, 40);
     ctx.fillText(label, point.x + radius + 5, point.y + 3);
     ctx.restore();
   }
@@ -196,7 +226,8 @@
     ctx.clearRect(0, 0, size.width, size.height);
     ctx.fillStyle = "#0a100d"; ctx.fillRect(0, 0, size.width, size.height);
     if (model.manifest) drawTiles(size);
-    drawGrid(size); drawTrail(); drawBase(); allEntities().forEach(drawMarker);
+    if (model.manifest?.kind !== "native-pyramid") drawGrid(size);
+    if ($("show-trails").checked) drawTrail(); drawBase(); allEntities().filter((entity) => $("show-players").checked || entityKind(entity) !== "player").filter((entity) => $("show-goblins").checked || entityKind(entity) !== "goblin").forEach(drawMarker);
     if (!model.manifest) { ui.mapEmpty.hidden = false; ui.mapStatus.textContent = "Map metadata unavailable"; }
     else { ui.mapEmpty.hidden = true; ui.mapStatus.textContent = `zoom ${camera.scale.toFixed(3)} · ${imageCache.size} tiles cached`; }
   }
@@ -221,87 +252,34 @@
     const before = worldPoint(anchorX ?? screenSize().width / 2, anchorY ?? screenSize().height / 2);
     camera.scale = Math.max(.025, Math.min(2.5, camera.scale * factor));
     const after = worldPoint(anchorX ?? screenSize().width / 2, anchorY ?? screenSize().height / 2);
-    camera.x += before.x - after.x; camera.y += before.y - after.y; drawMap();
+    camera.x += before.x - after.x; camera.y += before.y - after.y; requestDraw();
   }
 
   function renderSummary() {
-    const state = model.state || {}; const entities = allEntities();
+    const entities = allEntities();
     const goblin = entities.find((entity) => entityKind(entity) === "goblin");
-    const alive = state.npc_alive === true || (goblin && goblin.alive !== false);
-    ui.goblinState.textContent = alive ? "ALIVE" : state.npc_alive === false ? "OFFLINE" : "UNKNOWN";
-    ui.goblinState.className = `state-badge ${alive ? "state-alive" : state.npc_alive === false ? "state-dead" : "state-unknown"}`;
-    ui.bodyMode.textContent = state.body_mode || "—";
-    ui.serverStatus.textContent = state.server_status || "—";
-    ui.playerCount.textContent = state.player_count ?? entities.filter((entity) => entityKind(entity) === "player").length;
-    ui.npcCount.textContent = entities.filter((entity) => entityKind(entity) !== "player").length;
-    ui.lastSeen.textContent = state.updated_at ? relativeAge(state.updated_at) : "—";
-    if (goblin && safeNumber(goblin.x) !== null && safeNumber(goblin.y) !== null) {
-      ui.mapCoordinates.textContent = `x ${Math.round(goblin.x)} · y ${Math.round(goblin.y)}${safeNumber(goblin.z) !== null ? ` · z ${Math.round(goblin.z)}` : ""}`;
-    } else ui.mapCoordinates.textContent = "Goblin position not reported";
-    ui.goblinNote.textContent = alive ? "Native IsoZombie body is present; GoblinSurvivor policy controls friendliness and intent." : "The body is not currently alive. The recovery policy can create a replacement when the server is ready.";
-  }
-
-  function renderRoster() {
-    const state = model.state || {};
-    const roster = Array.isArray(state.npcs) ? state.npcs.filter((entry) => entry && typeof entry === "object") : [];
-    if (state.npc_id && !roster.some((entry) => (entry.npc_id || entry.id) === state.npc_id)) {
-      roster.unshift({
-        npc_id: state.npc_id,
-        name: "Goblin",
-        role: state.role || "companion",
-        alive: state.npc_alive === true,
-        active: state.npc_active !== false,
-        body_present: state.npc_alive === true,
-        mode: state.mode,
-        task: state.task,
-        target_player: state.target_player,
-        target_npc_id: state.target_npc_id,
-        friendly: state.friendly,
-        protected: state.protected,
-      });
+    ui.playerCount.textContent = entities.filter((entity) => entityKind(entity) === "player").length;
+    ui.npcCount.textContent = entities.filter((entity) => entityKind(entity) === "goblin").length;
+    ui.lastSeen.textContent = model.state.updated_at ? relativeAge(model.state.updated_at) : "—";
+    ui.mapCoordinates.textContent = goblin && safeNumber(goblin.x) !== null && safeNumber(goblin.y) !== null
+      ? `x ${Math.round(goblin.x)} · y ${Math.round(goblin.y)} · z ${Math.round(goblin.z || 0)}`
+      : "Goblin position not reported";
+    const selected = ui.focusSelect.value;
+    const optionsKey = JSON.stringify(entities.filter(e => safeNumber(e.x) !== null && safeNumber(e.y) !== null).map(e => [e.id, e.name]));
+    if (optionsKey === focusOptionsKey) return;
+    focusOptionsKey = optionsKey;
+    ui.focusSelect.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = ""; placeholder.textContent = "Find player or Goblin";
+    ui.focusSelect.append(placeholder);
+    for (const entity of entities) {
+      if (safeNumber(entity.x) === null || safeNumber(entity.y) === null) continue;
+      const option = document.createElement("option");
+      option.value = entity.id;
+      option.textContent = entity.name || String(entity.id).replace(/^player\\./, "");
+      ui.focusSelect.append(option);
     }
-    ui.rosterCount.textContent = String(roster.length);
-    ui.rosterList.replaceChildren();
-    if (!roster.length) {
-      const row = document.createElement("li"); row.className = "empty-row";
-      row.textContent = "Goblin body telemetry is unavailable."; ui.rosterList.append(row); return;
-    }
-    for (const entry of roster) {
-      const row = document.createElement("li"); row.className = "roster-row";
-      const heading = document.createElement("div"); heading.className = "roster-heading";
-      const name = document.createElement("strong"); name.className = "roster-name";
-      name.textContent = String(entry.name || entry.npc_id || entry.id || "Goblin companion");
-      const stateLabel = document.createElement("span"); stateLabel.className = "roster-state";
-      const present = entry.body_present !== false && entry.alive !== false && entry.active !== false;
-      stateLabel.textContent = present ? "ONLINE" : entry.active === false ? "DISABLED" : "OFFLINE";
-      stateLabel.classList.toggle("roster-online", present);
-      heading.append(name, stateLabel);
-      const meta = document.createElement("div"); meta.className = "roster-meta";
-      const details = [entry.role, entry.mode || entry.task, entry.squad_id ? `squad ${entry.squad_id}` : null].filter(Boolean);
-      meta.textContent = details.join(" · ") || "persistent IsoZombie companion";
-      row.append(heading, meta); ui.rosterList.append(row);
-    }
-  }
-
-  function renderEvents() {
-    const events = model.events.slice(-32).reverse();
-    ui.eventCount.textContent = String(events.length);
-    ui.eventList.replaceChildren();
-    if (!events.length) { const row = document.createElement("li"); row.className = "empty-row"; row.textContent = "No events recorded."; ui.eventList.append(row); return; }
-    for (const event of events) {
-      const row = document.createElement("li"); row.className = "event-row";
-      const top = document.createElement("div"); top.className = "event-top";
-      const kind = document.createElement("span"); kind.className = "event-kind"; kind.textContent = String(event.kind || "event").replaceAll("_", " ");
-      const time = document.createElement("time"); time.className = "event-time"; time.textContent = formatTime(event.observed_at);
-      top.append(kind, time);
-      const text = document.createElement("div"); text.className = "event-text";
-      text.textContent = event.text || event.reason || [event.player, event.role, event.job].filter(Boolean).join(" · ") || "telemetry update";
-      row.append(top, text); ui.eventList.append(row);
-    }
-  }
-
-  function renderHistory() {
-    ui.historyCount.textContent = `${model.history.length} points`;
+    ui.focusSelect.value = entities.some((entity) => entity.id === selected) ? selected : "";
   }
 
   function applySnapshot(payload) {
@@ -309,8 +287,19 @@
     if (payload.state && typeof payload.state === "object") model.state = payload.state;
     if (Array.isArray(payload.events)) model.events = payload.events;
     if (Number.isFinite(payload.sequence)) model.sequence = payload.sequence;
+    if (!model.positioned) {
+      const entity = allEntities().find((entry) => safeNumber(entry.x) !== null && safeNumber(entry.y) !== null);
+      if (entity) { camera.x = entity.x; camera.y = entity.y; camera.scale = .75; model.positioned = true; }
+    }
     model.connected = true; model.lastUpdate = Date.now();
-    setConnection("live", "Tracker live"); renderSummary(); renderRoster(); renderEvents(); drawMap();
+    refreshFreshness(); renderSummary(); drawMap();
+  }
+
+  function refreshFreshness() {
+    if (!model.connected) return;
+    const timestamp = Number(model.state.updated_at);
+    const stale = !Number.isFinite(timestamp) || timestamp <= 0 || Date.now() / 1000 - timestamp > 30;
+    setConnection(stale ? "warn" : "live", stale ? "Last known positions · server idle or stale" : "Tracker live");
   }
 
   function applyUpdate(payload) { applySnapshot(payload); }
@@ -322,11 +311,12 @@
   }
 
   async function loadInitial() {
-    try { model.manifest = await getJson("/api/map/manifest"); ui.mapName.textContent = model.manifest.title || "B42 map layer"; ui.mapBuild.textContent = `${model.manifest.build || "B42"} · ${model.manifest.source || "map cache"}`; drawMap(); }
-    catch (_) { model.manifest = null; ui.mapName.textContent = "B42 map layer unavailable"; drawMap(); }
-    try { applySnapshot({ state: await getJson("/api/state") }); } catch (_) { setConnection("warn", "Waiting for tracker"); }
-    try { const result = await getJson("/api/events"); model.events = Array.isArray(result.events) ? result.events : []; renderEvents(); } catch (_) { /* stream can still recover */ }
-    try { const result = await getJson("/api/history/goblin"); model.history = Array.isArray(result.history) ? result.history : []; renderHistory(); drawMap(); } catch (_) { /* history is optional */ }
+    const [mapResult, stateResult] = await Promise.allSettled([getJson("/api/map/manifest"), getJson("/api/state")]);
+    model.manifest = mapResult.status === "fulfilled" ? mapResult.value : null;
+    ui.mapName.textContent = model.manifest?.title || "Map unavailable";
+    if (stateResult.status === "fulfilled") applySnapshot({ state: stateResult.value });
+    else { setConnection("warn", "Waiting for tracker"); drawMap(); }
+    try { const result = await getJson("/api/history/goblin"); model.history = Array.isArray(result.history) ? result.history : []; drawMap(); } catch (_) { /* history is optional */ }
   }
 
   function startStream() {
@@ -338,15 +328,21 @@
   }
 
   ui.canvas.addEventListener("pointerdown", (event) => { ui.canvas.setPointerCapture(event.pointerId); camera.dragging = true; camera.pointerX = event.offsetX; camera.pointerY = event.offsetY; });
-  ui.canvas.addEventListener("pointermove", (event) => { if (!camera.dragging) return; camera.x -= (event.offsetX - camera.pointerX) / camera.scale; camera.y -= (event.offsetY - camera.pointerY) / camera.scale; camera.pointerX = event.offsetX; camera.pointerY = event.offsetY; drawMap(); });
+  ui.canvas.addEventListener("pointermove", (event) => { if (!camera.dragging) return; camera.x -= (event.offsetX - camera.pointerX) / camera.scale; camera.y -= (event.offsetY - camera.pointerY) / camera.scale; camera.pointerX = event.offsetX; camera.pointerY = event.offsetY; requestDraw(); });
   ui.canvas.addEventListener("pointerup", () => { camera.dragging = false; });
   ui.canvas.addEventListener("pointercancel", () => { camera.dragging = false; });
-  ui.canvas.addEventListener("wheel", (event) => { event.preventDefault(); zoom(event.deltaY < 0 ? 1.18 : .85, event.offsetX, event.offsetY); }, { passive: false });
+  ui.canvas.addEventListener("lostpointercapture", () => { camera.dragging = false; });
+  ui.canvas.addEventListener("wheel", (event) => { event.preventDefault(); const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? screenSize().height : 1); zoom(Math.exp(-Math.max(-180, Math.min(180, pixels)) * .002), event.offsetX, event.offsetY); }, { passive: false });
   $("zoom-in").addEventListener("click", () => zoom(1.3));
   $("zoom-out").addEventListener("click", () => zoom(.77));
   $("fit-map").addEventListener("click", fitWorld);
   $("focus-goblin").addEventListener("click", focusGoblin);
+  ui.focusSelect.addEventListener("change", () => {
+    const entity = allEntities().find((entry) => entry.id === ui.focusSelect.value);
+    if (entity) { camera.x = entity.x; camera.y = entity.y; camera.scale = Math.max(camera.scale, .75); drawMap(); }
+  });
+  for (const id of ["show-players", "show-goblins", "show-trails"]) $(id).addEventListener("change", drawMap);
   window.addEventListener("resize", resizeCanvas);
-  window.setInterval(() => { if (model.connected && model.state.updated_at) ui.lastSeen.textContent = relativeAge(model.state.updated_at); }, 5000);
+  window.setInterval(() => { if (model.connected && model.state.updated_at) ui.lastSeen.textContent = relativeAge(model.state.updated_at); refreshFreshness(); }, 5000);
   resizeCanvas(); loadInitial().finally(startStream);
 })();

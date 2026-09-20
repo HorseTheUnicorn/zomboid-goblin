@@ -30,6 +30,51 @@ class CompanionWorkTests(unittest.TestCase):
             assert(done and moved==1)
         ''')
 
+    def test_defense_override_replaces_real_legacy_body_weapon(self):
+        # Other work fixtures stub Body. Exercise the actual equipment module
+        # before/after the startup override so source-only audits cannot mistake
+        # the legacy pistol implementation for the initialized weapon policy.
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinBody']=nil
+            local realBody=require('GoblinSurvivor/GoblinBody')
+            local Config=require('GoblinSurvivor/Config')
+            a.data.goblin_owned=true
+            a.data.GoblinID=Config.npcId..'.horse'
+            local legacy=realBody.ensureWeapon
+            local defense=require('GoblinSurvivor/GoblinDefense')
+            defense.install()
+            assert(realBody.ensureWeapon~=legacy)
+            local ok,detail,weapon=realBody.ensureWeapon(a)
+            assert(ok and weapon:getFullType()=='Base.DoubleBarrelShotgun')
+            assert(a.hand==weapon and a.data.GoblinWeaponType=='Base.DoubleBarrelShotgun')
+            assert(not World.materials(a,{['Base.Pistol3']=1}))
+            assert(not Loot.hasCargo(a))
+        ''')
+
+    def test_body_snapshot_reads_native_simulation_owner_without_writing_it(self):
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinBody']=nil
+            local realBody=require('GoblinSurvivor/GoblinBody')
+            local Config=require('GoblinSurvivor/Config')
+            local nativePlayer={getUsername=function() return 'unicorn' end}
+            a.data.GoblinNPC=true
+            a.data.goblin_owned=true
+            a.data.GoblinID=Config.npcId..'.horse'
+            a.data.GoblinOwner='horse'
+            a.engineOwner={}
+            function a:getOwnerPlayer() return nativePlayer end
+            local clientOwned=realBody.snapshot(a)
+            assert(clientOwned.navigation.simulation_owner=='client')
+            assert(clientOwned.navigation.native_owner_player=='unicorn')
+            assert(a.engineOwner~=nil) -- telemetry is read-only
+
+            a.engineOwner=nil
+            function a:getOwnerPlayer() return nil end
+            local serverOwned=realBody.snapshot(a)
+            assert(serverOwned.navigation.simulation_owner=='server')
+            assert(serverOwned.navigation.native_owner_player==nil)
+        ''')
+
     def test_transfer_failure_rolls_back_without_duplication(self):
         self.lua.execute('''
             sq=cell:getGridSquare(0,0,0); value=item('Base.Nails'); inv=container({value})
@@ -46,6 +91,40 @@ class CompanionWorkTests(unittest.TestCase):
             sq.blocked=false; a.inv.full=true
             assert(not World.take(a,{square=sq,container=inv,item=value}))
             assert(#inv.items==1)
+        ''')
+
+    def test_work_approach_expands_to_radius_two_without_mutating_the_target(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            local before=#target.objects
+            for dx=-1,1 do for dy=-1,1 do
+                cell:getGridSquare(5+dx,5+dy,0).occupied=true
+            end end
+            local candidate,detail=World.approachCandidate(a,target,clock,true)
+            assert(candidate and candidate.ring==2 and candidate.interaction_target==target)
+            assert(candidate.reason=='radius-2 staging approach' and #target.objects==before)
+            local done,status=World.approach(a,target,clock)
+            assert(not done and status=='walking to alternate work approach')
+            assert(a.pathCalls==1 and #target.objects==before)
+        ''')
+
+    def test_work_approach_keeps_one_valid_staging_square_while_actor_moves(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            for dx=-1,1 do for dy=-1,1 do
+                cell:getGridSquare(5+dx,5+dy,0).occupied=true
+            end end
+            local done,status=World.approach(a,target,clock)
+            assert(not done and status=='walking to alternate work approach')
+            local firstX,firstY=a.destination.x,a.destination.y
+            a.x,a.y=10.5,10.5
+            World.approach(a,target,clock+250)
+            assert(a.destination.x==firstX and a.destination.y==firstY)
+            assert(a.pathCalls==1)
+            cell:getGridSquare(math.floor(firstX),math.floor(firstY),0).occupied=true
+            World.approach(a,target,clock+500)
+            assert(a.destination.x~=firstX or a.destination.y~=firstY)
+            assert(a.pathCalls==2)
         ''')
 
     def test_build_consumes_materials_once_and_retains_hammer(self):
@@ -138,6 +217,22 @@ class CompanionWorkTests(unittest.TestCase):
             Autonomy.update(a,clock+60499)
             assert(a.data.GoblinTask=='FOLLOW')
             Autonomy.update(a,clock+60500)
+            assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
+        ''')
+
+    def test_manual_follow_order_gets_a_fresh_idle_window(self):
+        self.lua.execute('''
+            Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            Brain=require('GoblinSurvivor/GoblinBrain')
+            a.data.GoblinTask='FOLLOW'; Autonomy.update(a,clock)
+            Autonomy.update(a,clock+30000)
+            assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
+            assert(Brain.setTask(a,'FOLLOW',{owner='horse',manual=true}))
+            Autonomy.update(a,clock+31000)
+            assert(a.data.GoblinTask=='FOLLOW' and not a.data.GoblinAutonomous)
+            Autonomy.update(a,clock+60999)
+            assert(a.data.GoblinTask=='FOLLOW')
+            Autonomy.update(a,clock+61000)
             assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
         ''')
 
@@ -305,6 +400,68 @@ class CompanionWorkTests(unittest.TestCase):
             Spawner.ensureForPlayer(player,false);assert(b.teleports==1)
         ''')
 
+    def test_following_goblin_that_falls_out_of_range_is_rejoined_without_respawning(self):
+        self.lua.execute('''
+            Spawner=require('GoblinSurvivor/GoblinSpawner')
+            b=Spawner.ensureForPlayer(player,false)
+            assert(spawnCount==1 and b.data.GoblinTask=='FOLLOW')
+            b.x,b.y=-40,0
+            again=Spawner.ensureForPlayer(player,false)
+            assert(again==b and spawnCount==1)
+            assert(b.data.GoblinRejoinSequence==1)
+            assert(b.data.GoblinRejoinPoint and math.abs(b.data.GoblinRejoinPoint.x-player.x)<10)
+            assert(b.data.GoblinTaskPayload.rejoin_run==true)
+            Spawner.ensureForPlayer(player,false)
+            assert(b.data.GoblinRejoinSequence==1)
+            b.x,b.y=b.data.GoblinRejoinPoint.x,b.data.GoblinRejoinPoint.y
+            clock=clock+11000
+            Spawner.ensureForPlayer(player,false)
+            assert(b.data.GoblinRejoinSequence==1 and spawnCount==1)
+        ''')
+
+    def test_nearby_follower_on_adjacent_floor_uses_stairs_instead_of_rejoin_teleport(self):
+        self.lua.execute('''
+            Spawner=require('GoblinSurvivor/GoblinSpawner')
+            b=Spawner.ensureForPlayer(player,false)
+            b.x,b.y,b.z=4,0,0
+            player.x,player.y,player.z=0,0,1
+            again=Spawner.ensureForPlayer(player,false)
+            assert(again==b and spawnCount==1)
+            assert(b.data.GoblinRejoinSequence==nil)
+            assert(b.data.GoblinRejoinPoint==nil)
+
+            -- A discontinuous multi-floor separation still invokes the safety
+            -- recall even when the planar coordinates happen to match.
+            player.z=3
+            Spawner.ensureForPlayer(player,false)
+            assert(b.data.GoblinRejoinSequence==1)
+        ''')
+
+    def test_missing_follow_body_recreates_near_returning_owner_not_stale_checkpoint(self):
+        self.lua.execute('''
+            Spawner=require('GoblinSurvivor/GoblinSpawner');Spawner.load()
+            old=Spawner.ensureForPlayer(player,false)
+            old.x,old.y=100,100
+            Spawner.allBodies()
+            assert(saved.records.horse.position.x==100)
+
+            -- Simulate the old cell/body being unloaded across a server
+            -- lifecycle while its persistent owner record remains.
+            zombies=list()
+            package.loaded['GoblinSurvivor/GoblinSpawner']=nil
+            Spawner=require('GoblinSurvivor/GoblinSpawner');Spawner.load()
+            local replacement=Spawner.ensureForPlayer(player,false)
+            assert(replacement~=old and spawnCount==2)
+            assert(replacement.data.GoblinID=='goblin.primary.horse')
+            assert(replacement.data.GoblinGeneration==2)
+            assert(math.abs(replacement.x-player.x)<=8 and math.abs(replacement.y-player.y)<=8)
+
+            -- If the old generation later streams back in, owner-scoped
+            -- deduplication retains exactly the newer managed companion.
+            zombies:add(old);Spawner.allBodies()
+            assert(old.removed and Spawner.findForPlayer(player)==replacement)
+        ''')
+
     def test_dead_owner_is_not_a_delivery_target_and_does_not_stop_offline_chores(self):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy');Brain=require('GoblinSurvivor/GoblinBrain')
@@ -321,7 +478,7 @@ class CompanionWorkTests(unittest.TestCase):
             assert(a.data.GoblinTask=='FOLLOW')
         ''')
 
-    def test_doors_and_windows_open_natively_without_bypassing_locks_or_barricades(self):
+    def test_unlocked_door_and_window_use_native_entrypoints_and_window_guards_remain(self):
         self.lua.execute('''
             Access=require('GoblinSurvivor/GoblinAccess')
             object={opened=false,calls=0}
@@ -342,6 +499,83 @@ class CompanionWorkTests(unittest.TestCase):
                 object[field]=nil
             end
             assert(Access.open(a,object,true) and object.calls==2)
+        ''')
+
+    def test_managed_door_access_unlocks_every_garage_segment_and_avoids_player_cast(self):
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinAccess']=nil
+            Access=require('GoblinSurvivor/GoblinAccess')
+            function routeDoor(name)
+                local value={name=name,opened=false,locked=true,keyLocked=true,syncs=0,silent=0,actorCalls=0}
+                function value:isOpen() return self.opened end
+                value.IsOpen=value.isOpen
+                function value:isLocked() return self.locked end
+                function value:setLocked(flag) self.locked=flag end
+                function value:isLockedByKey() return self.keyLocked end
+                function value:setLockedByKey(flag) self.keyLocked=flag end
+                function value:isBarricaded() return false end
+                function value:isDestroyed() return false end
+                function value:syncIsoObject() self.syncs=self.syncs+1 end
+                function value:ToggleDoorSilent() self.silent=self.silent+1;self.opened=not self.opened end
+                function value:ToggleDoor() self.actorCalls=self.actorCalls+1;error('IsoPlayer cast') end
+                return value
+            end
+            IsoDoor={}
+            function IsoDoor.getDoubleDoorIndex() return -1 end
+            function IsoDoor.getGarageDoorIndex(o) return o.garage and 2 or -1 end
+            function IsoDoor.getGarageDoorPrev(o) return o.previous end
+            function IsoDoor.getGarageDoorNext(o) return o.next end
+            function IsoDoor.toggleGarageDoor(o,replicate)
+                assert(replicate==true)
+                local first=o;while first.previous do first=first.previous end
+                while first do first.opened=true;first=first.next end
+            end
+
+            local ordinary=routeDoor('ordinary')
+            assert(Access.open(a,ordinary,false))
+            assert(ordinary.opened and not ordinary.locked and not ordinary.keyLocked)
+            assert(ordinary.silent==1 and ordinary.actorCalls==0 and ordinary.syncs>=2)
+            assert(a.data.GoblinAccessRevision==1)
+
+            local one,two,three=routeDoor('one'),routeDoor('two'),routeDoor('three')
+            one.garage,two.garage,three.garage=true,true,true
+            one.next=two;two.previous=one;two.next=three;three.previous=two
+            assert(Access.open(a,two,false))
+            assert(a.data.GoblinAccessRevision==2)
+            for _,part in ipairs({one,two,three}) do
+                assert(part.opened and not part.locked and not part.keyLocked and part.syncs>=1)
+                assert(part.actorCalls==0)
+            end
+        ''')
+
+    def test_managed_door_access_never_unlocks_another_players_safehouse(self):
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinAccess']=nil
+            sq=cell:getGridSquare(0,0,0)
+            local allowed=false
+            local safehouse={playerAllowed=function(_,owner) assert(owner=='horse');return allowed end}
+            SafeHouse={getSafeHouse=function(square) assert(square==sq);return safehouse end}
+            IsoDoor={getDoubleDoorIndex=function() return -1 end,getGarageDoorIndex=function() return -1 end}
+            local door={opened=false,locked=true,keyLocked=true}
+            function door:getSquare() return sq end
+            function door:isOpen() return self.opened end
+            door.IsOpen=door.isOpen
+            function door:isLocked() return self.locked end
+            function door:setLocked(value) self.locked=value end
+            function door:isLockedByKey() return self.keyLocked end
+            function door:setLockedByKey(value) self.keyLocked=value end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:ToggleDoorSilent() self.opened=not self.opened end
+            function door:syncIsoObject() end
+            Access=require('GoblinSurvivor/GoblinAccess')
+            assert(not Access.open(a,door,false))
+            assert(not door.opened and door.locked and door.keyLocked)
+            allowed=true
+            assert(Access.open(a,door,false))
+            assert(door.opened,'door did not open')
+            assert(not door.locked,'door remained locked')
+            assert(not door.keyLocked,'door remained key-locked')
         ''')
 
     def test_idle_goblin_uses_delivered_base_materials_for_real_fortification(self):

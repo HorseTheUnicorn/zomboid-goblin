@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-20T09:54:41-04:00",
+  "scope": "disposable local multiplayer Milestone 1 acceptance",
+  "game_build": "42.20.4 b0bbce05d5",
+  "production_modified": false,
+  "published": false,
+  "server": {
+    "profile": "goblin-local",
+    "address": "127.0.0.1:16271",
+    "steam": false,
+    "storm_server_side": true
+  },
+  "clients": [
+    {
+      "username": "mossclaw_7a3d",
+      "ordinary_executable": true,
+      "storm": false,
+      "goblin_id": "goblin.primary.mossclaw_7a3d",
+      "spawn_generation": 1
+    },
+    {
+      "username": "scrapfang_b841",
+      "ordinary_executable": true,
+      "storm": false,
+      "goblin_id": "goblin.primary.scrapfang_b841",
+      "spawn_generation": 1
+    },
+    {
+      "username": "pathfang_f2a1",
+      "ordinary_executable": true,
+      "storm": false,
+      "goblin_id": "goblin.primary.pathfang_f2a1",
+      "spawn_generation": 1,
+      "scenario": "single-client open-terrain and bounded native-failure probe"
+    }
+  ],
+  "source_sha256": {
+    "GoblinWorld.lua": "3baa2b8a89072d52e4dedb31766e5fb2816f93db89dea72666bc7292697b0e0d",
+    "GoblinAccess.lua": "a185a9eb35134ee5aea83c6be0ce999125446241f066b2489b237c4c4b77baac",
+    "GoblinBody.lua": "29e748bb45955c8947c17e446bae8fb8d50465e2bb9fc9501ba17ab78b3578cf",
+    "GoblinClient.lua": "d070f2be2e323c20ca63b6131fd60913d93d9191044815226d859691a372e1c5",
+    "GoblinLocomotion.lua": "74f55c68f399568ba6e1daeb25fa8d501934c18c112919983784afb63ca59cba",
+    "GoblinSpawner.lua": "c8183687d8b39936558e847149e1199a4a60252698f02de3dd423c80ebdf3c4c"
+  },
+  "closed_door_follow": {
+    "result": "pass",
+    "edge": "10995,9701,0|10995,9700,0",
+    "initially_closed": true,
+    "opened_by_goblin_access": true,
+    "crossed": true,
+    "elapsed_ms": 3900,
+    "finish": {"x": 10995.6181640625, "y": 9700.3818359375, "z": 0}
+  },
+  "durable_radius_two_staging": {
+    "result": "pass",
+    "target": {"x": 10979, "y": 9671, "z": 0},
+    "target_object_count": 3,
+    "target_initially_blocked": true,
+    "actual_stage": {"x": 10977.5, "y": 9669.5, "z": 0},
+    "stage_reached": true,
+    "target_world_state_unchanged": true,
+    "elapsed_ms": 8101
+  },
+  "open_terrain_running_follow": {
+    "result": "pass",
+    "precondition": "A disposable probe pre-staged the player and managed actor on a verified straight 18-tile outdoor corridor before measurement; no staging movement is counted as acceptance evidence.",
+    "player_start": {"x": 10773.5, "y": 9761.5, "z": 0},
+    "goblin_start": {"x": 10772.5, "y": 9761.5, "z": 0},
+    "player_target": {"x": 10773.5, "y": 9779.5, "z": 0},
+    "owner_delta": 17.01,
+    "goblin_delta": 8.72,
+    "final_gap": 8.70,
+    "max_observed_step": 0.04,
+    "elapsed_ms": 8033,
+    "teleport_after_measurement": false
+  },
+  "native_no_progress_recovery": {
+    "result": "pass",
+    "target": {"x": 10771.5, "y": 9772.5, "z": 0},
+    "test_obstruction": "The disposable client repeatedly applied setCanWalk(false), setUseless(true), and setSpeedMod(0.0) to the managed actor, without cancelling or replacing its native path. At blacklist expiry it restored setCanWalk(true), setUseless(false), and setSpeedMod(1.0).",
+    "path_cancelled": false,
+    "native_repath_attempts": 1,
+    "blocked_reason": "no progress after native repath",
+    "blocked_max_observed_step": 0.15,
+    "blacklist_expiry_ms": 31050,
+    "resumed_delta": 0.81,
+    "resumed_max_observed_step": 0.15,
+    "teleport": false
+  },
+  "native_simulation_ownership_handoff": {
+    "result": "pass",
+    "actor": "goblin.primary.horse",
+    "observation_api": "IsoZombie.getOwnerPlayer().getUsername() read by dedicated-server telemetry",
+    "initial_native_owner_player": "horse",
+    "initial_actor": {"x": 10821.921875, "y": 10162.0625, "z": 0},
+    "staging": {
+      "method": "temporary localhost RCON teleportto commands moved players only",
+      "ownership_write": false,
+      "goblin_teleport": false,
+      "near_player": {"username": "unicorn", "x": 10821.92, "y": 10162.06, "z": 0},
+      "far_player": {"username": "horse", "x": 10841.92, "y": 10162.06, "z": 0}
+    },
+    "handoff_observation": {
+      "timestamp_ms": 1789909403147,
+      "native_owner_player": "unicorn",
+      "actor": {"x": 10821.51, "y": 10162.34, "z": 0},
+      "near_gap_tiles": 0.49,
+      "far_gap_tiles": 20.41
+    },
+    "return_observation": {
+      "native_owner_player": "horse",
+      "actor": {"x": 10844.69, "y": 10162.06, "z": 0},
+      "owner_gap_tiles": 2.77
+    },
+    "cleanup": "Both players were returned to their pre-test positions; both Goblins resumed FOLLOW under their own player's native client authority."
+  },
+  "furniture_detour": {
+    "result": "pass",
+    "actor": "goblin.primary.horse",
+    "obstacle_square": {"x": 10815, "y": 9986, "z": 0},
+    "obstacle_sprites": ["floors_interior_carpet_01_3", "furniture_seating_indoor_01_39"],
+    "precondition": "The loaded square was runtime-selected because it contained indoor seating and was not a valid free movement square. The owner alone was staged north of it while the managed actor began south of it; the actor remained inside the respawn-rejoin threshold.",
+    "owner_target": {"x": 10815.5, "y": 9978.5, "z": 0},
+    "observed_actor_positions": [
+      {"x": 10815.299, "y": 9989.045, "z": 0},
+      {"x": 10814.5, "y": 9986.822, "z": 0},
+      {"x": 10814.5, "y": 9981.686, "z": 0}
+    ],
+    "actor_delta_tiles": 7.402,
+    "lateral_detour_tiles": 1.0,
+    "crossed_obstacle_y": true,
+    "occupied_obstacle_square": false,
+    "native_owner_player": "horse",
+    "follow_rejoin_during_measurement": false,
+    "goblin_position_write": false,
+    "notes": "One-second telemetry samples are intentionally too coarse to treat the largest inter-sample distance as a teleport test. Acceptance rests on the actor entering the free square west of the chair, never occupying the blocked chair square, then continuing north under native client authority without a FOLLOW_REJOIN event."
+  },
+  "managed_door_access": {
+    "result": "pass",
+    "actors": ["goblin.primary.horse", "goblin.primary.unicorn"],
+    "authority": "server changes door world state; current native client simulation owner performs movement",
+    "ordinary_door": {
+      "edge": "10778:9763:0|10778:9764",
+      "initial": {"open": false, "locked": true, "key_locked": true},
+      "final": {"open": true, "locked": false, "key_locked": false},
+      "exact_edge_crossed": true
+    },
+    "garage_group": {
+      "edges": [
+        "10708:9365:0|10709:9365",
+        "10708:9366:0|10709:9366",
+        "10708:9367:0|10709:9367",
+        "10708:9368:0|10709:9368"
+      ],
+      "segment_count": 4,
+      "initial": {"open": false, "locked": true, "key_locked": true},
+      "final": {"open": true, "locked": false, "key_locked": false},
+      "observed_by_server": true,
+      "observed_by_both_ordinary_clients": true,
+      "same_adapter_exact_crossing": {"start_x": 10713.9, "finish_x": 10708.44},
+      "final_access_revision_run": {
+        "actor_start": {"x": 10710.34, "y": 9362.17, "z": 0},
+        "actor_resumed": {"x": 10706.59, "y": 9362.48, "z": 0},
+        "follow_rejoin": false
+      }
+    },
+    "adapter": "ordinary ToggleDoorSilent plus full syncIsoObject; native toggleDoubleDoor/toggleGarageDoor for groups; no IsoPlayer actor cast",
+    "safehouse_policy": "no claim allows access; claimed square requires SafeHouse.playerAllowed(GoblinOwner); denial is unit-tested, not live-accepted",
+    "materials_consumed": [],
+    "save_reload_verified": false,
+    "goblin_position_write": false,
+    "notes": "The final clean run loaded the safehouse-aware adapter and replicated access revision. It verifies the lock/open state on the server and both no-Storm clients plus resumed client-owned native movement. It does not claim save/reload or constructed IsoThumpable coverage."
+  },
+  "evidence_boundary": {
+    "proves": [
+      "two ordinary no-Storm clients joined one server-side-Storm session",
+      "one distinct persistent Goblin spawned for each connected player",
+      "a following managed IsoZombie opened and crossed a door that was verified closed at start",
+      "a managed IsoZombie reached the runtime-selected radius-2 staging square for a structurally obstructed loaded target",
+      "the obstructed target was not mutated before an accepted interaction position",
+      "a managed IsoZombie physically followed a running owner on a straight open-terrain corridor without teleport after measurement began",
+      "a reversible no-progress obstruction produced exactly one native repath, one terminal blocked result, bounded blacklist expiry, and resumed physical movement without teleport",
+      "the installed engine transferred one managed IsoZombie from horse's client authority to unicorn's client authority as proximity changed, then reassigned it to horse after physical follow; no ownership field was written",
+      "a managed IsoZombie took a one-tile lateral route around a loaded indoor chair, crossed from its south side to its north side without occupying the chair square, remained under native client authority, and did not invoke respawn rejoin",
+      "the player-free door adapter opened and unlocked a locked ordinary door and all four locked garage segments, both ordinary clients observed the garage state, and the replicated access revision resumed native movement without FOLLOW_REJOIN"
+    ],
+    "does_not_prove": [
+      "stair traversal",
+      "owner running through a building",
+      "door save/reload persistence",
+      "constructed IsoThumpable door variants",
+      "live safehouse denial against another player's claim",
+      "Milestone 1 completion"
+    ]
+  }
+}

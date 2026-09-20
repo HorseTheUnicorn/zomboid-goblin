@@ -107,6 +107,49 @@ class NpcBoundaryTests(unittest.TestCase):
 
 
 class EntityAndTrackerTests(unittest.TestCase):
+    def test_native_pyramid_tiles_are_bounded_and_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tracker = TrackerStore(root / "native.sqlite3")
+            tile = root / "native" / "0" / "tile41x40.png"
+            tile.parent.mkdir(parents=True)
+            tile.write_bytes(b"map-image-fixture")
+            app = TrackerApp(tracker, map_root=root)
+            app.map_manifest = {"kind": "native-pyramid", "min_level": 0, "max_level": 4,
+                                "world": {"x_max": 19968, "y_max": 16128}}
+            try:
+                status, headers, body = app.handle("GET", "/map/native/0/tile41x40.png?v=hash")
+                self.assertEqual((status, headers["Content-Type"], body), (200, "image/png", b"map-image-fixture"))
+                for route in ("/map/native/0/tile78x40.png", "/map/native/0/tile41x63.png",
+                              "/map/native/5/tile0x0.png", "/map/native/4/tile5x0.png",
+                              "/map/native/0/%2e%2e/tracker.sqlite3"):
+                    self.assertEqual(app.handle("GET", route)[0], 404, route)
+                self.assertEqual(app.handle("POST", "/map/native/0/tile41x40.png")[0], 405)
+            finally:
+                tracker.close()
+
+    def test_actual_web_bundle_assets_are_served(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = TrackerStore(Path(directory) / "bundle.sqlite3")
+            try:
+                app = TrackerApp(tracker)
+                for route in ("/", "/assets/app.js?v=20260912-map1", "/assets/style.css"):
+                    status, _, body = app.handle("GET", route)
+                    self.assertEqual(status, 200, route)
+                    self.assertTrue(body)
+            finally:
+                tracker.close()
+
+    def test_tracker_exposes_source_timestamp_not_read_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tracker = TrackerStore(Path(directory) / "freshness.sqlite3")
+            try:
+                tracker.record_state({"updated_at": 999, "entities": []}, observed_at=123)
+                self.assertEqual(tracker.public_state()["updated_at"], 123)
+                self.assertEqual(tracker.public_state()["updated_at"], 123)
+            finally:
+                tracker.close()
+
     def setUp(self) -> None:
         self.directory = Path(tempfile.mkdtemp(prefix="goblin-tracker-"))
 

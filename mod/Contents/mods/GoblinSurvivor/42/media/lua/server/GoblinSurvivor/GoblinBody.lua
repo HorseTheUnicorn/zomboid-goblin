@@ -395,6 +395,40 @@ function Body.say(body, text)
     return okSay, okSay and "speech displayed" or "speech API unavailable"
 end
 
+local function nativeSimulationOwner(body)
+    -- On the dedicated server, IsoZombie.getOwner() is the engine's current
+    -- UdpConnection authority and getOwnerPlayer() identifies the player used
+    -- by NetworkZombieManager when it assigned that connection.  Read these
+    -- values for telemetry only; gameplay code must never write ownership.
+    local okConnection, connection = call(body, "getOwner")
+    local authority = okConnection and (connection ~= nil and "client" or "server") or nil
+    local okPlayer, player = call(body, "getOwnerPlayer")
+    local okName, name = call(player, "getUsername")
+    if not okName or type(name) ~= "string" or name == "" then name = nil end
+    return authority, name
+end
+
+local function navigationSnapshot(body, data)
+    local timestamp = nowMs()
+    local nativeAuthority, nativeOwnerPlayer = nativeSimulationOwner(body)
+    return {
+        path_state = data.GoblinPathState or "idle",
+        goal_type = data.GoblinNavigationGoalType,
+        approach_target = data.GoblinCurrentApproach,
+        progress_age_ms = data.GoblinLastProgressAt and math.max(0, timestamp-data.GoblinLastProgressAt) or nil,
+        retry_count = tonumber(data.GoblinPathFailureCount) or 0,
+        blocked_reason = data.GoblinBlockedReason,
+        blocked_edge = data.GoblinBlockedEdge,
+        -- Prefer the live engine authority over the last movement-loop sample.
+        -- This makes a real client/client handoff observable even while the
+        -- Goblin is idle and no path command is being issued.
+        simulation_owner = nativeAuthority or data.GoblinNavigationSimulationOwner,
+        native_owner_player = nativeOwnerPlayer,
+        last_successful_movement_at = data.GoblinLastSuccessfulMovementAt,
+        revision = tonumber(data.GoblinNavigationRevision) or 0
+    }
+end
+
 function Body.snapshot(body)
     if not Body.isGoblin(body) then return nil end
     local data = Body.data(body)
@@ -421,6 +455,8 @@ function Body.snapshot(body)
         combat_state = data.GoblinCombatState,
         visual_asset = Config.npcVisualAsset,
         movement_goal = data.GoblinMovementGoal,
+        access_revision = tonumber(data.GoblinAccessRevision) or 0,
+        navigation = navigationSnapshot(body, data),
         rejoin_run = data.GoblinTaskPayload and data.GoblinTaskPayload.rejoin_run == true,
         rejoin_point = data.GoblinRejoinPoint,
         rejoin_sequence = data.GoblinRejoinSequence,

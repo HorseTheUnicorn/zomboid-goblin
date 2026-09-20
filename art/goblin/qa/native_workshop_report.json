@@ -1,0 +1,12 @@
+{
+  "native_body_vertices": 617,
+  "native_body_triangles": 916,
+  "replaced_native_head_triangles": 192,
+  "goblin_head_vertices": 6731,
+  "goblin_head_triangles": 7259,
+  "native_animation": "Bob_Walk",
+  "blender_skinning_max_error": 4.1098175178150845e-06,
+  "runtime_deployed": false,
+  "body_skin_and_clothing": "preview only",
+  "head_scale": 0.8
+}

@@ -1,7 +1,8 @@
 -- Engine-facing inventory and reach checks shared by looting and construction.
 local Body = require("GoblinSurvivor/GoblinBody")
 local Movement = require("GoblinSurvivor/GoblinMovement")
-local World = {}
+local Motion = require("GoblinSurvivor/GoblinLocomotion")
+local World = { approaches = setmetatable({}, { __mode = "k" }) }
 
 function World.call(object, method, ...)
     if object == nil then return false, nil end
@@ -41,28 +42,138 @@ function World.reachable(body, square)
     return ok and blocked == false
 end
 
-function World.approach(body, square, now)
-    if not square then return false, "target unloaded" end
-    if World.reachable(body, square) then Movement.clear(body); return true, "arrived" end
-    local point, nearest, best = Body.position(body), nil, math.huge
-    for _, offset in ipairs({{0,0},{-1,0},{1,0},{0,-1},{0,1}}) do
-        local sq = getCell():getGridSquare(square:getX()+offset[1], square:getY()+offset[2], square:getZ())
-        local freeOK, free = call(sq, "isFree", false)
-        local clearOK, blocked = call(sq, "isBlockedTo", square)
-        if freeOK and free and (sq == square or (clearOK and not blocked)) then
-            local p = World.point(sq)
-            local d = (p.x-point.x)^2 + (p.y-point.y)^2
-            if d < best then nearest, best = p, d end
+local function squareOccupied(square, body)
+    local objects = World.values(select(2, call(square, "getMovingObjects")))
+    for _, object in ipairs(objects) do if object ~= body then return true end end
+    return false
+end
+
+local function squareDoorway(square)
+    for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+        local _, door = call(object, "isDoor")
+        local _, frame = call(object, "isDoorFrame")
+        if door == true or frame == true then return true end
+    end
+    return false
+end
+
+local function targetKey(square)
+    return table.concat({ square:getX(), square:getY(), square:getZ() }, ":")
+end
+
+local function candidates(body, target, ring, now)
+    local here, result = Body.position(body), {}
+    for dx = -ring, ring do
+        for dy = -ring, ring do
+            if ring == 0 or math.max(math.abs(dx), math.abs(dy)) == ring then
+                local square = getCell():getGridSquare(target:getX()+dx, target:getY()+dy, target:getZ())
+                local freeOK, free = call(square, "isFree", false)
+                local _, fire = call(square, "haveFire")
+                local clear = ring > 1 or square == target
+                if ring == 1 and square ~= target then
+                    local clearOK, blocked = call(square, "isBlockedTo", target)
+                    clear = clearOK and blocked == false
+                end
+                if square and freeOK and free == true and fire ~= true and clear
+                    and not squareOccupied(square, body) then
+                    local point = World.point(square)
+                    local key = targetKey(square)
+                    if not Motion.isBlacklisted(body, key, now, "approach") then
+                        local distance = (point.x-here.x)^2 + (point.y-here.y)^2
+                        local score = distance + ring * 3 + (squareDoorway(square) and 15 or 0)
+                        result[#result+1] = { square = square, point = point, score = score,
+                            interaction_target = target, ring = ring, key = key,
+                            reason = ring > 1 and "radius-2 staging approach" or "interaction approach" }
+                    end
+                end
+            end
         end
     end
-    if not nearest then return false, "no accessible work square" end
+    table.sort(result, function(a,b) return a.score < b.score end)
+    return result
+end
+
+function World.approachCandidate(body, square, now, allowStaging)
+    if not square then return nil, "target unloaded" end
+    for ring = 0, 1 do
+        local found = candidates(body, square, ring, now)
+        if found[1] then return found[1] end
+    end
+    if allowStaging ~= false then
+        local found = candidates(body, square, 2, now)
+        if found[1] then return found[1] end
+    end
+    return nil, "no accessible work square"
+end
+
+local function candidateValid(body, target, candidate, now)
+    if type(candidate)~="table" or not candidate.square or not candidate.point then return false end
+    local square=getCell():getGridSquare(candidate.square:getX(),candidate.square:getY(),candidate.square:getZ())
+    if square~=candidate.square then return false end
+    local freeOK,free=call(square,"isFree",false)
+    local _,fire=call(square,"haveFire")
+    if not freeOK or free~=true or fire==true or squareOccupied(square,body)
+        or Motion.isBlacklisted(body,candidate.key,now,"approach") then return false end
+    if candidate.ring==1 and square~=target then
+        local clearOK,blocked=call(square,"isBlockedTo",target)
+        if not clearOK or blocked~=false then return false end
+    end
+    return true
+end
+
+function World.approach(body, square, now)
+    if not square then return false, "target unloaded" end
+    if World.reachable(body, square) then
+        Movement.clear(body)
+        World.approaches[body] = nil
+        return true, "arrived"
+    end
+    now = now or (type(getTimestampMs) == "function" and getTimestampMs() or 0)
+    local state = World.approaches[body]
+    local key = targetKey(square)
+    if not state or state.target ~= key then state = { target = key }; World.approaches[body] = state end
+    if state.staging then
+        local point = Body.position(body)
+        if Motion.distance(point, state.staging) <= 0.6 then
+            state.staged = true
+            state.staging = nil
+            state.chosen = nil
+            Motion.clearBlacklistKind(body, "approach")
+            Movement.clear(body)
+        end
+    end
+    if state.chosen and not candidateValid(body,square,state.chosen,now) then
+        state.chosen,state.staging=nil,nil
+    end
+    -- Keep one accepted approach while it remains valid. Re-scoring from the
+    -- actor's new position every tick makes the best radius-2 point orbit the
+    -- target and causes a client-owned actor to chase a moving destination.
+    local candidate, reason = state.chosen, nil
+    if not candidate then
+        candidate,reason=World.approachCandidate(body,square,now,not state.staged)
+        state.chosen=candidate
+    end
+    if not candidate then return false, reason end
+    if candidate.ring > 1 then state.staging = candidate.point else state.staging = nil; state.staged = false end
+    local nearest = candidate.point
     nearest.radius = 0.45
+    nearest.approach_type = candidate.ring > 1 and "work_staging" or "work_approach"
+    nearest.approach_ring = candidate.ring
+    nearest.goal_key = candidate.key
+    nearest.blacklist_kind = "approach"
     local active = Movement.snapshot(body)
     local goal = active and active.goal
     if not goal or goal.x ~= nearest.x or goal.y ~= nearest.y or goal.z ~= nearest.z then
         Movement.command(body, "MOVE_TO", nearest)
-    else Movement.update(body, now) end
-    return false, "walking to supplies/work"
+    else
+        local ok, detail = Movement.update(body, now)
+        if not ok and detail and string.find(detail, "progress") then
+            Motion.blacklist(body, candidate.key, detail, now, "approach")
+            state.chosen,state.staging=nil,nil
+        end
+    end
+    return false, candidate.reason == "radius-2 staging approach"
+        and "walking to alternate work approach" or "walking to supplies/work"
 end
 
 function World.sources(center, radius, accept)

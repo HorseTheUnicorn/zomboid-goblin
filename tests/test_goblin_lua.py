@@ -120,6 +120,16 @@ class GoblinLuaTests(unittest.TestCase):
             assert(a.pathCalls == 2 and Motion.paths[a].failures == 1)
         ''')
 
+    def test_opened_access_revision_forces_immediate_native_repath(self):
+        self.lua.execute('''
+            a=actor(0,0,0); goal={x=10,y=0,z=0}
+            Motion.drive(a,goal,'WALK',clock)
+            assert(a.pathCalls==1)
+            clock=clock+100
+            Motion.drive(a,goal,'WALK',clock,{obstruction_cleared=true})
+            assert(a.pathCalls==2,'door-open signal did not bypass the normal repath cooldown')
+        ''')
+
     def test_nearby_move_to_uses_walk_instead_of_idle(self):
         self.lua.execute('''
             a=actor(0,0,0); a.data={GoblinNPC=true,GoblinOwner='horse'}
@@ -156,6 +166,64 @@ class GoblinLuaTests(unittest.TestCase):
             assert((listBoundsErrors or 0)==0)
         ''')
 
+    def test_long_follow_uses_native_character_target_and_keeps_one_stable_slot_nearby(self):
+        self.lua.execute('''
+            Movement=require('GoblinSurvivor/GoblinMovement')
+            a=actor(0,0,0);a.data={GoblinNPC=true,GoblinOwner='horse'}
+            Movement.command(a,'FOLLOW',{})
+            assert(a.characterPathCalls==1 and a.pathTarget==player)
+            a.x=6;player.x=10
+            local first,gap,context=Motion.followGoal(a,player,clock)
+            local slot=Motion.followSlots[a]
+            assert(first and context.goal_type=='follow_slot' and slot)
+            player.x=10.2
+            local second=Motion.followGoal(a,player,clock+100)
+            assert(second and Motion.followSlots[a]==slot)
+        ''')
+
+    def test_stalled_character_follow_repath_uses_current_coordinate_fallback(self):
+        self.lua.execute('''
+            a=actor(0,0,0);player.x=12
+            local goal,gap,context=Motion.followGoal(a,player,clock)
+            assert(Motion.drive(a,goal,'RUN',clock,context))
+            assert(a.characterPathCalls==1 and a.pathCalls==1)
+            player.x=13
+            goal,gap,context=Motion.followGoal(a,player,clock+6100)
+            assert(Motion.drive(a,goal,'RUN',clock+6100,context))
+            assert(a.characterPathCalls==1 and a.pathCalls==2)
+            assert(Motion.paths[a].route=='location-repath')
+            assert(a.destination.x==13)
+        ''')
+
+    def test_follow_slot_rejects_occupied_preference_and_selects_an_alternate(self):
+        self.lua.execute('''
+            a=actor(6,0,0);player.x=10
+            local original=cell.getGridSquare
+            function cell:getGridSquare(x,y,z)
+                local square=original(self,x,y,z)
+                function square:isFree() return x~=6 end
+                return square
+            end
+            local goal,gap,context=Motion.followGoal(a,player,clock)
+            assert(goal and context.goal_type=='follow_slot')
+            assert(Motion.followSlots[a]~=5 and math.floor(goal.x)~=6)
+        ''')
+
+    def test_stuck_recovery_repaths_once_blacklists_then_expires_without_looping(self):
+        self.lua.execute('''
+            a=actor(0,0,0);goal={x=10,y=0,z=0}
+            assert(Motion.drive(a,goal,'WALK',clock))
+            assert(Motion.drive(a,goal,'WALK',clock+6100))
+            assert(a.pathCalls==2)
+            local ok,detail=Motion.drive(a,goal,'WALK',clock+12200)
+            assert(not ok and detail=='no progress after native repath' and a.pathCalls==2)
+            for i=1,20 do Motion.drive(a,goal,'WALK',clock+12200+i*100) end
+            assert(a.pathCalls==2 and Motion.isBlacklisted(a,goal,clock+15000))
+            assert(Motion.drive(a,goal,'WALK',clock+43000) and a.pathCalls==3)
+            local snapshot=Motion.snapshot(a,clock+43000)
+            assert(snapshot.path_state=='pathing' and snapshot.simulation_owner=='server')
+        ''')
+
     def test_spawn_outfit_uses_lua_exposed_character_accessor_not_raw_outfit_object(self):
         self.lua.execute('''
             Appearance=require('GoblinSurvivor/GoblinAppearance');a=actor(0,0,0)
@@ -183,6 +251,20 @@ class GoblinLuaTests(unittest.TestCase):
             for i=1,5 do Guard.apply(a) end
             assert(readOnlyWrites==0 and a.variables.GoblinNPC==true)
             assert(a.variables.NoLungeAttack and a.variables.NoLungeTarget)
+        ''')
+
+    def test_idle_animation_guard_does_not_freeze_an_active_native_route(self):
+        self.lua.execute('''
+            Guard=require('GoblinSurvivor/GoblinGuard');a=actor(0,0,0)
+            function a:getCurrentStateName() return 'IdleState' end
+            function a:getVariableBoolean(key) return self.variables[key] == true end
+            a.useless=false
+            Motion.paths[a]={goalKey='character',goalType='character'}
+            Guard.apply(a)
+            assert(a.useless==false)
+            Motion.paths[a]=nil
+            Guard.apply(a)
+            assert(a.useless==true)
         ''')
 
     def test_follow_mirrors_owner_running_and_sprinting_without_waiting_for_a_large_gap(self):

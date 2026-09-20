@@ -36,7 +36,7 @@ function Guard.apply(body)
     Audio.silence(body)
     local _, name = call(body, "getCurrentStateName")
     name = string.lower(tostring(name or ""))
-    if string.find(name,"idle",1,true) then
+    if string.find(name,"idle",1,true) and Motion.paths[body] == nil then
         local _,pathing=call(body,"getVariableBoolean","bPathfind")
         local _,moving=call(body,"getVariableBoolean","bMoving")
         if pathing~=true and moving~=true then call(body,"setUseless",true) end

@@ -36,6 +36,17 @@ function Autonomy.update(body,now)
         record={activeAt=now,nextAt=now,online=false}
         Autonomy.owners[Body.owner(body)]=record
     end
+    -- A direct FOLLOW order is player activity even when the player issued it
+    -- from a chair or while standing still.  Give that order a fresh idle
+    -- window instead of replacing it with autonomous looting on the next tick.
+    local payload=type(data.GoblinTaskPayload)=="table" and data.GoblinTaskPayload or {}
+    local sequence=tonumber(data.GoblinTaskSequence) or 0
+    if player and data.GoblinTask=="FOLLOW" and payload.manual==true
+        and record.manualSequence~=sequence then
+        record.manualSequence=sequence
+        record.activeAt=now
+        record.nextAt=now
+    end
     data.GoblinOwnerOnline=player~=nil
     data.GoblinOwnerIdleSeconds=player and math.max(0,(now-record.activeAt)/1000) or 0
     if data.GoblinRide or (player and select(2,World.call(player,"getVehicle"))) then

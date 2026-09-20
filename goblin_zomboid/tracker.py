@@ -79,8 +79,9 @@ class TrackerStore:
         if not isinstance(state, Mapping):
             raise ValueError("tracker state must be an object")
         payload = copy.deepcopy(dict(state))
-        encoded = _json(payload)
         timestamp = int(observed_at or time.time())
+        payload["updated_at"] = timestamp
+        encoded = _json(payload)
         with self.condition:
             cursor = self.connection.execute(
                 "INSERT INTO tracker_positions(observed_at, payload_json) VALUES (?, ?)",
@@ -126,9 +127,11 @@ class TrackerStore:
             if self._latest:
                 return copy.deepcopy(self._latest)
             row = self.connection.execute(
-                "SELECT payload_json FROM tracker_positions ORDER BY id DESC LIMIT 1"
+                "SELECT payload_json, observed_at FROM tracker_positions ORDER BY id DESC LIMIT 1"
             ).fetchone()
             self._latest = json.loads(row["payload_json"]) if row else {}
+            if row:
+                self._latest.setdefault("updated_at", row["observed_at"])
             return copy.deepcopy(self._latest)
 
     def brain_state(self) -> dict[str, Any]:
@@ -217,6 +220,7 @@ class TrackerApp:
     """Read-only tracker API. There are deliberately no control endpoints."""
 
     _MAP_TILE = re.compile(r"^/map/biomemap_(\d+)_(\d+)\.png$")
+    _NATIVE_TILE = re.compile(r"^/map/native/([0-4])/tile(\d+)x(\d+)\.png$")
     _STATIC_CONTENT_TYPES = {
         ".css": "text/css; charset=utf-8",
         ".html": "text/html; charset=utf-8",
@@ -259,6 +263,32 @@ class TrackerApp:
 
     def _static_response(self, route: str) -> tuple[int, dict[str, str], bytes] | None:
         """Return a bounded static/map response without following user paths."""
+        native = self._NATIVE_TILE.fullmatch(route)
+        if native is not None:
+            manifest = self.map_manifest or {}
+            if self.map_root is None or manifest.get("kind") != "native-pyramid":
+                return 404, {}, b'{"error":"native map unavailable"}'
+            level, x, y = map(int, native.groups())
+            try:
+                world = manifest["world"]
+                span = 256 * 2 ** level
+                valid = (int(manifest["min_level"]) <= level <= int(manifest["max_level"])
+                         and 0 <= x * span < int(world["x_max"])
+                         and 0 <= y * span < int(world["y_max"]))
+            except (KeyError, ValueError, TypeError):
+                valid = False
+            if not valid:
+                return 404, {}, b'{"error":"map tile outside bounds"}'
+            path = (self.map_root / "native" / str(level) / f"tile{x}x{y}.png").resolve()
+            if not path.is_relative_to(self.map_root) or not path.is_file():
+                return 404, {}, b'{"error":"map tile not found"}'
+            try:
+                if path.stat().st_size > 1024 * 1024:
+                    return 404, {}, b'{"error":"map tile too large"}'
+                body = path.read_bytes()
+            except OSError:
+                return 404, {}, b'{"error":"map tile unavailable"}'
+            return 200, {"Content-Type": "image/png", "Cache-Control": "public, max-age=3600"}, body
         tile_match = self._MAP_TILE.fullmatch(route)
         if tile_match is not None:
             if self.map_root is None:
@@ -295,6 +325,9 @@ class TrackerApp:
         if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
             return 404, {}, b'{"ok":false,"error":"not found"}'
         candidate = (self.static_dir / relative).resolve()
+        # The source checkout keeps these two assets beside index.html.
+        if not candidate.is_file() and route in {"/assets/app.js", "/assets/style.css"}:
+            candidate = (self.static_dir / relative.name).resolve()
         if not candidate.is_relative_to(self.static_dir) or not candidate.is_file():
             return 404, {}, b'{"ok":false,"error":"not found"}'
         try:

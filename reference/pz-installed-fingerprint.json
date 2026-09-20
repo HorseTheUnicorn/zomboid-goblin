@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "evidence": "STATIC_INSTALLED",
+  "captured_at": "2026-09-19T17:05:22.407475+00:00",
+  "target": "production .03, Proxmox CT 100",
+  "access": "read-only commands through existing signed-in Proxmox session",
+  "game_jar_sha256": "80e405a4bfc42f6072e75b3735f458a6514143da011d3226007ded305a442f44",
+  "game_build": "42.20.4 b0bbce05d5",
+  "game_build_source": "2026-09-15_17-50_DebugLog-server.txt startup; still-running service inspected 2026-09-19",
+  "storm": {
+    "jar_name": "storm-42.20.4_2.10.11-SNAPSHOT.jar",
+    "jar_sha256": "c0681b8c011c7da38f6bd3579051a3fa80f7421409ba44239ccf8c1f4779a3ce",
+    "bootstrap_sha256": "657796c2772c4a38d6e88f08ac12ba1f10af08aa88972aadb8e1655a6249acd7",
+    "launcher_sha256": "dbc3aa95944311cf54a9609717275f74ebf2975a2f1475945f0d8836d7960e70",
+    "local_installed_version_matches": false,
+    "local_jar_version_from_filename": "42.20.4_2.11.1-SNAPSHOT"
+  },
+  "goblin_helper_sha256": "93300d7e9b659c5e1f49be335d702b7bf63d18aeb2921a6afd9b7a3d539cbf4f",
+  "workshop_manifest_sha256": "e3192882936be0c04d79576497f8e7e230a89c928fcde90dae9719bb5bfa79b6",
+  "configured_workshop_items": 60,
+  "installed_content": {
+    "sha256": "64425559b9b90069470dfab6a72f6b91b9777d78871c7c86564e0cad1a873867",
+    "files": 32897,
+    "bytes": 680722174,
+    "roots": "media/scripts, media/lua, then all configured Workshop items in INI order",
+    "algorithm": "For each root, sort recursive paths by their case-sensitive POSIX component tuples; for each file hash JSON [game-relative POSIX path,size,SHA256] with separators comma/colon followed by a newline byte; SHA256 the concatenated records. Reject symlinks and files changing size/mtime during hashing.",
+    "local_extracted_copy_verified": true,
+    "local_verification": "Extended Windows path enumeration found the same 32897 files, 680722174 bytes, and exact aggregate SHA256."
+  },
+  "configured_mod_order_sha256": "64c48500696d7ee3c5be2d550d922920fad5c27198fd90090b7660bfc49bbcd7",
+  "configured_mod_order_hash_input": "Exact Mods INI value encoded as UTF-8, without newline",
+  "pause_empty": true,
+  "loaded_registry_verified": false,
+  "disposable_runtime_export": {
+    "timestamp": "2026-09-19T18:01:39.776535300Z",
+    "game_build": "42.20.4 b0bbce05d5",
+    "storm_matches_captured_target": true,
+    "items": 5397,
+    "craft_recipes": 1118,
+    "script_checksum": "a67e41bbb66f4d9d5cfa3717f70c82e6",
+    "script_checksum_matches_target_startup_log": true,
+    "target_startup_log": "2026-09-15_17-50_DebugLog-server.txt",
+    "enabled_mod_count": 68,
+    "effective_content_manifest_verified": true,
+    "reconciliation_artifact": "reference/pz-stage-reconciliation.json",
+    "runtime_enabled_mods_fingerprint": "b8a38a016a9959a807aaa72bb5d5c6c02ea6657b5245d626cad4d16453507cb2",
+    "captured_selected_mods_fingerprint": "749a839d215ae7c2f6a4a57ec23fc17e8d5294c33995d067cedc48b7d7869bfa",
+    "note": "Local loaded-registry evidence, not an export executed on production .03. Candidate helper adds the opt-in exporter; the captured source snapshot is unchanged."
+  },
+  "staging_archive_sha256": "3a07842c4da4858e254b175f4a160381a556bd13da63b176753ec6d6e749841e",
+  "temporary_server_archive_removed": true,
+  "enabled_mods_fingerprint": null,
+  "limitations": [
+    "Configured Workshop item files include inactive submods and versions; this is not the effective loaded-mod fingerprint.",
+    "Local registry content reconciles to the capture except the explicit candidate helper; this is not a production-executed export.",
+    "Whole-install capture is not atomic; per-file stability was checked.",
+    "This console capture uses a flat aggregate, not the per-root identity algorithm in pz_inventory_fingerprint.py.",
+    "The ordinary local Steam Storm version differs; the disposable test used the captured matching target version."
+  ]
+}

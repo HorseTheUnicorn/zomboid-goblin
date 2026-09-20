@@ -1,126 +1,17 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0b100e">
-    <title>GOBLIN // CHVRCH</title>
-    <link rel="stylesheet" href="/assets/style.css">
-  </head>
-  <body>
-    <a class="skip-link" href="#map-panel">Skip to map</a>
-    <header class="topbar">
-      <div class="brand-lockup">
-        <span class="brand-mark" aria-hidden="true">◆</span>
-        <div>
-          <p class="eyebrow">PROJECT ZOMBOID // B42</p>
-          <h1>GOBLIN <span>//</span> CHVRCH</h1>
-        </div>
-      </div>
-      <div class="connection" aria-live="polite">
-        <span id="connection-dot" class="status-dot status-unknown"></span>
-        <span id="connection-label">Connecting to tracker</span>
-        <span id="last-seen" class="muted">—</span>
-      </div>
-    </header>
-
-    <main class="shell">
-      <section id="map-panel" class="panel map-panel" aria-labelledby="map-heading">
-        <div class="panel-heading map-heading">
-          <div>
-            <p class="eyebrow">LIVE TELEMETRY // READ ONLY</p>
-            <h2 id="map-heading">FIELD MAP</h2>
-          </div>
-          <div class="map-meta">
-            <span id="map-name">B42 map layer loading</span>
-            <span id="map-coordinates">—</span>
-          </div>
-        </div>
-        <div id="map-viewport" class="map-viewport" aria-label="Project Zomboid live map">
-          <canvas id="map-canvas"></canvas>
-          <div id="map-empty" class="map-empty" hidden>
-            <strong>MAP LAYER UNAVAILABLE</strong>
-            <span>Telemetry remains available below.</span>
-          </div>
-          <div class="map-help">drag to pan · wheel to zoom</div>
-        </div>
-        <div class="map-controls" aria-label="Map controls">
-          <button id="zoom-out" type="button" title="Zoom out">−</button>
-          <button id="zoom-in" type="button" title="Zoom in">+</button>
-          <button id="fit-map" type="button">Fit world</button>
-          <button id="focus-goblin" type="button">Focus Goblin</button>
-          <span id="map-status" class="muted">Waiting for map metadata</span>
-        </div>
-        <div class="legend" aria-label="Map legend">
-          <span><i class="legend-dot goblin"></i> Goblin</span>
-          <span><i class="legend-dot player"></i> Players</span>
-          <span><i class="legend-dot npc"></i> NPCs</span>
-          <span><i class="legend-dot base"></i> Base</span>
-          <span><i class="legend-line"></i> Trail</span>
-        </div>
-      </section>
-
-      <aside class="sidebar" aria-label="Goblin telemetry">
-        <section class="panel identity-panel">
-          <div class="panel-heading compact">
-            <div>
-              <p class="eyebrow">SUBJECT // PRIMARY</p>
-              <h2>GOBLIN</h2>
-            </div>
-            <span id="goblin-state" class="state-badge state-unknown">UNKNOWN</span>
-          </div>
-          <dl class="metric-grid">
-            <div><dt>Body</dt><dd id="body-mode">—</dd></div>
-            <div><dt>Server</dt><dd id="server-status">—</dd></div>
-            <div><dt>Players</dt><dd id="player-count">—</dd></div>
-            <div><dt>Entities</dt><dd id="npc-count">—</dd></div>
-          </dl>
-          <div id="goblin-note" class="callout">Waiting for the native IsoZombie body telemetry.</div>
-        </section>
-
-        <section class="panel roster-panel">
-          <div class="panel-heading compact">
-            <div>
-              <p class="eyebrow">ISOZOMBIE // PRIMARY</p>
-              <h2>COMPANION STATUS</h2>
-            </div>
-            <span id="roster-count" class="muted">0</span>
-          </div>
-          <ul id="roster-list" class="roster-list" aria-live="polite">
-            <li class="empty-row">Goblin body telemetry is unavailable.</li>
-          </ul>
-        </section>
-
-        <section class="panel events-panel">
-          <div class="panel-heading compact">
-            <div>
-              <p class="eyebrow">STREAM // RECENT</p>
-              <h2>EVENT LOG</h2>
-            </div>
-            <span id="event-count" class="muted">0</span>
-          </div>
-          <ol id="event-list" class="event-list" aria-live="polite">
-            <li class="empty-row">No events recorded.</li>
-          </ol>
-        </section>
-
-        <section class="panel history-panel">
-          <div class="panel-heading compact">
-            <div>
-              <p class="eyebrow">MOVEMENT // MEMORY</p>
-              <h2>GOBLIN TRAIL</h2>
-            </div>
-            <span id="history-count" class="muted">0 points</span>
-          </div>
-          <p class="panel-copy">Exact coordinates stay in the tracker plane and are used only for this map and history view.</p>
-        </section>
-      </aside>
-    </main>
-
-    <footer class="footer">
-      <span>IsoZombie body · GoblinSurvivor policy layer · tracker is read-only</span>
-      <span id="map-build">—</span>
-    </footer>
-    <script src="/assets/app.js" defer></script>
-  </body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b100e"><title>CHVRCH // Zomboid Map</title><link rel="stylesheet" href="/assets/style.css?v=20260912-native2"></head>
+<body>
+<main id="map-viewport" aria-label="Project Zomboid map"><canvas id="map-canvas" aria-label="Player and Goblin positions"></canvas><div id="map-empty" hidden><strong>Map unavailable</strong><span>Waiting for the server map layer.</span></div></main>
+<header class="overlay topbar">
+<div class="brand"><span class="brand-mark">◆</span><h1>CHVRCH <span>// MAP</span></h1><span id="map-name" class="muted">Project Zomboid</span></div>
+<div class="top-options">
+<label class="filter player"><input id="show-players" type="checkbox" checked>Players <span id="player-count">0</span></label>
+<label class="filter goblin"><input id="show-goblins" type="checkbox" checked>Goblins <span id="npc-count">0</span></label>
+<label class="filter"><input id="show-trails" type="checkbox" checked>Trails</label>
+<select id="focus-entity" aria-label="Find player or Goblin"><option value="">Find player or Goblin</option></select>
+</div></header>
+<footer class="overlay bottom-bar">
+<nav class="map-controls" aria-label="Map controls"><button id="zoom-out" type="button" aria-label="Zoom out">−</button><button id="zoom-in" type="button" aria-label="Zoom in">+</button><button id="fit-map" type="button">Fit world</button><button id="focus-goblin" type="button">Focus Goblin</button></nav>
+<div class="map-info"><span id="map-coordinates">—</span><span id="map-status" class="muted">Drag to pan · scroll to zoom</span><span class="attribution">Map imagery © The Indie Stone · unofficial server map</span></div>
+<div class="connection" aria-live="polite"><span id="connection-dot" class="status-dot status-unknown"></span><span id="connection-label">Connecting</span><span id="last-seen" class="muted">—</span></div>
+</footer><script src="/assets/app.js?v=20260912-native2" defer></script></body></html>

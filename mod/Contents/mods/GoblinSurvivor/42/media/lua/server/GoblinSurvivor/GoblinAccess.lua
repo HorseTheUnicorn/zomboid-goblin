@@ -32,6 +32,16 @@ local function hasMethod(object, method)
     return ok and type(member) == "function"
 end
 
+-- PathFindBehavior2 exposes pathNext* as public fields in the exact installed
+-- Build 42 runtime. Keep method support for older builds and test doubles.
+local function fieldOrMethod(object, name)
+    if not object then return false, nil end
+    local ok, member = pcall(function() return object[name] end)
+    if not ok then return false, nil end
+    if type(member) == "function" then return pcall(member, object) end
+    return member ~= nil, member
+end
+
 local function isServer()
     return type(_G.isServer) ~= "function" or _G.isServer()
 end
@@ -45,6 +55,13 @@ local function opened(object)
     if ok then return value == true end
     ok, value = result(object, "IsOpen")
     return ok and value == true
+end
+
+local function markAccessChanged(body)
+    local ok, data = result(body, "getModData")
+    if not ok or type(data) ~= "table" then return false end
+    data.GoblinAccessRevision = (tonumber(data.GoblinAccessRevision) or 0) + 1
+    return true
 end
 
 local function squareAt(x, y, z)
@@ -143,7 +160,111 @@ local function canInteract(object, body)
     return ok and allowed == true
 end
 
-function Access.blockReason(object, window)
+local function staticResult(name, ...)
+    local class = rawget(_G, "IsoDoor")
+    if not class then return false, nil end
+    local ok, member = pcall(function() return class[name] end)
+    if not ok or type(member) ~= "function" then return false, nil end
+    return pcall(member, ...)
+end
+
+local function doorGroup(object)
+    local group, seen = {}, {}
+    local function add(value)
+        if value and not seen[value] then seen[value] = true; group[#group + 1] = value end
+    end
+    add(object)
+    local okDouble, doubleIndex = staticResult("getDoubleDoorIndex", object)
+    if okDouble and tonumber(doubleIndex) and tonumber(doubleIndex) ~= -1 then
+        for index = 1, 4 do add(select(2, staticResult("getDoubleDoorObject", object, index))) end
+        return group
+    end
+    local okGarage, garageIndex = staticResult("getGarageDoorIndex", object)
+    if not okGarage or not tonumber(garageIndex) or tonumber(garageIndex) == -1 then return group end
+    local current = object
+    for _ = 1, 16 do
+        current = select(2, staticResult("getGarageDoorPrev", current))
+        if not current or seen[current] then break end
+        add(current)
+    end
+    current = object
+    for _ = 1, 16 do
+        current = select(2, staticResult("getGarageDoorNext", current))
+        if not current or seen[current] then break end
+        add(current)
+    end
+    return group
+end
+
+local function unlockDoor(object)
+    -- Goblin is an explicitly managed all-tools companion.  Door locks are
+    -- therefore an access tool boundary, not a reason to feed its IsoZombie
+    -- actor into the native IsoPlayer-only unlock branch.  Use the same native
+    -- lock fields and full-state sync as vanilla ISLockDoor, including every
+    -- double/garage segment.  Barricades and destroyed doors remain hard stops.
+    for _, member in ipairs(doorGroup(object)) do
+        local changed = false
+        local ok, value = result(member, "isLocked")
+        if ok and value == true then
+            local set = call(member, "setLocked", false)
+            if not set then set = call(member, "setIsLocked", false) end
+            changed = set or changed
+        end
+        ok, value = result(member, "isLockedByKey")
+        if ok and value == true then changed = call(member, "setLockedByKey", false) or changed end
+        ok, value = result(member, "isLockedByPadlock")
+        if ok and value == true then changed = call(member, "setLockedByPadlock", false) or changed end
+        ok, value = result(member, "getLockedByCode")
+        if ok and tonumber(value) and tonumber(value) ~= 0 then
+            changed = call(member, "setLockedByCode", 0) or changed
+        end
+        if changed then call(member, "syncIsoObject", false, 0, nil, nil) end
+    end
+    return true
+end
+
+local function safehouseAllows(body, object)
+    local class = rawget(_G, "SafeHouse")
+    if not class then return true end
+    local gotSquare, square = result(object, "getSquare")
+    if not gotSquare or not square then return false end
+    local okMember, member = pcall(function() return class.getSafeHouse end)
+    if not okMember or type(member) ~= "function" then return false end
+    local okSafehouse, safehouse = pcall(member, square)
+    if not okSafehouse then return false end
+    if not safehouse then return true end
+    local _, data = result(body, "getModData")
+    local owner = data and data.GoblinOwner
+    if type(owner) ~= "string" or owner == "" then return false end
+    local checked, allowed = result(safehouse, "playerAllowed", owner)
+    return checked and allowed == true
+end
+
+local function toggleDoorWithoutPlayer(body, object, wantOpen)
+    if opened(object) == wantOpen then return true end
+    local toggled = false
+    local okDouble, doubleIndex = staticResult("getDoubleDoorIndex", object)
+    if okDouble and tonumber(doubleIndex) and tonumber(doubleIndex) ~= -1 then
+        toggled = select(1, staticResult("toggleDoubleDoor", object, true))
+    else
+        local okGarage, garageIndex = staticResult("getGarageDoorIndex", object)
+        if okGarage and tonumber(garageIndex) and tonumber(garageIndex) ~= -1 then
+            toggled = select(1, staticResult("toggleGarageDoor", object, true))
+        elseif hasMethod(object, "ToggleDoorSilent") then
+            toggled = call(object, "ToggleDoorSilent")
+            if toggled then call(object, "syncIsoObject", false, 0, nil, nil) end
+        else
+            -- Test doubles and older runtimes may not expose the player-free
+            -- entrypoint. Reconcile solely from observed state because the
+            -- installed ToggleDoor mutates/syncs before its trailing player cast.
+            call(object, "ToggleDoor", body)
+            toggled = opened(object) == wantOpen
+        end
+    end
+    return toggled and opened(object) == wantOpen
+end
+
+function Access.blockReason(object, window, allowUnlock)
     if not object then return "target is no longer present" end
     local ok, isOpen = result(object, window and "IsOpen" or "isOpen")
     if not ok then ok, isOpen = result(object, "IsOpen") end
@@ -152,7 +273,8 @@ function Access.blockReason(object, window)
     for _, method in ipairs({ "isLocked", "isBarricaded", "isDestroyed", window and "isPermaLocked" or "isLockedByKey" }) do
         local checked, blocked = result(object, method)
         if not checked then return "cannot inspect this target safely" end
-        if blocked then
+        if blocked and not (allowUnlock == true and window ~= true
+            and (method == "isLocked" or method == "isLockedByKey")) then
             if method == "isBarricaded" then return "barricaded; remove the barricade first" end
             if method == "isDestroyed" then return "destroyed; it cannot be opened" end
             return "locked; unlock it first"
@@ -163,18 +285,24 @@ end
 
 function Access.open(body, object, window)
     if isClient() or not isServer() then return false end
-    if Access.blockReason(object, window) then return false end
+    if Access.blockReason(object, window, not window) then return false end
     if not canInteract(object, body) then return false end
-    local toggled = call(object, window and "ToggleWindow" or "ToggleDoor", body)
+    if not safehouseAllows(body, object) then return false end
+    if not window then unlockDoor(object) end
+    local toggled
+    if window then toggled = call(object, "ToggleWindow", body)
+    else toggled = toggleDoorWithoutPlayer(body, object, true) end
     local checked, isOpen = result(object, window and "IsOpen" or "isOpen")
     if not checked then checked, isOpen = result(object, "IsOpen") end
-    return toggled and checked and isOpen == true
+    local openedNow = toggled and checked and isOpen == true
+    if openedNow then markAccessChanged(body) end
+    return openedNow
 end
 
 local function closeNative(body, object)
     if not object or isClient() or not isServer() or not opened(object) then return false end
     if not canInteract(object, body) then return false end
-    local toggled = call(object, "ToggleDoor", body)
+    local toggled = toggleDoorWithoutPlayer(body, object, false)
     local checked, isOpen = result(object, "isOpen")
     if not checked then checked, isOpen = result(object, "IsOpen") end
     return toggled and checked and isOpen == false
@@ -200,7 +328,7 @@ function Access.prepare(owner, window, now)
     end
     local kind = window and "window" or "door"
     if not best then return nil, "no " .. kind .. " within three tiles of you on this floor" end
-    local reason = Access.blockReason(edgeObject(best, window), window)
+    local reason = Access.blockReason(edgeObject(best, window), window, not window)
     if reason then return nil, kind .. " is " .. reason end
     return { edge = best, window = window == true, started_at = now },
         "going to open the nearest " .. kind .. " beside you"
@@ -212,7 +340,7 @@ function Access.perform(body, payload, now)
     local kind = payload and payload.window and "window" or "door"
     if not validEdge(edge) then return true, false, "opening target is invalid; please order me again" end
     local object = edgeObject(edge, payload.window)
-    local reason = Access.blockReason(object, payload.window)
+    local reason = Access.blockReason(object, payload.window, not payload.window)
     if reason == "already open" then return true, true, kind .. " is open" end
     if reason then return true, false, kind .. " is " .. reason end
     if now - (tonumber(payload.started_at) or now) > 45000 then
@@ -241,9 +369,9 @@ end
 local function nextPathSquare(body, here)
     local _, behavior = result(body, "getPathFindBehavior2")
     if not behavior then return nil end
-    local setOK, isSet = result(behavior, "pathNextIsSet")
-    local xOK, x = result(behavior, "pathNextX")
-    local yOK, y = result(behavior, "pathNextY")
+    local setOK, isSet = fieldOrMethod(behavior, "pathNextIsSet")
+    local xOK, x = fieldOrMethod(behavior, "pathNextX")
+    local yOK, y = fieldOrMethod(behavior, "pathNextY")
     if not setOK or isSet ~= true or not xOK or not yOK
         or type(x) ~= "number" or type(y) ~= "number" then return nil end
     if math.abs(x - here:getX()) + math.abs(y - here:getY()) ~= 1 then return nil end
@@ -440,7 +568,7 @@ function Access.update(body, goal, now, scope, pendingOnly)
                 local wasOpen = opened(object)
                 if wasOpen then
                     registerDoor(body, edge, object, scope, now, here, true)
-                    return true
+                    return false
                 end
                 if Access.open(body, object, false) then
                     registerDoor(body, edge, object, scope, now, here, false)
@@ -471,8 +599,11 @@ function Access.update(body, goal, now, scope, pendingOnly)
                 dx = choice.square:getX() - here:getX(), dy = choice.square:getY() - here:getY() }
             local object = select(2, result(here, "getDoorTo", choice.square))
             local wasOpen = object and opened(object)
-            if object and (wasOpen or Access.open(body, object, false)) then
+            if object and wasOpen then
                 registerDoor(body, edge, object, scope, now, here, wasOpen == true)
+                return false
+            elseif object and Access.open(body, object, false) then
+                registerDoor(body, edge, object, scope, now, here, false)
                 return true
             end
         end

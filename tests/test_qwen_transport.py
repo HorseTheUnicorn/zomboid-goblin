@@ -7,6 +7,30 @@ from goblin_zomboid.qwen import QwenClient, QwenError
 
 
 class QwenTransportTests(unittest.TestCase):
+    @unittest.expectedFailure
+    def test_inventory_gap_chat_response_must_obey_advertised_action_set(self):
+        """Section 31 finding: generator grammar is not a response-side gate."""
+        qwen = QwenClient()
+        context = {'mode': 'ROAM', 'controlled_owner': 'horse'}
+        actions = {b['properties']['intent']['const']
+                   for b in qwen._chat_schema(context)['oneOf']}
+        self.assertNotIn('FLEE', actions)
+        raw = {'intent': 'FLEE', 'mode': 'ROAM', 'text': 'Running, comrade.',
+               'target': {'kind': 'escape_route', 'name': 'nearby safety'}}
+        with patch.object(qwen, '_request_json', return_value=json.dumps(raw)):
+            with self.assertRaises(QwenError):
+                qwen.propose_chat(context)
+
+    @unittest.expectedFailure
+    def test_inventory_gap_model_cannot_change_context_mode(self):
+        """A model-selected mode must not expand the context's action set."""
+        qwen = QwenClient()
+        raw = {'intent': 'FOLLOW', 'mode': 'PARTY', 'text': 'Following.',
+               'target': {'kind': 'player', 'label': 'horse'}}
+        with patch.object(qwen, '_request_json', return_value=json.dumps(raw)):
+            with self.assertRaises(QwenError):
+                qwen.propose_chat({'mode': 'SAFE', 'controlled_owner': 'horse'})
+
     def test_chat_grammar_keeps_owner_mode_and_required_targets_without_unsafe_fields(self):
         schema=QwenClient._chat_schema({'controlled_owner':'Alice','mode':'PARTY'})
         branches={s['properties']['intent']['const']:s for s in schema['oneOf']}

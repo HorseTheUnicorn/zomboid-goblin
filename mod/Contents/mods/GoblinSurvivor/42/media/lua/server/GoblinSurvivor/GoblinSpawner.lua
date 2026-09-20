@@ -184,6 +184,34 @@ local function savedSquare(record)
     return freeOK and free and square or nil
 end
 
+local freeSquareNear
+
+local function recoverySquare(player, record)
+    if record == nil then return nil end
+    local saved = savedSquare(record)
+    if record.task ~= Constants.TASK.FOLLOW then return saved end
+
+    -- A FOLLOW companion is owner-relative. If its managed body fell out of
+    -- the loaded world, recreating it at a stale checkpoint can leave the
+    -- returning player with no visible Goblin even though the persistent
+    -- owner record still exists. Prefer the checkpoint only while it remains
+    -- close enough to resume native following; explicit jobs and WAIT retain
+    -- their location semantics above.
+    local ownerPoint = Body.position(player)
+    if saved ~= nil and ownerPoint ~= nil then
+        local okX, x = call(saved, "getX")
+        local okY, y = call(saved, "getY")
+        local okZ, z = call(saved, "getZ")
+        local threshold = math.max(30, (tonumber(Config.followRunDistance) or 9) * 3)
+        local point = okX and okY and okZ and { x = x, y = y, z = z } or nil
+        if point ~= nil and math.floor(ownerPoint.z) == math.floor(point.z)
+            and Motion.distance(ownerPoint, point) <= threshold then
+            return saved
+        end
+    end
+    return freeSquareNear(player) or saved
+end
+
 local function removeBody(body)
     if body == nil then return end
     require("GoblinSurvivor/GoblinPassenger").detach(body)
@@ -193,7 +221,7 @@ local function removeBody(body)
     call(body, "setSquare", nil)
 end
 
-local function freeSquareNear(player)
+freeSquareNear = function(player)
     local cell = currentCell()
     local point = Body.position(player)
     if cell == nil or point == nil then return nil end
@@ -421,6 +449,41 @@ local function rejoinNewLife(player,record,body)
     transmitStore()
 end
 
+local function rejoinLaggingFollower(player,record,body)
+    if not bodyLive(body) or record.task~=Constants.TASK.FOLLOW then return false end
+    local data=Body.data(body)
+    if not data or data.GoblinRide or data.GoblinTransportActive then return false end
+    local ownerPoint,bodyPoint=Body.position(player),Body.position(body)
+    if not ownerPoint or not bodyPoint then return false end
+    local threshold=math.max(30,(tonumber(Config.followRunDistance) or 9)*3)
+    local floorGap=math.abs(math.floor(ownerPoint.z)-math.floor(bodyPoint.z))
+    -- A nearby one-floor difference is normal stair traversal, not a lost
+    -- companion.  Rejoining here teleports the Goblin before native pathing can
+    -- climb or descend the stairs.  Retain the safety recall for genuinely
+    -- remote actors and for discontinuous multi-floor separation.
+    if floorGap<=1 and Motion.distance(ownerPoint,bodyPoint)<=threshold then return false end
+
+    local timestamp=nowMs()
+    -- Give the owning client time to apply the replicated rejoin before
+    -- issuing another sequence. Client-owned zombies cannot be authoritatively
+    -- teleported by the dedicated server itself.
+    if timestamp<(tonumber(data.GoblinRejoinExpires) or 0) then return false end
+    local destination=freeSquareNear(player)
+    if not destination then return false end
+    local point={x=destination:getX(),y=destination:getY(),z=destination:getZ()}
+    record.position=point
+    record.task_payload={owner=record.owner,rejoin_run=true}
+    data.GoblinRejoinSequence=(tonumber(data.GoblinRejoinSequence) or 0)+1
+    data.GoblinRejoinPoint=point
+    data.GoblinRejoinExpires=timestamp+10000
+    Body.setTask(body,Constants.TASK.FOLLOW,record.task_payload)
+    Motion.rejoin(body,point,data.GoblinRejoinSequence,data.GoblinRejoinExpires,timestamp)
+    log("FOLLOW_REJOIN owner="..record.owner.." distance="
+        ..string.format("%.1f",Motion.distance(ownerPoint,bodyPoint)))
+    transmitStore()
+    return true
+end
+
 function Spawner.ensureForPlayer(player, force)
     if not Persistence.available() then return nil,"server Storm helper unavailable" end
     local owner = username(player)
@@ -442,6 +505,7 @@ function Spawner.ensureForPlayer(player, force)
             Spawner.lastDetail[key] = "persistent inventory could not be restored"
             return nil, Spawner.lastDetail[key]
         end
+        rejoinLaggingFollower(player,record,body)
         Spawner.lastDetail[key] = "Goblin present"
         return body, "Goblin present"
     end
@@ -456,7 +520,7 @@ function Spawner.ensureForPlayer(player, force)
         return nil, Spawner.lastDetail[key] or "spawn retry pending"
     end
 
-    local square = savedSquare(record)
+    local square = recoverySquare(player, record)
     if square == nil and record.task == Constants.TASK.WAIT and record.position ~= nil then
         Spawner.lastDetail[key] = "waiting for saved square to load"
         return nil, Spawner.lastDetail[key]
@@ -755,6 +819,7 @@ function Spawner.syncClientState(force)
             visual_asset = Config.npcVisualAsset,
             visual_item_type = Config.npcVisualItemType,
             movement_goal = snapshot.movement_goal,
+            access_revision = snapshot.access_revision or 0,
             rejoin_run = snapshot.rejoin_run,
             rejoin_point = snapshot.rejoin_point,
             rejoin_sequence = snapshot.rejoin_sequence,
@@ -779,6 +844,7 @@ function Spawner.syncClientState(force)
             tostring(item.vehicle_revision), tostring(item.transport_active),
             tostring(item.name), tostring(item.base_set), tostring(item.owner_online),
             tostring(item.rejoin_run), tostring(item.rejoin_sequence),
+            tostring(item.access_revision or 0),
             tostring(item.movement_goal and math.floor(item.movement_goal.x * 2)),
             tostring(item.movement_goal and math.floor(item.movement_goal.y * 2)),
             tostring(item.movement_goal and item.movement_goal.z)
