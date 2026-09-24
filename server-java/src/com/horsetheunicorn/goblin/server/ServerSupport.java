@@ -39,7 +39,7 @@ public final class ServerSupport {
 
     private ServerSupport() { }
     private static boolean server() { return StormEnv.isStormServer() && GameServer.server; }
-    public static String capabilities() { return server() ? "goblin-server/1:inventory,atomic-ipc,craft,repair" : "disabled"; }
+    public static String capabilities() { return server() ? "goblin-server/1:inventory,atomic-ipc,craft,repair,native-rejoin" : "disabled"; }
 
     static Path bridgePath(Path cache, String relative) throws IOException {
         if (relative == null || relative.length() > 240 || relative.contains("\\") || relative.contains(".."))

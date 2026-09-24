@@ -2,7 +2,7 @@ import copy
 from pathlib import Path
 import unittest
 
-from tools.check_milestone2_acceptance import validate
+from tools.check_milestone2_acceptance import validate, validate_historical_record
 from tools.check_pz_catalog import CatalogError, read_catalog
 
 
@@ -13,8 +13,10 @@ class Milestone2AcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.data = read_catalog(ROOT / "reference/pz-milestone2-live-acceptance.json")
 
-    def test_repository_acceptance_is_source_bound_and_structured(self):
-        self.assertEqual(validate(self.data, ROOT), (8, 2, 4))
+    def test_historical_record_is_structured_but_cannot_certify_changed_sources(self):
+        self.assertEqual(validate_historical_record(self.data), (8, 2, 4))
+        with self.assertRaisesRegex(CatalogError, "Milestone 2 source changed since acceptance"):
+            validate(self.data, ROOT)
 
     def test_free_text_cannot_replace_material_or_result_evidence(self):
         for mutation in ("materials", "result", "source"):
@@ -27,17 +29,20 @@ class Milestone2AcceptanceTests(unittest.TestCase):
                 else:
                     data["source_sha256"]["GoblinJobs.lua"] = "0" * 64
                 with self.assertRaises(CatalogError):
-                    validate(data, ROOT)
+                    if mutation == "source":
+                        validate(data, ROOT)
+                    else:
+                        validate_historical_record(data)
 
     def test_client_and_release_boundaries_are_required(self):
         data = copy.deepcopy(self.data)
         data["clients"][0]["storm"] = True
         with self.assertRaises(CatalogError):
-            validate(data, ROOT)
+            validate_historical_record(data)
         data = copy.deepcopy(self.data)
         data["published"] = True
         with self.assertRaises(CatalogError):
-            validate(data, ROOT)
+            validate_historical_record(data)
 
 
 if __name__ == "__main__":

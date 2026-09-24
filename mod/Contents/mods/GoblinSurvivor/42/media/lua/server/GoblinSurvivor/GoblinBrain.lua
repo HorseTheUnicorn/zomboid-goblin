@@ -67,6 +67,7 @@ local function setTaskInternal(body, task, payload)
     if task == Constants.TASK.EQUIP then return Body.ensureWeapon(body) end
     local jobDetail
     local transport=task=="ENTER_VEHICLE" or task=="EXIT_VEHICLE"
+        or task=="START_VEHICLE" or task=="UNLOCK_VEHICLE"
     if transport then
         payload,jobDetail=Transport.prepare(body,playerForOwner(body),task,nowMs())
         if not payload then return false,jobDetail end
@@ -110,7 +111,8 @@ local function setTaskInternal(body, task, payload)
         Movement.clear(body)
         return true,openingDetail
     end
-    if task == Constants.TASK.BUILD or task == Constants.TASK.FORTIFY then
+    if task == Constants.TASK.BUILD or task == Constants.TASK.FORTIFY
+        or task == Constants.TASK.FORTIFY_BASE then
         Movement.clear(body)
         return true, "work queued; materials will be gathered nearby"
     end
@@ -160,7 +162,14 @@ function Brain.execute(message, body)
     if not Body.isGoblin(body) then return false, "Goblin body is not present" end
     if type(message) ~= "table" or type(message.action) ~= "string" then return false, "malformed Goblin command" end
     local action = string.upper(message.action)
-    if action=="ENTER_VEHICLE" or action=="EXIT_VEHICLE" then return Brain.setTask(body,action,{}) end
+    if action=="ENTER_VEHICLE" or action=="EXIT_VEHICLE" or action=="START_VEHICLE"
+        or action=="UNLOCK_VEHICLE" then
+        return Brain.setTask(body,action,{})
+    end
+    -- Qwen may converse about salvage, but cannot authorize irreversible
+    -- destruction; only authenticated owner chat can set this task.
+    if action == Constants.TASK.DISMANTLE then return false, "dismantling needs the owner's direct order" end
+    if action == Constants.TASK.STOCKPILE then return false, "stockpiling needs the owner's direct order" end
     if Jobs.handles(action) then return Brain.setTask(body,action,{job=message.job,item=message.item,
         target=message.target,allow_breach=message.allow_breach==true,autonomous=message.autonomous==true}) end
     if action=="OPEN_DOOR" or action=="OPEN_WINDOW" then return Brain.setTask(body,action,{}) end
@@ -270,7 +279,8 @@ function Brain.update(body, timestamp)
         end
         return true
     end
-    if task == Constants.TASK.BUILD or task == Constants.TASK.FORTIFY then
+    if task == Constants.TASK.BUILD or task == Constants.TASK.FORTIFY
+        or task == Constants.TASK.FORTIFY_BASE then
         if Work.update(body, task, payload, now) then
             Brain.setTask(body, Constants.TASK.FOLLOW, {owner=Body.owner(body)})
         end

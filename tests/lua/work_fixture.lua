@@ -9,6 +9,10 @@ end
 function container(items)
     local inv={items=items or {}}
     function inv:getItems() return list(self.items) end
+    function inv:contains(value)
+        for _,item in ipairs(self.items) do if item==value then return true end end
+        return false
+    end
     function inv:hasRoomFor() return not self.full end
     function inv:Remove(value)
         for i,v in ipairs(self.items) do if v==value then table.remove(self.items,i);break end end
@@ -30,6 +34,8 @@ function cell:getGridSquare(x,y,z)
         function sq:getZ() return self.z end
         function sq:isBlockedTo(other) return self.blocked==true or other.blocked==true end
         function sq:isFree() return not self.occupied end
+        function sq:haveFire() return false end
+        function sq:getMovingObjects() return list({}) end
         function sq:getObjects() return list(self.objects) end
         function sq:getWorldObjects() return list(self.world) end
         function sq:AddWorldInventoryItem(value,x,y,z)
@@ -38,7 +44,9 @@ function cell:getGridSquare(x,y,z)
             function obj:removeFromWorld() end
             function obj:removeFromSquare() end
             self.world[#self.world+1]=obj
-            return obj
+            -- The installed Build 42 InventoryItem overload returns the
+            -- InventoryItem, not its IsoWorldInventoryObject wrapper.
+            return value
         end
         function sq:AddSpecialObject(obj) self.objects[#self.objects+1]=obj;obj.index=#self.objects-1 end
         function sq:RecalcAllWithNeighbours() end

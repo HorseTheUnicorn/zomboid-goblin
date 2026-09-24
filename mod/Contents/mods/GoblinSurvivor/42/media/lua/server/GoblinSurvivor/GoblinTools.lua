@@ -77,11 +77,23 @@ function Tools.ensure(body,kind,recipeInput,copyNumber)
             if tool then call(inventory,"Remove",tool) end
             return nil
         end
-        metadata.GoblinToolKit=true
         -- Supplying the tool must not also mint fuel on every empty-tool replacement.
-        if select(2,call(tool,"IsDrainable")) then call(tool,"setCurrentUses",0) end
+        -- Verify native mutation: a missing, throwing or ineffective setter must
+        -- not leave a newly supplied full fuel container in the reserved kit.
+        local emptied=true
+        if select(2,call(tool,"IsDrainable")) then
+            local changed=call(tool,"setCurrentUses",0)
+            local read,uses=call(tool,"getCurrentUsesFloat")
+            emptied=changed and read and uses==0
+        end
         local _,fluid=call(tool,"getFluidContainer")
-        if fluid then call(fluid,"adjustAmount",0) end
+        if fluid then
+            local changed=call(fluid,"adjustAmount",0)
+            local read,amount=call(fluid,"getAmount")
+            emptied=emptied and changed and read and amount==0
+        end
+        if not emptied then call(inventory,"Remove",tool);return nil end
+        metadata.GoblinToolKit=true
     end
     local _,maximum=call(tool,"getConditionMax")
     if type(maximum)=="number" then call(tool,"setCondition",maximum) end

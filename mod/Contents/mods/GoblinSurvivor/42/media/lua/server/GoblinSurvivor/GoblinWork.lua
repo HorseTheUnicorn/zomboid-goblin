@@ -2,6 +2,8 @@
 local Body = require("GoblinSurvivor/GoblinBody")
 local World = require("GoblinSurvivor/GoblinWorld")
 local Tools = require("GoblinSurvivor/GoblinTools")
+local Curtains = require("GoblinSurvivor/GoblinCurtains")
+local Policy = require("GoblinSurvivor/GoblinAccessPolicy")
 local Work = {jobs=setmetatable({}, {__mode="k"})}
 local call=World.call
 Work.blueprints={
@@ -27,6 +29,49 @@ function Work.windows(center, radius)
     return result
 end
 
+-- An indoor base is scoped to its exact BuildingDef, not a nearby radius that
+-- may include another player's home.  Keep both the scan and target count bounded.
+function Work.houseWindows(scope)
+    local result, seenSquares, seenWindows = {}, {}, {}
+    local scanned, unloaded = 0, 0
+    for _, room in ipairs(scope.rooms) do
+        for x = room.x - 1, room.x2 + 1 do for y = room.y - 1, room.y2 + 1 do
+            local key = x .. ":" .. y .. ":" .. room.z
+            if not seenSquares[key] then
+                seenSquares[key] = true
+                scanned = scanned + 1
+                if scanned > 2048 then return nil, "base house exceeds the fortification scan limit" end
+                local square = World.square({x=x,y=y,z=room.z})
+                if not square then unloaded = unloaded + 1 end
+                if square and Curtains.belongsToScope(scope,square) then
+                    for _, object in ipairs(World.values(select(2,call(square,"getObjects")))) do
+                        if instanceof(object,"IsoWindow") and not seenWindows[object] then
+                            seenWindows[object] = true
+                            result[#result + 1] = object
+                            if #result > 512 then return nil, "base house has too many windows to fortify safely" end
+                        end
+                    end
+                end
+            end
+        end end
+    end
+    return result, nil, unloaded
+end
+
+local function windowStillOnSquare(window,square)
+    if not square or World.square(World.point(square)) ~= square then return false end
+    for _, object in ipairs(World.values(select(2,call(square,"getObjects")))) do
+        if object == window then return true end
+    end
+    return false
+end
+
+local function skippedCount(job)
+    local count = 0
+    for _ in pairs(job.skipped) do count = count + 1 end
+    return count
+end
+
 local function announce(body, text)
     local data=Body.data(body)
     if data.GoblinWorkStatus ~= text then
@@ -44,7 +89,7 @@ local function gather(body, requirements, job, now)
     if not job.supply then
         if now < (job.nextSupplyScan or 0) then return nil end
         job.nextSupplyScan=now+3000
-        for _,source in ipairs(World.sources(Body.position(body),8,function(item) return World.fullType(item)==missing end)) do
+        for _,source in ipairs(World.sources(Body.position(body),8,function(item) return World.fullType(item)==missing end,body)) do
             if not job.skipped[source.item] then job.supply=source; job.supplyAt=now; break end
         end
     end
@@ -71,6 +116,20 @@ local function barricade(body,target,materials)
     if before==0 then call(barr,"transmitCompleteItemToClients")
     else call(barr,"sendObjectChange",IsoObjectChange.STATE) end
     return true
+end
+
+local function boardCount(body,target)
+    local checked, barr = call(target,"getBarricadeForCharacter",body)
+    if not checked then return nil end
+    if not barr then return 0 end
+    local ok, count = call(barr,"getNumPlanks")
+    return ok and tonumber(count) or nil
+end
+
+local function objectCount(square)
+    local ok, objects = call(square,"getObjects")
+    if not ok then return nil end
+    return #World.values(objects)
 end
 
 local function build(body,square,payload)
@@ -101,18 +160,40 @@ function Work.update(body,task,payload,now)
     if not job then job={skipped={},nextScan=0}; Work.jobs[body]=job end
     if job.missingSince and now-job.missingSince>=90000 then
         announce(body,"I could not find "..tostring(job.missing).." in 90 seconds. Resuming follow; bring materials and order the work again.")
-        return true
+        return true, "MISSING_MATERIAL"
     end
     local target,square,spec
-    if task=="FORTIFY" then
+    if task=="FORTIFY" or task=="FORTIFY_BASE" then
         if not data.GoblinBaseSet then announce(body,"mark our base first; resuming follow."); return true end
         if not job.target and now>=job.nextScan then
             job.nextScan=now+5000
-            for _,window in ipairs(Work.windows({x=data.GoblinBaseX,y=data.GoblinBaseY,z=data.GoblinBaseZ},8)) do
-                local _,barr=call(window,"getBarricadeForCharacter",body)
-                if not job.skipped[window] and (not barr or barr:getNumPlanks()<4) then job.target=window;job.targetAt=now;break end
+            local base = {x=data.GoblinBaseX,y=data.GoblinBaseY,z=data.GoblinBaseZ}
+            local baseSquare = World.square(base)
+            if not baseSquare then announce(body,"base square unloaded; fortification paused."); return true end
+            local scope = Curtains.scopeAt(base)
+            if not scope and select(2,call(baseSquare,"getRoom")) then
+                announce(body,"base house scope unavailable; fortification paused."); return true
             end
-            if not job.target then announce(body,"no more accessible windows need boards."); return true end
+            local windows, scanError, unloaded
+            if scope then windows,scanError,unloaded = Work.houseWindows(scope)
+            else windows = Work.windows(base,8) end
+            if not windows then announce(body,scanError); return true end
+            job.scope = scope
+            job.partial = (scope and scope.partiallyStreamed == true) or (unloaded or 0) > 0
+            for _,window in ipairs(windows) do
+                local _,barr=call(window,"getBarricadeForCharacter",body)
+                local permitted = Policy.access(body,window)
+                if not permitted then job.denied = (job.denied or 0) + 1 end
+                if permitted and not job.skipped[window] and (not barr or barr:getNumPlanks()<4) then
+                    job.target=window;job.targetAt=now;break
+                end
+            end
+            if not job.target then
+                local incomplete = job.partial or (job.denied or 0) > 0 or skippedCount(job) > 0
+                announce(body,incomplete and "loaded accessible windows checked; some areas or targets remain unverified."
+                    or "no more accessible windows need boards.")
+                return true
+            end
         end
         target=job.target
         if not target then return false end
@@ -124,6 +205,15 @@ function Work.update(body,task,payload,now)
         if not spec or not square then announce(body,"the build site is unavailable."); return false end
     end
     if not square then Work.clear(body); return true end
+    if target and not windowStillOnSquare(target,square) then
+        job.skipped[target] = true; job.target = nil
+        announce(body,"window changed or unloaded; checking another target.")
+        return false
+    end
+    if target and job.scope and not Curtains.belongsToScope(job.scope,square) then
+        announce(body,"the window left our base scope; fortification stopped.")
+        return true
+    end
     local hammer=Tools.ensure(body,"Base.Hammer")
     if not hammer then announce(body,"my hammer is unavailable; the tool kit could not load."); return false end
     local selected=gather(body,{["Base.Plank"]=spec.planks,["Base.Nails"]=spec.nails},job,now)
@@ -137,15 +227,48 @@ function Work.update(body,task,payload,now)
     call(body,"setPrimaryHandItem",hammer); call(body,"setSecondaryHandItem",nil)
     job.readyAt=job.readyAt or now+4000
     if now<job.readyAt then return false end
+    local policyTarget = target or { getSquare = function() return square end }
+    local permitted, _, policyDetail = Policy.access(body,policyTarget)
+    if not permitted then announce(body,policyDetail); return true end
+    local before = target and boardCount(body,target) or objectCount(square)
+    if before == nil then
+        announce(body,"cannot establish a safe pre-work state; materials were kept.")
+        Work.clear(body)
+        return true
+    end
     if not World.reserve(body,selected) then return false end
+    if target and not windowStillOnSquare(target,square) then
+        World.refund(body,selected)
+        job.skipped[target] = true; job.target = nil
+        announce(body,"window changed before boarding; materials kept.")
+        return false
+    end
+    if target and job.scope and not Curtains.belongsToScope(job.scope,square) then
+        World.refund(body,selected)
+        announce(body,"the window left our base scope; fortification stopped.")
+        return true
+    end
+    permitted, _, policyDetail = Policy.access(body,policyTarget)
+    if not permitted then
+        World.refund(body,selected)
+        announce(body,policyDetail)
+        return true
+    end
     local ok,success,reason
     if target then ok,success,reason=pcall(barricade,body,target,selected)
     else ok,success,reason=pcall(build,body,square,payload) end
     if not ok or not success then
-        World.refund(body,selected)
-        announce(body,"work paused: "..tostring(ok and reason or success))
-        job.readyAt=now+5000
-        return false
+        local after = target and boardCount(body,target) or objectCount(square)
+        if after ~= nil and after == before then
+            World.refund(body,selected)
+            announce(body,"work stopped without a world change; materials returned: "..tostring(ok and reason or success))
+        elseif after ~= nil and after > before then
+            announce(body,"world changed, but completion was uncertain; materials were not duplicated. Inspect before retrying.")
+        else
+            announce(body,"work outcome could not be reconciled; materials were not duplicated. Inspect before retrying.")
+        end
+        Work.clear(body)
+        return true
     end
     data.GoblinWorkCompleted=(data.GoblinWorkCompleted or 0)+1
     data.GoblinAction=""; job.readyAt=nil

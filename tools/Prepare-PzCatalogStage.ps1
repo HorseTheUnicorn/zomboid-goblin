@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$StageRoot,
     [Parameter(Mandatory=$true)][string]$Mods,
+    [Parameter(Mandatory=$true)][string]$WorkshopItems,
     [string]$InstalledGame = 'C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid'
 )
 $ErrorActionPreference = 'Stop'
@@ -13,6 +14,11 @@ $cache = Join-Path $runtime 'cache'
 $game = Join-Path $runtime 'game'
 if ($Mods.Contains("`n") -or $Mods.Contains("`r") -or [string]::IsNullOrWhiteSpace($Mods)) {
     throw 'Expected a single explicit Mods value, not a server configuration file'
+}
+$workshopIds = @($WorkshopItems -split ';')
+if ($workshopIds.Count -eq 0 -or $workshopIds.Where({ $_ -notmatch '^\d+$' }).Count -gt 0 -or
+    @($workshopIds | Select-Object -Unique).Count -ne $workshopIds.Count) {
+    throw 'Expected unique numeric WorkshopItems IDs from the target server configuration'
 }
 if (!(Test-Path -LiteralPath (Join-Path $content 'media/scripts')) -or
     !(Test-Path -LiteralPath (Join-Path $content 'steamapps/workshop/content/108600'))) {
@@ -47,7 +53,12 @@ foreach ($asset in Get-ChildItem -LiteralPath (Join-Path $sourceGame 'media')) {
 }
 
 $workshop = Join-Path $content 'steamapps/workshop/content/108600'
-foreach ($item in Get-ChildItem -LiteralPath $workshop -Directory) {
+foreach ($itemId in $workshopIds) {
+    $itemPath = Join-Path $workshop $itemId
+    if (!(Test-Path -LiteralPath $itemPath -PathType Container)) {
+        throw ('Configured Workshop item is missing from the snapshot: ' + $itemId)
+    }
+    $item = Get-Item -LiteralPath $itemPath
     $modRoot = Join-Path $item.FullName 'mods'
     if (!(Test-Path -LiteralPath $modRoot)) { continue }
     foreach ($folder in Get-ChildItem -LiteralPath $modRoot -Directory) {

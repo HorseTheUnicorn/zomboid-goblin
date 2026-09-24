@@ -24,11 +24,13 @@ function actorVehicleMethods(who)
     function who:getVariableBoolean(k) return self.variables[k]==true end
 end
 actorVehicleMethods(a);actorVehicleMethods(player)
-v={id=7,x=1,y=0,z=0,speed=0,seats={},locked=false,blocked=false,exitBlocked=false,entries=0,clears=0}
+v={id=7,x=1,y=0,z=0,speed=0,seats={},locked=false,blocked=false,exitBlocked=false,
+    entries=0,clears=0,engineWorking=true,battery=true,engineRunning=false,startCalls=0}
 function v:getId() return self.id end
 function v:getX() return self.x end
 function v:getY() return self.y end
 function v:getZ() return self.z end
+function v:getSquare() return cell:getGridSquare(math.floor(self.x),math.floor(self.y),math.floor(self.z)) end
 function v:getScript() return {getFullName=function() return 'Base.TestCar' end} end
 function v:getMaxPassengers() return 3 end
 function v:isSeatInstalled(seat) return not self.missing end
@@ -53,15 +55,41 @@ function v:getPassengerPositionWorldPos(def,out)
 end
 function v:getForwardVector(out) out.v={0,0,1};return out end
 function v:getSeat(body) for seat,who in pairs(self.seats) do if who==body then return seat end end;return -1 end
+function v:getDriver() return self.seats[0] end
+function v:isEngineWorking() return self.engineWorking end
+function v:hasLiveBattery() return self.battery end
+function v:isEngineRunning() return self.engineRunning end
+function v:isTrunkLocked() return self.trunkLocked==true end
+function v:isStarting() return false end
+function v:tryStartEngine(hasKey)
+    assert(hasKey==true,'keyless engine request did not use the native bypass')
+    self.startCalls=self.startCalls+1
+    if not self.startFails then self.engineRunning=true end
+end
 function v:enterRSync(seat,who,vehicle)
     assert(vehicle==self and seat>0)
     assert(not self.seats[seat] or self.seats[seat]==who,'overwrote occupied seat')
     self.seats[seat]=who;who.vehicle=self;who.collidable=false;self.entries=self.entries+1;return true
 end
 function v:clearPassenger(seat) self.seats[seat]=nil;self.clears=self.clears+1;return true end
+function v:exitRSync(who)
+    self.exits=(self.exits or 0)+1
+    if self.exitFails then return false end
+    if self.exitLies then return true end
+    local seat=self:getSeat(who)
+    if seat<0 or not self:clearPassenger(seat) then return false end
+    who.vehicle=nil;who.collidable=true
+    return true
+end
 function v:enter() error('player-only packet path called') end
 function v:exit() error('player-only packet path called') end
 function v:transmitPartDoor() self.doorTransmits=(self.doorTransmits or 0)+1 end
+function v:setLocked(locked)
+    self.locked=locked
+    self.trunkLocked=locked
+    self.lockUpdates=(self.lockUpdates or 0)+1
+    self:transmitPartDoor()
+end
 getVehicleById=function(id) return not vehicleUnloaded and id==v.id and v or nil end
 function cell:getVehicles() return list({v}) end
 function board()

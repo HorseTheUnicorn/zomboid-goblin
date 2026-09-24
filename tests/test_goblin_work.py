@@ -30,6 +30,82 @@ class CompanionWorkTests(unittest.TestCase):
             assert(done and moved==1)
         ''')
 
+    def test_autonomous_loot_abandons_immobile_client_owned_target_for_exploration(self):
+        self.lua.execute('''
+            sq=cell:getGridSquare(4,0,0); inv=container({item('Base.Plank'),item('Base.Nails')})
+            sq.objects={{getContainer=function() return inv end}}
+            local nextSquare=cell:getGridSquare(6,0,0)
+            local nextInv=container({item('Base.TinCan')})
+            nextSquare.objects={{getContainer=function() return nextInv end}}
+            local payload={autonomous=true,loot_focus='surprise'}
+            local ok,detail,moved,done=Loot.collect(a,payload,clock)
+            assert(ok and not done and #inv.items==2 and a.destination.x==4.5)
+            local job=Loot.jobs[a]
+            a.x=1.0
+            Loot.collect(a,payload,clock+8000)
+            assert(job.explore==nil and job.progressAt==clock+8000)
+            Loot.collect(a,payload,clock+19000)
+            assert(job.explore==nil and #inv.items==2)
+            ok,detail,moved,done=Loot.collect(a,payload,clock+20000)
+            assert(ok and not done and moved==0 and job.skipped[inv.items[1]])
+            assert(job.skippedSquares[sq])
+            assert(job.explore~=nil and job.sources==nil)
+            assert(a.destination.x~=4.5 or a.destination.y~=0.5)
+            assert(a.data.GoblinLootStatus=='exploring for supplies')
+            assert(#inv.items==2 and #a.inv.items==0)
+            job.explore=nil
+            Loot.collect(a,payload,clock+20100)
+            assert(#job.sources==1 and job.sources[1].square==nextSquare)
+        ''')
+
+    def test_autonomous_loot_ends_after_area_stall_and_backs_off(self):
+        self.lua.execute('''
+            Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            local payload={autonomous=true,loot_focus='surprise'}
+            local source=cell:getGridSquare(4,0,0)
+            source.objects={{getContainer=function()
+                return container({item('Base.Plank')}) end}}
+            local ok,detail,moved,done=Loot.collect(a,payload,clock)
+            assert(ok and not done)
+            ok,detail,moved,done=Loot.collect(a,payload,clock+30001)
+            assert(ok and done and moved==0)
+            assert(detail=='no reachable supplies; returning to owner')
+            assert(Loot.jobs[a]==nil and Loot.autonomousBlocked(a,clock+30001))
+            a.data.GoblinTask='FOLLOW'
+            Autonomy.update(a,clock+30001)
+            Autonomy.update(a,clock+60001)
+            assert(a.data.GoblinTask=='FOLLOW','do not immediately repeat a blocked scan')
+            assert(not Loot.autonomousBlocked(a,clock+90001))
+        ''')
+
+    def test_autonomous_no_progress_spans_requeued_loot_jobs(self):
+        self.lua.execute('''
+            local payload={autonomous=true,loot_focus='surprise'}
+            local ok,detail,moved,done=Loot.collect(a,payload,clock)
+            assert(ok and not done and Loot.activity[a])
+            Loot.clear(a) -- a short scan completed; the owner remained idle
+            ok,detail,moved,done=Loot.collect(a,payload,clock+15000)
+            assert(ok and not done and not Loot.autonomousBlocked(a,clock+15000))
+            Loot.clear(a)
+            ok,detail,moved,done=Loot.collect(a,payload,clock+30001)
+            assert(ok and done and detail=='no reachable supplies; returning to owner')
+            assert(Loot.autonomousBlocked(a,clock+30001))
+        ''')
+
+    def test_autonomous_patrol_cursor_survives_follow_handoff(self):
+        self.lua.execute('''
+            local Explore=require('GoblinSurvivor/GoblinExplore')
+            local first={autonomous=true}; local job={}
+            Explore.update(a,first,job,clock)
+            local waypoint=job.explore
+            assert(waypoint and first.search_cursor==1)
+            Loot.clear(a) -- FOLLOW replaces the LOOT payload and job
+            local second={autonomous=true}; job={}
+            Explore.update(a,second,job,clock+90000)
+            assert(job.explore and second.search_cursor==2)
+            assert(job.explore.x~=waypoint.x or job.explore.y~=waypoint.y)
+        ''')
+
     def test_defense_override_replaces_real_legacy_body_weapon(self):
         # Other work fixtures stub Body. Exercise the actual equipment module
         # before/after the startup override so source-only audits cannot mistake
@@ -61,11 +137,13 @@ class CompanionWorkTests(unittest.TestCase):
             a.data.goblin_owned=true
             a.data.GoblinID=Config.npcId..'.horse'
             a.data.GoblinOwner='horse'
+            a.data.GoblinTask='FOLLOW'
             a.engineOwner={}
             function a:getOwnerPlayer() return nativePlayer end
             local clientOwned=realBody.snapshot(a)
             assert(clientOwned.navigation.simulation_owner=='client')
             assert(clientOwned.navigation.native_owner_player=='unicorn')
+            assert(clientOwned.navigation.current_task=='FOLLOW')
             assert(a.engineOwner~=nil) -- telemetry is read-only
 
             a.engineOwner=nil
@@ -83,6 +161,114 @@ class CompanionWorkTests(unittest.TestCase):
             assert(#inv.items==1 and inv.items[1]==value and #a.inv.items==0)
         ''')
 
+    def test_material_reservation_reconciles_an_unreadable_post_remove_state(self):
+        self.lua.execute('''
+            local value=item('Base.Plank')
+            a.inv=container({value})
+            local originalRemove=a.inv.Remove
+            function a.inv:Remove(item)
+                originalRemove(self,item)
+                self.unreadable=true
+            end
+            function a.inv:contains(item)
+                if self.unreadable then error('native contains unavailable') end
+                for _,current in ipairs(self.items) do if current==item then return true end end
+                return false
+            end
+            function a.inv:getItems()
+                if self.unreadable then error('inventory unreadable') end
+                return list(self.items)
+            end
+            assert(not World.reserve(a,{value}))
+            assert(#a.inv.items==0 and World.pendingMaterials[a])
+            assert(not World.reserve(a,{value})) -- no retry while state is unknown
+            a.inv.unreadable=false
+            assert(World.refund(a,{}))
+            assert(#a.inv.items==1 and a.inv.items[1]==value)
+            assert(World.pendingMaterials[a]==nil)
+            assert(World.refund(a,{value}) and #a.inv.items==1)
+        ''')
+
+    def test_material_reservation_refunds_a_confirmed_post_remove_exception(self):
+        self.lua.execute('''
+            local value=item('Base.Plank')
+            a.inv=container({value})
+            local originalRemove=a.inv.Remove
+            function a.inv:Remove(item)
+                originalRemove(self,item)
+                error('exception after removal')
+            end
+            assert(not World.reserve(a,{value}))
+            assert(#a.inv.items==1 and a.inv.items[1]==value)
+            assert(World.pendingMaterials[a]==nil)
+        ''')
+
+    def test_exact_container_pickup_rejects_failed_removal_even_if_list_unreadable(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(0,0,0)
+            local value=item('Base.Nails')
+            local source=container({value})
+            local obj={getContainer=function() return source end}
+            sq.objects={obj}
+            function source:Remove() self.unreadable=true end
+            function source:getItems()
+                if self.unreadable then error('inventory unreadable') end
+                return list(self.items)
+            end
+            assert(not World.take(a,{square=sq,object=obj,container=source,item=value}))
+            assert(source.items[1]==value and #a.inv.items==0)
+        ''')
+
+    def test_container_locked_after_selection_cannot_be_looted(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(0,0,0)
+            local value=item('Base.Nails')
+            local source=container({value})
+            local obj={locked=true,getContainer=function() return source end,
+                isLocked=function(self) return self.locked end}
+            sq.objects={obj}
+            assert(not World.take(a,{square=sq,object=obj,container=source,item=value}))
+            assert(#source.items==1 and source.items[1]==value and #a.inv.items==0)
+        ''')
+
+    def test_exact_container_pickup_uses_native_contains_after_removal(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(0,0,0)
+            local value=item('Base.Nails')
+            local source=container({value})
+            local obj={getContainer=function() return source end}
+            sq.objects={obj}
+            local removed,added=0,0
+            sendRemoveItemFromContainer=function(c,i)
+                assert(c==source and i==value);removed=removed+1 end
+            sendAddItemToContainer=function(c,i)
+                assert(c==a.inv and i==value);added=added+1 end
+            local original=source.Remove
+            function source:Remove(item)
+                original(self,item);self.unreadable=true
+            end
+            function source:getItems()
+                if self.unreadable then error('inventory unreadable') end
+                return list(self.items)
+            end
+            assert(World.take(a,{square=sq,object=obj,container=source,item=value}))
+            assert(#source.items==0 and a.inv.items[1]==value)
+            assert(removed==1 and added==0) -- managed IsoZombie inventory is not a packet target
+        ''')
+
+    def test_source_sync_failure_keeps_exact_item_and_reports_failure(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(0,0,0)
+            local value=item('Base.Nails')
+            local source=container({value})
+            local obj={getContainer=function() return source end}
+            sq.objects={obj}
+            sendRemoveItemFromContainer=function() error('source network send failed') end
+            sendAddItemToContainer=function() error('must not target zombie inventory') end
+            assert(not World.take(a,{square=sq,object=obj,container=source,item=value}))
+            assert(#source.items==0 and a.inv.items[1]==value)
+        ''')
+
     def test_items_cannot_be_taken_through_walls_or_above_capacity(self):
         self.lua.execute('''
             sq=cell:getGridSquare(1,0,0); sq.blocked=true
@@ -91,6 +277,46 @@ class CompanionWorkTests(unittest.TestCase):
             sq.blocked=false; a.inv.full=true
             assert(not World.take(a,{square=sq,container=inv,item=value}))
             assert(#inv.items==1)
+        ''')
+
+    def test_diagonal_work_reach_rejects_a_blocked_corner(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(1,1,0)
+            local east=cell:getGridSquare(1,0,0)
+            local south=cell:getGridSquare(0,1,0)
+            east.blocked=true
+            south.blocked=true
+            assert(not World.reachable(a,target))
+            east.blocked=false
+            assert(World.reachable(a,target))
+            east.blocked=true
+            local value=item('Base.Nails')
+            local source=container({value})
+            local object={getContainer=function() return source end}
+            target.objects={object}
+            assert(not World.take(a,{square=target,object=object,container=source,item=value}))
+            assert(source.items[1]==value and #a.inv.items==0)
+        ''')
+
+    def test_diagonal_approach_candidate_requires_an_open_corner_route(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            target.occupied=true
+            for dx=-1,1 do for dy=-1,1 do
+                if dx~=0 or dy~=0 then
+                    cell:getGridSquare(5+dx,5+dy,0).occupied=true
+                end
+            end end
+            local diagonal=cell:getGridSquare(4,4,0)
+            diagonal.occupied=false
+            local west=cell:getGridSquare(4,5,0)
+            local north=cell:getGridSquare(5,4,0)
+            west.blocked=true
+            north.blocked=true
+            assert(World.approachCandidate(a,target,clock,false)==nil)
+            west.blocked=false
+            local candidate=World.approachCandidate(a,target,clock,false)
+            assert(candidate and candidate.square==diagonal and candidate.ring==1)
         ''')
 
     def test_work_approach_expands_to_radius_two_without_mutating_the_target(self):
@@ -106,6 +332,41 @@ class CompanionWorkTests(unittest.TestCase):
             local done,status=World.approach(a,target,clock)
             assert(not done and status=='walking to alternate work approach')
             assert(a.pathCalls==1 and #target.objects==before)
+        ''')
+
+    def test_work_approach_rejects_unreadable_occupancy_and_fire_state(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            local nearby={}
+            for dx=-2,2 do for dy=-2,2 do
+                nearby[#nearby+1]=cell:getGridSquare(5+dx,5+dy,0)
+            end end
+            for _,square in ipairs(nearby) do square.getMovingObjects=nil end
+            assert(World.approachCandidate(a,target,clock,true)==nil)
+            for _,square in ipairs(nearby) do
+                function square:getMovingObjects() return list({}) end
+                square.haveFire=nil
+            end
+            assert(World.approachCandidate(a,target,clock,true)==nil)
+            for _,square in ipairs(nearby) do
+                function square:haveFire() error('fire state unreadable') end
+            end
+            assert(World.approachCandidate(a,target,clock,true)==nil)
+            for _,square in ipairs(nearby) do
+                function square:haveFire() return false end
+            end
+            local candidate=World.approachCandidate(a,target,clock,true)
+            assert(candidate and candidate.square==target)
+        ''')
+
+    def test_cached_work_approach_is_invalidated_if_occupancy_becomes_unreadable(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            local done=World.approach(a,target,clock)
+            assert(not done and World.approaches[a].chosen.square==target)
+            target.getMovingObjects=nil
+            World.approach(a,target,clock+100)
+            assert(World.approaches[a].chosen.square~=target)
         ''')
 
     def test_work_approach_keeps_one_valid_staging_square_while_actor_moves(self):
@@ -125,6 +386,72 @@ class CompanionWorkTests(unittest.TestCase):
             World.approach(a,target,clock+500)
             assert(a.destination.x~=firstX or a.destination.y~=firstY)
             assert(a.pathCalls==2)
+        ''')
+
+    def test_rejected_native_work_approach_tries_another_square(self):
+        self.lua.execute('''
+            local Motion=require('GoblinSurvivor/GoblinLocomotion')
+            local target=cell:getGridSquare(5,5,0)
+            local first=World.approachCandidate(a,target,clock,true)
+            assert(first and first.square==target)
+            local rejectedX,rejectedY=first.point.x,first.point.y
+            local realPath=a.pathToLocationF
+            function a:pathToLocationF(x,y,z)
+                if x==rejectedX and y==rejectedY then
+                    self.pathCalls=self.pathCalls+1
+                    return false
+                end
+                return realPath(self,x,y,z)
+            end
+            local done,status=World.approach(a,target,clock)
+            assert(not done and status=='retrying alternate work approach')
+            assert(Motion.isBlacklisted(a,first.key,clock,'approach'))
+            done,status=World.approach(a,target,clock+100)
+            assert(not done and status=='walking to supplies/work')
+            assert(a.destination and (a.destination.x~=rejectedX or a.destination.y~=rejectedY))
+            assert(World.approaches[a].chosen.key~=first.key)
+        ''')
+
+    def test_delegated_work_approach_blacklists_stalled_square(self):
+        self.lua.execute('''
+            local Motion=require('GoblinSurvivor/GoblinLocomotion')
+            Motion.controls=function() return false end
+            local target=cell:getGridSquare(5,5,0)
+            local done,status=World.approach(a,target,clock)
+            local first=World.approaches[a].chosen.key
+            assert(not done and status=='walking to supplies/work')
+            -- Position updates, not accepted delegated path calls, reset the
+            -- server's no-progress timer.
+            a.x=0.8
+            done,status=World.approach(a,target,clock+11000)
+            assert(not done and not Motion.isBlacklisted(a,first,clock+11000,'approach'))
+            done,status=World.approach(a,target,clock+22000)
+            assert(not done and not Motion.isBlacklisted(a,first,clock+22000,'approach'))
+            done,status=World.approach(a,target,clock+23100)
+            assert(not done and status=='retrying alternate work approach')
+            assert(Motion.isBlacklisted(a,first,clock+23100,'approach'))
+            done,status=World.approach(a,target,clock+23200)
+            assert(not done and status=='walking to supplies/work')
+            assert(World.approaches[a].chosen.key~=first)
+        ''')
+
+    def test_rejected_work_approaches_stop_after_bounded_candidates(self):
+        self.lua.execute('''
+            local target=cell:getGridSquare(5,5,0)
+            function a:pathToLocationF(x,y,z)
+                self.pathCalls=self.pathCalls+1
+                return false
+            end
+            local status
+            for attempt=1,26 do
+                local done
+                done,status=World.approach(a,target,clock+attempt*100)
+                assert(not done)
+            end
+            assert(status=='no accessible work square')
+            assert(a.pathCalls==25)
+            local done,nextStatus=World.approach(a,target,clock+2700)
+            assert(not done and nextStatus=='no accessible work square' and a.pathCalls==25)
         ''')
 
     def test_build_consumes_materials_once_and_retains_hammer(self):
@@ -151,6 +478,81 @@ class CompanionWorkTests(unittest.TestCase):
             assert(w.barr:getNumPlanks()==1 and #a.inv.items==1)
             Work.update(a,'FORTIFY',{},clock+12000)
             assert(w.barr:getNumPlanks()==1)
+        ''')
+
+    def test_postmutation_barricade_error_does_not_refund_consumed_materials(self):
+        self.lua.execute('''
+            supplies(1,2)
+            local target=window(cell:getGridSquare(1,0,0))
+            local original=IsoBarricade.AddBarricadeToObject
+            IsoBarricade.AddBarricadeToObject=function(object)
+                local barr={planks=0}
+                function barr:getNumPlanks() return self.planks end
+                function barr:addPlank()
+                    self.planks=self.planks+1
+                    error('fault after native mutation')
+                end
+                object.barr=barr
+                return barr
+            end
+            Work.update(a,'FORTIFY',{},clock)
+            local done=Work.update(a,'FORTIFY',{},clock+5000)
+            assert(done and target.barr:getNumPlanks()==1)
+            assert(#a.inv.items==1)
+            assert(a.data.GoblinWorkStatus:find('not duplicated'))
+            IsoBarricade.AddBarricadeToObject=original
+        ''')
+
+    def test_material_reserve_and_refund_do_not_send_invalid_zombie_inventory_packets(self):
+        self.lua.execute('''
+            supplies(1,2)
+            local removals,additions=0,0
+            sendRemoveItemFromContainer=function() removals=removals+1 end
+            sendAddItemToContainer=function() additions=additions+1 end
+            local selected=assert(World.materials(a,{['Base.Plank']=1,['Base.Nails']=2}))
+            assert(World.reserve(a,selected))
+            assert(removals==0 and #a.inv.items==1)
+            World.refund(a,selected)
+            assert(additions==0 and #a.inv.items==4)
+        ''')
+
+    def test_loot_source_rechecks_safehouse_and_exact_container_at_pickup(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(1,0,0)
+            local inv=container({item('Base.Nails')})
+            local object={getContainer=function() return inv end}
+            sq.objects={object}
+            local restricted=false
+            SafeHouse={getSafeHouse=function(square)
+                if square~=sq then return nil end
+                return {playerAllowed=function(self,owner) return not restricted end}
+            end}
+            local sources=World.sources({x=0,y=0,z=0},2,function(i)
+                return World.fullType(i)=='Base.Nails'
+            end,a)
+            assert(#sources==1)
+            restricted=true
+            assert(not World.take(a,sources[1]) and #inv.items==1)
+            assert(#World.sources({x=0,y=0,z=0},2,function() return true end,a)==0)
+            restricted=false
+            sq.objects={}
+            assert(not World.take(a,sources[1]) and #inv.items==1)
+        ''')
+
+    def test_postinsertion_build_error_does_not_refund_materials(self):
+        self.lua.execute('''
+            supplies(3,3)
+            local square=cell:getGridSquare(0,0,0)
+            local original=square.AddSpecialObject
+            function square:AddSpecialObject(object)
+                original(self,object)
+                error('fault after native insertion')
+            end
+            local payload={kind='crate',north=false,x=0,y=0,z=0}
+            Work.update(a,'BUILD',payload,clock)
+            local done=Work.update(a,'BUILD',payload,clock+5000)
+            assert(done and #square.objects==1 and #a.inv.items==1)
+            assert(a.data.GoblinWorkStatus:find('not duplicated'))
         ''')
 
     def test_feral_names_survive_recovery_and_avoid_collisions(self):
@@ -204,19 +606,53 @@ class CompanionWorkTests(unittest.TestCase):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy')
             Brain=require('GoblinSurvivor/GoblinBrain')
+            player.x=0.5
             a.data.GoblinTask='FOLLOW'; Autonomy.update(a,clock)
             Autonomy.update(a,clock+29999)
             assert(a.data.GoblinTask=='FOLLOW')
             Autonomy.update(a,clock+30000)
             assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
-            player.x=player.x+0.1
+            player.x=10.1
             Autonomy.update(a,clock+30500)
             Brain.update(a,clock+30500)
             assert(a.data.GoblinTask=='FOLLOW' and not a.data.GoblinAutonomous)
             assert(a.destination.x==player.x and #a.inv.items==0)
             Autonomy.update(a,clock+60499)
             assert(a.data.GoblinTask=='FOLLOW')
+            a.x=player.x-2
             Autonomy.update(a,clock+60500)
+            assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
+        ''')
+
+    def test_idle_autonomy_waits_until_goblin_rejoins_owner(self):
+        self.lua.execute('''
+            Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            a.data.GoblinTask='FOLLOW'
+            a.x,a.y=player.x-12,player.y
+            Autonomy.update(a,clock)
+            Autonomy.update(a,clock+30000)
+            assert(a.data.GoblinTask=='FOLLOW' and not a.data.GoblinAutonomous)
+            a.x,a.y=player.x-2,player.y
+            a.z=player.z+1
+            Autonomy.update(a,clock+30250)
+            assert(a.data.GoblinTask=='FOLLOW' and not a.data.GoblinAutonomous)
+            a.z=player.z
+            Autonomy.update(a,clock+30500)
+            assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
+        ''')
+
+    def test_idle_autonomy_accepts_a_reached_follow_slot_beyond_four_tiles(self):
+        self.lua.execute('''
+            Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            local Motion=require('GoblinSurvivor/GoblinLocomotion')
+            player.x,player.y=10.5,0.5
+            a.x,a.y=14.56,0.5
+            a.data.GoblinTask='FOLLOW'
+            a.data.GoblinBaseSet=false
+            local target,gap,navigation=Motion.followGoal(a,player,clock)
+            assert(target==nil and gap>4 and navigation.goal_key=='slot:1')
+            Autonomy.update(a,clock)
+            Autonomy.update(a,clock+30000)
             assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
         ''')
 
@@ -224,6 +660,7 @@ class CompanionWorkTests(unittest.TestCase):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy')
             Brain=require('GoblinSurvivor/GoblinBrain')
+            player.x=0.5
             a.data.GoblinTask='FOLLOW'; Autonomy.update(a,clock)
             Autonomy.update(a,clock+30000)
             assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
@@ -246,6 +683,24 @@ class CompanionWorkTests(unittest.TestCase):
             assert(Spawner.setBaseForPlayer(player,true))
             assert(not b.data.GoblinBaseSet and Spawner.baseForOwner('horse')==nil)
             assert(not saved.records.horse.base_set)
+        ''')
+
+    def test_stockpile_metadata_persists_until_base_changes(self):
+        self.lua.execute('''
+            Spawner=require('GoblinSurvivor/GoblinSpawner')
+            b=Spawner.ensureForPlayer(player,false)
+            assert(Spawner.setBaseForPlayer(player))
+            b.data.GoblinBaseReport={stale=false}
+            assert(Spawner.setStockpileRuleForOwner('horse','Base.Nails',50,
+                {x=10,y=0,z=0,id='real-object-id',building_id='house-a'}))
+            assert(b.data.GoblinBaseReport.stale)
+            local rule=Spawner.stockpileRulesForOwner('horse')['Base.Nails']
+            assert(rule and rule.minimum==50 and saved.records.horse.stockpile_rules['Base.Nails'])
+            assert(Spawner.setBaseForPlayer(player))
+            assert(Spawner.stockpileRulesForOwner('horse')['Base.Nails'])
+            player.x=11
+            assert(Spawner.setBaseForPlayer(player))
+            assert(not Spawner.stockpileRulesForOwner('horse')['Base.Nails'])
         ''')
 
     def test_feet_delivery_uses_current_owner_position_and_keeps_equipment(self):
@@ -285,6 +740,24 @@ class CompanionWorkTests(unittest.TestCase):
             a.data.GoblinBaseSet=false;player.x,player.y=1.1,0.1
             ok,detail,count,done=Loot.collect(a,{autonomous=true},clock)
             assert(not done and count==0 and #chest.items==1 and a.pathCalls>0)
+        ''')
+
+    def test_base_delivery_does_not_count_duplicate_id_as_a_transfer(self):
+        self.lua.execute('''
+            cargo=item('Base.Plank');a.inv:AddItem(cargo)
+            sq=cell:getGridSquare(0,0,0);chest=container()
+            sq.objects={{getContainer=function() return chest end}}
+            existing=item('Base.Plank');chest:AddItem(existing)
+            -- Installed ItemContainer.AddItem returns its existing same-ID
+            -- item in this case, not the incoming cargo.
+            function chest:AddItem(value) return existing end
+            local packets=0
+            sendAddItemToContainer=function() packets=packets+1 end
+            local done,detail,moved=Loot.deposit(a)
+            assert(not done and moved==0 and packets==0)
+            assert(#a.inv.items==1 and a.inv.items[1]==cargo)
+            assert(#chest.items==1 and chest.items[1]==existing)
+            assert(not cargo:getModData().GoblinDelivered)
         ''')
 
     def test_loot_cycle_delivers_to_feet_without_a_base(self):
@@ -370,6 +843,31 @@ class CompanionWorkTests(unittest.TestCase):
             job={};done,detail=Explore.update(a,payload,job,clock+21000)
             assert(not done and detail=='no loaded search route' and not job.explore)
             cell.getGridSquare=original
+        ''')
+
+    def test_idle_exploration_blacklists_stuck_waypoints_and_pauses_after_three(self):
+        self.lua.execute('''
+            Explore=require('GoblinSurvivor/GoblinExplore')
+            local Motion=require('GoblinSurvivor/GoblinLocomotion')
+            local payload={autonomous=true};local job={}
+            local visited={}
+            for attempt=1,3 do
+                local started=clock+(attempt-1)*20100
+                local done=Explore.update(a,payload,job,started)
+                assert(not done and job.explore)
+                local target=job.explore
+                visited[#visited+1]=target
+                done=Explore.update(a,payload,job,started+20000)
+                assert(done and job.explore==nil)
+                assert(Motion.isBlacklisted(a,target,started+20000,'target'))
+            end
+            assert(job.exploreFailures==3 and job.nextExploreAt==clock+120200)
+            local previousCursor=payload.search_cursor
+            local done,detail=Explore.update(a,payload,job,clock+60400)
+            assert(not done and detail=='waiting for a loaded search route')
+            assert(payload.search_cursor==previousCursor and job.explore==nil)
+            done=Explore.update(a,payload,job,clock+120200)
+            assert(not done and job.explore and job.exploreFailures==0)
         ''')
 
     def test_offline_goblin_patrols_with_cargo_without_losing_or_duplicating_it(self):
@@ -584,6 +1082,54 @@ class CompanionWorkTests(unittest.TestCase):
             assert(door.opened,'door did not open')
             assert(not door.locked,'door remained locked')
             assert(not door.keyLocked,'door remained key-locked')
+        ''')
+
+    def test_key_locked_exit_can_be_unlocked_only_from_its_inside_edge(self):
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinAccess']=nil
+            Access=require('GoblinSurvivor/GoblinAccess')
+            IsoFlagType={exterior={}}
+            IsoDoor={getDoubleDoorIndex=function() return -1 end,
+                getGarageDoorIndex=function() return -1 end}
+            local inside=cell:getGridSquare(0,0,0)
+            function inside:has(flag) assert(flag==IsoFlagType.exterior);return false end
+            local outside=cell:getGridSquare(0,-1,0)
+            function outside:has(flag) assert(flag==IsoFlagType.exterior);return true end
+            local remote=cell:getGridSquare(3,3,0)
+            function remote:has(flag) assert(flag==IsoFlagType.exterior);return false end
+            function a:getCurrentSquare() return self.doorSide end
+            function a.inv:haveThisKeyId() return nil end
+            local door={opened=false,locked=true,keyLocked=true}
+            function door:getSquare() return inside end
+            function door:getNorth() return true end
+            function door:isOpen() return self.opened end
+            door.IsOpen=door.isOpen
+            function door:isLocked() return self.locked end
+            function door:setLocked(value) self.locked=value end
+            function door:isLockedByKey() return self.keyLocked end
+            function door:setLockedByKey(value) self.keyLocked=value end
+            function door:getKeyId() return 42 end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:syncIsoObject() end
+            function door:ToggleDoorSilent() self.opened=not self.opened end
+            a.doorSide=outside
+            assert(not Access.open(a,door,false))
+            a.doorSide=remote
+            assert(not Access.open(a,door,false))
+            assert(door.locked and door.keyLocked and not door.opened)
+            a.doorSide=inside
+            local lockData={CustomLock=true}
+            function door:getModData() return lockData end
+            assert(not Access.open(a,door,false),'inside must not bypass a native CustomLock')
+            assert(door.locked and door.keyLocked and not door.opened)
+            function a.inv:haveThisKeyId(id) if id==42 then return {} end end
+            assert(Access.open(a,door,false),'matching key still authorizes CustomLock')
+            door.opened=false;door.locked=true;door.keyLocked=true
+            function a.inv:haveThisKeyId() return nil end
+            lockData.CustomLock=false
+            assert(Access.open(a,door,false))
+            assert(door.opened and not door.locked and not door.keyLocked)
         ''')
 
     def test_idle_goblin_uses_delivered_base_materials_for_real_fortification(self):

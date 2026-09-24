@@ -13,7 +13,7 @@ function list(items)
         clear = function(self) self.values = {} end }
 end
 function actor(x, y, z)
-    local a = { x=x, y=y, z=z, data={}, pathCalls=0, cancelCalls=0, variables={}, visuals=list(), inventory={"kept-item"} }
+    local a = { x=x, y=y, z=z, data={}, pathCalls=0, behaviorCalls=0, cancelCalls=0, variables={}, visuals=list(), inventory={"kept-item"} }
     function a:getX() return self.x end
     function a:getY() return self.y end
     function a:getZ() return self.z end
@@ -31,7 +31,16 @@ function actor(x, y, z)
         self.pathCalls=self.pathCalls+1;self.characterPathCalls=(self.characterPathCalls or 0)+1
         self.destination={x=target.x,y=target.y,z=target.z};self.pathTarget=target
     end
-    function a:getPathFindBehavior2() return {cancel=function() a.cancelCalls=a.cancelCalls+1 end} end
+    a.pathBehavior={
+        cancel=function() a.cancelCalls=a.cancelCalls+1 end,
+        pathToLocationF=function(self,px,py,pz)
+            a.behaviorCalls=a.behaviorCalls+1
+            a.destination={x=px,y=py,z=pz}
+        end,
+    }
+    function a:getPathFindBehavior2() return self.pathBehavior end
+    function a:changeState(value) self.nativeState=value end
+    function a:getCurrentStateName() return self.nativeState end
     function a:getItemVisuals() return self.visuals end
     a.human = {skin='MaleBody01',hair='RandomHair',beard='RandomBeard'}
     function a.human:getSkinTexture() return self.skin end
@@ -47,6 +56,8 @@ function actor(x, y, z)
     function a:setSquare(v) end
     return a
 end
+PathFindState={instance=function() return 'PathFindState' end}
+ZombieIdleState={instance=function() return 'ZombieIdleState' end}
 assetReady = true
 ItemVisual = {new=function()
     return {setItemType=function(self,v) self.itemType=v end,
@@ -62,7 +73,9 @@ getOnlinePlayers=function() return online end
 cell={getZombieList=function() return zombies end,
     getGridSquare=function(self,x,y,z)
         if squareUnavailable then return nil end
-        return {getX=function() return x end,getY=function() return y end,getZ=function() return z end,isFree=function() return true end}
+        return {getX=function() return x end,getY=function() return y end,getZ=function() return z end,
+            isFree=function() return true end,isBlockedTo=function() return false end,
+            getMovingObjects=function() return list() end,haveFire=function() return false end}
     end}
 getCell=function() return cell end
 saved={}

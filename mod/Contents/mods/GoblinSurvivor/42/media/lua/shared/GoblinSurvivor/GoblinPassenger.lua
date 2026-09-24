@@ -23,8 +23,10 @@ function Passenger.resolve(id,script)
     if type(script)~="string" or name~=script then return nil end
     return vehicle
 end
-function Passenger.point(vehicle,seat,position)
-    if not Passenger.validSeat(vehicle,seat) or not Vector3f then return nil end
+function Passenger.doorPoint(vehicle,seat,position)
+    local ok,count=call(vehicle,"getMaxPassengers")
+    if not ok or type(count)~="number" or type(seat)~="number" or seat~=math.floor(seat)
+        or seat<0 or seat>=count or seat>=64 or not Vector3f then return nil end
     local vector=Vector3f.new()
     local _,definition=call(vehicle,"getPassengerPosition",seat,position or "outside")
     if not definition then return nil end
@@ -45,6 +47,10 @@ function Passenger.point(vehicle,seat,position)
     if type(x)~="number" or type(y)~="number" or type(z)~="number" then return nil end
     if x~=x or y~=y or z~=z or math.abs(x)>1000000 or math.abs(y)>1000000 or math.abs(z)>100 then return nil end
     return {x=x,y=y,z=math.floor(z)}
+end
+function Passenger.point(vehicle,seat,position)
+    if not Passenger.validSeat(vehicle,seat) then return nil end
+    return Passenger.doorPoint(vehicle,seat,position)
 end
 function Passenger.place(body,point)
     if not point then return false end
@@ -82,8 +88,13 @@ function Passenger.apply(body,state)
     if occupant and occupant~=body then return true end -- never evict a player/another companion
     local _,old=call(body,"getVehicle")
     if old and (old~=vehicle or select(2,call(old,"getSeat",body))~=seat) then Passenger.detach(body) end
-    local ok,entered=call(vehicle,"enterRSync",seat,body,vehicle)
-    if not ok or entered~=true then return true end
+    -- The roster is replayed each tick, but native seat entry is a transition,
+    -- not a per-frame update. Re-entering an already-bound passenger needlessly
+    -- rewrites the vehicle seat and can disturb the driver's replicated state.
+    if occupant~=body or old~=vehicle then
+        local ok,entered=call(vehicle,"enterRSync",seat,body,vehicle)
+        if not ok or entered~=true then return true end
+    end
     Passenger.bound[body]={vehicle=vehicle,seat=seat}
     Passenger.place(body,Passenger.point(vehicle,seat,"inside"))
     local _,direction=call(vehicle,"getForwardVector",Vector3f.new())

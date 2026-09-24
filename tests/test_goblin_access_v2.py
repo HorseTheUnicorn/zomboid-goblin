@@ -33,6 +33,12 @@ class AccessV2Tests(unittest.TestCase):
                 function square:getRoom() return room end
                 return building,room
             end
+            function nativeHop(from,to)
+                IsoDirections={E='east',W='west',N='north',S='south'}
+                function from:isPlayerAbleToHopWallTo(direction,other)
+                    return other==to
+                end
+            end
         ''')
 
     def test_gain_access_is_registered_and_opens_real_selected_door(self):
@@ -153,6 +159,15 @@ class AccessV2Tests(unittest.TestCase):
             function fence:isTallHoppable() return false end
             function here:getHoppableTo(other) if other==there then return fence end end
             IsoDirections={E='east',W='west',N='north',S='south'}
+            function a:getCurrentSquare() return cell:getGridSquare(math.floor(self.x),math.floor(self.y),0) end
+            IsoWindow={canClimbThroughHelper=function(who,start,finish,north)
+                assert(who==a and start==here and finish==there and north==false)
+                return true
+            end}
+            function here:isPlayerAbleToHopWallTo(direction,other)
+                assert(direction=='east' and other==there)
+                return true
+            end
             function a:climbOverFence(direction) assert(direction=='east');self.x=1.5;self.climbs=(self.climbs or 0)+1 end
             local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
             assert(payload and payload.access_method=='FENCE',detail)
@@ -160,6 +175,155 @@ class AccessV2Tests(unittest.TestCase):
             assert(not result.done and result.success and result.code=='WORKING' and a.climbs==1)
             result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
             assert(result.done and result.success and result.code=='COMPLETE')
+        ''')
+
+    def test_unreachable_open_yard_door_falls_back_to_prepared_low_fence(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fenceThere=cell:getGridSquare(0,1,0)
+            local door={square=here}
+            function door:getSquare() return self.square end
+            function door:isOpen() return true end;door.IsOpen=door.isOpen
+            function here:getDoorTo(other) if other==there then return door end end
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==fenceThere then return fence end end
+            nativeHop(here,fenceThere)
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='DOOR',detail)
+            assert(#payload.alternates>=1 and payload.alternates[1].access_method=='FENCE')
+            assert(require('GoblinSurvivor/GoblinCapabilities').serializable(payload))
+            a.x=5.5
+            local runtime={access_opened=true,cross_approach_started_at=clock-31000}
+            local done,success,message,code=GainAccess.update(a,payload,runtime,clock)
+            assert(not done and success and code=='MOVING_TO_TARGET',message)
+            assert(payload.access_method=='FENCE' and #payload.alternates==0)
+            assert(runtime.access_opened==nil and runtime.cross_approach_started_at==nil)
+            assert(payload.allow_breach==false and payload.started_at==clock)
+            a.x=0.5
+            done,success,message,code=GainAccess.update(a,payload,runtime,clock+100)
+            assert(done and not success and code=='UNSUPPORTED',message)
+            assert(payload.access_method=='FENCE' and #payload.alternates==0)
+        ''')
+
+    def test_unreachable_open_yard_door_tries_second_open_door(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local near=cell:getGridSquare(0,0,0);local nearOther=cell:getGridSquare(1,0,0)
+            local far=cell:getGridSquare(0,2,0);local farOther=cell:getGridSquare(1,2,0)
+            local first={};local second={}
+            function first:isOpen() return true end;first.IsOpen=first.isOpen
+            function second:isOpen() return true end;second.IsOpen=second.isOpen
+            function near:getDoorTo(other) if other==nearOther then return first end end
+            function far:getDoorTo(other) if other==farOther then return second end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='DOOR' and payload.edge.y==0,detail)
+            assert(#payload.alternates==1 and payload.alternates[1].edge.y==2)
+            assert(require('GoblinSurvivor/GoblinCapabilities').serializable(payload))
+            a.x=5.5;a.y=5.5
+            local runtime={access_opened=true,cross_approach_started_at=clock-31000}
+            local done,success,message,code=GainAccess.update(a,payload,runtime,clock)
+            assert(not done and success and code=='MOVING_TO_TARGET',message)
+            assert(payload.access_method=='DOOR' and payload.edge.y==2)
+            a.x=0.5;a.y=2.5
+            done,success,message,code=GainAccess.update(a,payload,runtime,clock+100)
+            assert(not done and success and code=='MOVING_TO_TARGET',message)
+            a.x=1.5
+            done,success,message,code=GainAccess.update(a,payload,runtime,clock+200)
+            assert(done and success and code=='COMPLETE',message)
+        ''')
+
+    def test_many_access_routes_fit_persistent_payload_and_keep_explicit_breach(self):
+        self.lua.execute('''
+            local originalResolve=Access.resolveTargetScope
+            local originalPrepare=Access.prepare
+            local originalBreach=Access.prepareBreachWindow
+            Access.resolveTargetScope=function() return {} end
+            Access.prepare=function(owner,window,now,options)
+                local routes={}
+                for index=1,12 do
+                    routes[index]={edge={x=index,y=window and 2 or 1,z=0,dx=1,dy=0},
+                        window=window,started_at=now,priority=window and 5 or 2,
+                        score=(window and 5 or 2)*100000+index}
+                end
+                return routes[1],'mock loaded routes',routes
+            end
+            Access.prepareBreachWindow=function(owner,now,options)
+                return {edge={x=99,y=0,z=0,dx=1,dy=0},window=true,
+                    breach=true,started_at=now,priority=8},'explicit breach'
+            end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',
+                {target={kind='BUILDING'},allow_breach=true})
+            Access.resolveTargetScope=originalResolve
+            Access.prepare=originalPrepare
+            Access.prepareBreachWindow=originalBreach
+            assert(payload and payload.access_method=='DOOR',detail)
+            assert(#payload.alternates==15)
+            assert(payload.alternates[15].access_method=='BREACH_WINDOW')
+            assert(payload.alternates[15].anchor==nil)
+            assert(require('GoblinSurvivor/GoblinCapabilities').serializable(payload))
+        ''')
+
+    def test_unknown_hoppable_type_is_not_assumed_to_be_low_fence(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local unknown={square=here}
+            function unknown:getSquare() return self.square end
+            function here:getHoppableTo(other) if other==there then return unknown end end
+            local payload=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload==nil)
+        ''')
+
+    def test_non_hoppable_fence_is_rejected_at_route_selection(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            IsoDirections={E='east',W='west',N='north',S='south'}
+            function here:isPlayerAbleToHopWallTo(direction,other) return false end
+            function there:isPlayerAbleToHopWallTo(direction,other) return false end
+            local payload=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload==nil)
+        ''')
+
+    def test_yard_fence_candidate_stays_within_owner_radius(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(12,12,0);local there=cell:getGridSquare(13,12,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
+            local payload=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload==nil)
+        ''')
+
+    def test_yard_door_candidate_stays_within_owner_radius(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local far=cell:getGridSquare(12,12,0)
+            local farOther=cell:getGridSquare(13,12,0)
+            local farDoor={}
+            function farDoor:isOpen() return true end;farDoor.IsOpen=farDoor.isOpen
+            function far:getDoorTo(other) if other==farOther then return farDoor end end
+            local absent=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(absent==nil)
+            local near=cell:getGridSquare(10,0,0)
+            local nearOther=cell:getGridSquare(11,0,0)
+            local nearDoor={}
+            function nearDoor:isOpen() return true end;nearDoor.IsOpen=nearDoor.isOpen
+            function near:getDoorTo(other) if other==nearOther then return nearDoor end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='DOOR',detail)
+            assert(payload.edge.x==10 and payload.edge.y==0)
+            assert(#payload.alternates==0)
         ''')
 
     def test_low_fence_rechecks_safehouse_policy_before_native_climb(self):
@@ -170,6 +334,7 @@ class AccessV2Tests(unittest.TestCase):
             function fence:getSquare() return self.square end
             function fence:isTallHoppable() return false end
             function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
             IsoDirections={E='east',W='west',N='north',S='south'}
             function a:climbOverFence(direction) self.climbs=(self.climbs or 0)+1 end
             local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
@@ -180,6 +345,194 @@ class AccessV2Tests(unittest.TestCase):
             local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
             assert(result.done and not result.success and result.code=='PERMISSION_DENIED')
             assert(a.climbs==nil)
+        ''')
+
+    def test_low_fence_rejects_native_hop_precondition_without_claiming_work(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
+            IsoDirections={E='east',W='west',N='north',S='south'}
+            function a:getCurrentSquare() return here end
+            IsoWindow={canClimbThroughHelper=function() return true end}
+            function a:climbOverFence(direction) self.climbs=(self.climbs or 0)+1 end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='FENCE',detail)
+            function here:isPlayerAbleToHopWallTo(direction,other)
+                assert(direction=='east' and other==there)
+                return false
+            end
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(result.done and not result.success and result.code=='BLOCKED')
+            assert(a.climbs==nil)
+        ''')
+
+    def test_low_fence_rejects_native_passage_precondition_without_climbing(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            function here:isPlayerAbleToHopWallTo(direction,other) return true end
+            IsoDirections={E='east',W='west',N='north',S='south'}
+            function a:getCurrentSquare() return here end
+            IsoWindow={canClimbThroughHelper=function(who,start,finish,north)
+                assert(who==a and start==here and finish==there and north==false)
+                return false
+            end}
+            function a:climbOverFence(direction) self.climbs=(self.climbs or 0)+1 end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='FENCE',detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(result.done and not result.success and result.code=='BLOCKED')
+            assert(a.climbs==nil)
+        ''')
+
+    def test_low_fence_refuses_missing_native_preflight_methods(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
+            IsoDirections={E='east',W='west',N='north',S='south'}
+            function a:climbOverFence(direction) self.climbs=(self.climbs or 0)+1 end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='FENCE',detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(result.done and not result.success and result.code=='UNSUPPORTED')
+            function a:getCurrentSquare() return here end
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(result.done and not result.success and result.code=='UNSUPPORTED')
+            IsoWindow={canClimbThroughHelper=function() return true end}
+            here.isPlayerAbleToHopWallTo=nil
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+200)
+            assert(result.done and not result.success and result.code=='UNSUPPORTED')
+            assert(a.climbs==nil)
+        ''')
+
+    def test_low_fence_approach_switches_side_then_reports_no_path(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=4.5;a.y=0.5
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='FENCE',detail)
+            local runtime={}
+            local done,success,message,code=GainAccess.update(a,payload,runtime,clock)
+            assert(not done and success and code=='MOVING_TO_TARGET',message)
+            assert(a.destination.x==1.5)
+            done,success,message,code=GainAccess.update(a,payload,runtime,clock+6100)
+            assert(not done and success and code=='MOVING_TO_TARGET',message)
+            assert(a.destination.x==0.5 and runtime.fence_approach_switched==true)
+            done,success,message,code=GainAccess.update(a,payload,runtime,clock+30100)
+            assert(done and not success and code=='NO_PATH',message)
+            assert(a.climbs==nil)
+        ''')
+
+    def test_low_fence_requires_actor_current_square_before_native_call(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local fence={square=here}
+            function fence:getSquare() return self.square end
+            function fence:isTallHoppable() return false end
+            function here:getHoppableTo(other) if other==there then return fence end end
+            nativeHop(here,there)
+            IsoDirections={E='east',W='west',N='north',S='south'}
+            function a:getCurrentSquare() return nil end
+            function a:climbOverFence(direction) self.climbs=(self.climbs or 0)+1 end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='FENCE',detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(result.done and not result.success and result.code=='BLOCKED')
+            assert(a.climbs==nil)
+        ''')
+
+    def test_yard_route_discovers_constructed_locked_gate_and_observes_crossing(self):
+        self.lua.execute('''
+            player.x=0;player.y=0
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local gate={square=there,opened=false,locked=true,keyLocked=true,syncs=0,silent=0}
+            function gate:getSquare() return self.square end
+            function gate:getNorth() return false end
+            function gate:isDoor() return true end
+            function gate:isOpen() return self.opened end;gate.IsOpen=gate.isOpen
+            function gate:isLocked() return self.locked end
+            function gate:setLocked(value) self.locked=value end
+            function gate:isLockedByKey() return self.keyLocked end
+            function gate:setLockedByKey(value) self.keyLocked=value end
+            function gate:isLockedByPadlock() return false end
+            function gate:getLockedByCode() return 0 end
+            function gate:getKeyId() return 42 end
+            function gate:isBarricaded() return false end
+            function gate:isDestroyed() return false end
+            function gate:syncIsoObject() self.syncs=self.syncs+1 end
+            function gate:ToggleDoorSilent() self.silent=self.silent+1;self.opened=true end
+            function gate:ToggleDoor() error('actor-taking toggle must not be used') end
+            there.objects={gate}
+            local denied=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(denied==nil and not gate.opened and gate.syncs==0)
+            function a.inv:haveThisKeyId(id) assert(id==42);return {getFullType=function() return 'Base.Key1' end} end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload and payload.access_method=='DOOR',detail)
+            assert(payload.edge.x==0 and payload.edge.y==0 and payload.edge.dx==1)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not result.done and result.success and result.code=='MOVING_TO_TARGET')
+            assert(gate.opened and not gate.locked and not gate.keyLocked)
+            assert(gate.silent==1 and gate.syncs>=2)
+            a.x=1.5
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(result.done and result.success and result.code=='COMPLETE')
+        ''')
+
+    def test_ordinary_key_does_not_erase_padlock_or_combination_lock(self):
+        self.lua.execute('''
+            local door={opened=false,locked=true,keyLocked=true,padlocked=false,code=0,mutations=0}
+            function door:getSquare() return target.square end
+            function door:isOpen() return self.opened end
+            function door:isLocked() return self.locked end
+            function door:isLockedByKey() return self.keyLocked end
+            function door:isLockedByPadlock() return self.padlocked end
+            function door:getLockedByCode() return self.code end
+            function door:getKeyId() return 42 end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:setLocked(v) self.locked=v;self.mutations=self.mutations+1 end
+            function door:setLockedByKey(v) self.keyLocked=v;self.mutations=self.mutations+1 end
+            function door:setLockedByPadlock(v) self.padlocked=v;self.mutations=self.mutations+1 end
+            function door:setLockedByCode(v) self.code=v;self.mutations=self.mutations+1 end
+            function door:ToggleDoorSilent() self.opened=true end
+            function door:syncIsoObject() end
+            function a.inv:haveThisKeyId() return {} end
+            door.padlocked=true
+            assert(not Access.open(a,door,false))
+            assert(door.padlocked and door.locked and door.keyLocked and door.mutations==0)
+            door.padlocked=false;door.code=1234
+            assert(not Access.open(a,door,false))
+            assert(door.code==1234 and door.locked and door.keyLocked and door.mutations==0)
+            -- A multi-panel door must be checked as a whole before changing
+            -- even its otherwise ordinary selected panel.
+            local other=door
+            local panel={}
+            for k,v in pairs(door) do panel[k]=v end
+            panel.code=0
+            IsoDoor={getDoubleDoorIndex=function() return 1 end,
+                getDoubleDoorObject=function(_,i) return i==1 and panel or other end}
+            assert(not Access.open(a,panel,false))
+            assert(panel.locked and panel.keyLocked and panel.mutations==0)
         ''')
 
     def test_window_breach_requires_explicit_flag_and_observes_native_mutation(self):
@@ -203,6 +556,11 @@ class AccessV2Tests(unittest.TestCase):
             local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',
                 {target={kind='BUILDING'},allow_breach=true})
             assert(payload and payload.access_method=='BREACH_WINDOW',detail)
+            a.x=3.5
+            local approaching=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not approaching.done and approaching.code=='MOVING_TO_TARGET')
+            assert(not window.smashed)
+            a.x=0.5
             local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
             assert(not result.done and result.success and result.code=='MOVING_TO_TARGET')
             assert(window.smashed and window.calls==1 and window.synced)
@@ -295,10 +653,12 @@ class AccessV2Tests(unittest.TestCase):
             package.loaded['GoblinSurvivor/GoblinSpawner']={findForOwner=function() end}
             local Chat=require('GoblinSurvivor/ChatBridge')
             assert(Chat.directIntent('Goblin, gain access to the yard')=='GAIN_ACCESS')
+            assert(Chat.directIntent('Goblin, access the yard')=='GAIN_ACCESS')
+            assert(Chat.directIntent('Goblin, breach the room')==nil)
             local safe=Chat.accessPayload('Goblin, gain access to the vehicle')
             assert(safe.target.kind=='VEHICLE' and safe.allow_breach==false)
             local breach=Chat.accessPayload('Goblin, breach the room')
-            assert(breach.target.kind=='ROOM' and breach.allow_breach==true)
+            assert(breach.target.kind=='ROOM' and breach.allow_breach==false)
             assert(breach.target.x==nil and breach.target.y==nil and breach.target.z==nil)
         ''')
 

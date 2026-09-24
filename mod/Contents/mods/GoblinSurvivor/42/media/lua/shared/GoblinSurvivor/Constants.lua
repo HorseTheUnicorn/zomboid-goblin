@@ -6,6 +6,7 @@ Constants.NPC_ID = Constants.NPC_PREFIX
 
 Constants.TASK = {
     ENTER_VEHICLE = "ENTER_VEHICLE", EXIT_VEHICLE = "EXIT_VEHICLE",
+    START_VEHICLE = "START_VEHICLE", UNLOCK_VEHICLE = "UNLOCK_VEHICLE",
     FARM = "FARM",
     CRAFT = "CRAFT",
     REPAIR_VEHICLE = "REPAIR_VEHICLE",
@@ -13,7 +14,12 @@ Constants.TASK = {
     OPEN_WINDOW = "OPEN_WINDOW",
     GAIN_ACCESS = "GAIN_ACCESS",
     CLOSE_CURTAINS = "CLOSE_CURTAINS",
+    INSPECT_BASE = "INSPECT_BASE",
+    MAINTAIN_BASE = "MAINTAIN_BASE",
+    DISMANTLE = "DISMANTLE",
+    STOCKPILE = "STOCKPILE",
     FORTIFY = "FORTIFY",
+    FORTIFY_BASE = "FORTIFY_BASE",
     BUILD = "BUILD",
     FOLLOW = "FOLLOW",
     MOVE_TO = "MOVE_TO",
@@ -51,7 +57,7 @@ Constants.COMBAT = {
 }
 
 Constants.ALLOWED_TASKS = {
-    ENTER_VEHICLE = true, EXIT_VEHICLE = true,
+    ENTER_VEHICLE = true, EXIT_VEHICLE = true, START_VEHICLE = true, UNLOCK_VEHICLE = true,
     FARM = true,
     CRAFT = true,
     REPAIR_VEHICLE = true,
@@ -59,7 +65,12 @@ Constants.ALLOWED_TASKS = {
     OPEN_WINDOW = true,
     GAIN_ACCESS = true,
     CLOSE_CURTAINS = true,
+    INSPECT_BASE = true,
+    MAINTAIN_BASE = true,
+    DISMANTLE = true,
+    STOCKPILE = true,
     FORTIFY = true,
+    FORTIFY_BASE = true,
     BUILD = true,
     FOLLOW = true,
     MOVE_TO = true,

@@ -358,6 +358,44 @@ end
 
 local doorLocked, matchingDoorKey
 
+local function canUnlockFromInside(body, object)
+    -- Installed ISLockDoor:isValid permits a keyless unlock from a
+    -- non-exterior square. Require this actor to stand on the actual door
+    -- edge so a different indoor room cannot authorize a remote unlock.
+    -- ISLockDoor rejects CustomLock without the matching key, even indoors.
+    -- Key authorization is handled separately by the caller.
+    local _,lockData=result(object,"getModData")
+    if lockData and lockData.CustomLock then return false end
+    local flags = rawget(_G, "IsoFlagType")
+    local exterior = flags and flags.exterior
+    local okHere, here = result(body, "getCurrentSquare")
+    local okDoor, square = result(object, "getSquare")
+    local okNorth, north = result(object, "getNorth")
+    if not exterior or not okHere or not here or not okDoor or not square or not okNorth then return false end
+    local hx, hy, hz = squarePoint(here)
+    local ox, oy, oz = squarePoint(square)
+    if not hx or not ox or hz ~= oz then return false end
+    local otherX, otherY = north == true and ox or ox - 1,
+        north == true and oy - 1 or oy
+    if not ((hx == ox and hy == oy) or (hx == otherX and hy == otherY)) then return false end
+    local checked, outside = result(here, "has", exterior)
+    return checked and outside == false
+end
+
+local function specialLockReason(object,body)
+    -- Installed ISPadlockAction/ISPadlockByCodeAction transfer real lock/key
+    -- items. Ordinary ISLockDoor authorization cannot substitute for either.
+    if select(2,result(object,"isLockedByPadlock"))==true then
+        if #doorGroup(object)~=1 or not require("GoblinSurvivor/GoblinPadlocks").key(body,object) then
+            return "padlocked; a real matching padlock key and single gate are required"
+        end
+    end
+    local checked,code=result(object,"getLockedByCode")
+    if checked and tonumber(code) and tonumber(code)~=0 then
+        return "combination locked; an authorized code-removal action is required"
+    end
+end
+
 local function unlockDoor(object, body)
     -- Match the installed ISLockDoor validity boundary: a key-locked door may
     -- be changed only when this actor's real inventory contains the matching
@@ -365,8 +403,14 @@ local function unlockDoor(object, body)
     -- lock-pick mechanic. Keep the player-free state/sync adapter because the
     -- installed actor-taking door toggle has an unsafe IsoPlayer tail cast.
     if not doorLocked(object) then return true end
-    if not matchingDoorKey(body, object) then return false end
-    for _, member in ipairs(doorGroup(object)) do
+    if not matchingDoorKey(body, object) and not canUnlockFromInside(body, object) then return false end
+    local group=doorGroup(object)
+    -- Preflight all panels before the first mutation, not halfway through a
+    -- double/garage door after one panel has already been unlocked.
+    for _,member in ipairs(group) do if specialLockReason(member,body) then return false end end
+    if select(2,result(object,"isLockedByPadlock"))==true
+        and not require("GoblinSurvivor/GoblinPadlocks").remove(body,object) then return false end
+    for _, member in ipairs(group) do
         local changed = false
         local ok, value = result(member, "isLocked")
         if ok and value == true then
@@ -376,12 +420,6 @@ local function unlockDoor(object, body)
         end
         ok, value = result(member, "isLockedByKey")
         if ok and value == true then changed = call(member, "setLockedByKey", false) or changed end
-        ok, value = result(member, "isLockedByPadlock")
-        if ok and value == true then changed = call(member, "setLockedByPadlock", false) or changed end
-        ok, value = result(member, "getLockedByCode")
-        if ok and tonumber(value) and tonumber(value) ~= 0 then
-            changed = call(member, "setLockedByCode", 0) or changed
-        end
         if changed then call(member, "syncIsoObject", false, 0, nil, nil) end
     end
     return true
@@ -434,12 +472,17 @@ function Access.blockReason(object, window, allowUnlock, actor)
     if not ok then ok, isOpen = result(object, "IsOpen") end
     if not ok then return "cannot inspect this target safely" end
     if isOpen then return "already open" end
+    if not window then
+        local special=specialLockReason(object,actor)
+        if special then return special end
+    end
     for _, method in ipairs({ "isLocked", "isBarricaded", "isDestroyed", window and "isPermaLocked" or "isLockedByKey" }) do
         local checked, blocked = result(object, method)
         if not checked then return "cannot inspect this target safely" end
         if blocked and not (allowUnlock == true and window ~= true
             and (method == "isLocked" or method == "isLockedByKey")
-            and matchingDoorKey(actor, object) ~= nil) then
+            and (matchingDoorKey(actor, object) ~= nil
+                or canUnlockFromInside(actor, object))) then
             if method == "isBarricaded" then return "barricaded; remove the barricade first" end
             if method == "isDestroyed" then return "destroyed; it cannot be opened" end
             return "locked; unlock it first"
@@ -449,15 +492,16 @@ function Access.blockReason(object, window, allowUnlock, actor)
 end
 
 function Access.open(body, object, window)
-    if isClient() or not isServer() then return false end
-    if Access.blockReason(object, window, not window, body) then return false end
-    if not safehouseAllows(body, object) then return false end
+    if isClient() or not isServer() then return false, "server authority unavailable" end
+    local reason = Access.blockReason(object, window, not window, body)
+    if reason then return false, reason end
+    if not safehouseAllows(body, object) then return false, "safehouse access denied" end
     -- IsoThumpable:canInteractWith rejects a locked player-built door. Apply
     -- the managed all-tools unlock first, then retain its native interaction
     -- check for every non-lock restriction. Safehouse authorization must stay
     -- before this mutation so another player's lock is never changed.
-    if not window and not unlockDoor(object, body) then return false end
-    if not canInteract(object, body) then return false end
+    if not window and not unlockDoor(object, body) then return false, "door unlock failed" end
+    if not canInteract(object, body) then return false, "native interaction denied" end
     local toggled
     if window then toggled = call(object, "ToggleWindow", body)
     else toggled = toggleDoorWithoutPlayer(body, object, true) end
@@ -465,7 +509,7 @@ function Access.open(body, object, window)
     if not checked then checked, isOpen = result(object, "IsOpen") end
     local openedNow = toggled and checked and isOpen == true
     if openedNow then markAccessChanged(body) end
-    return openedNow
+    return openedNow, openedNow and nil or "native toggle did not open"
 end
 
 local function closeNative(body, object)
@@ -505,6 +549,7 @@ function Access.prepare(owner, window, now, options)
     local _, dead = result(owner, "isDead")
     if not point or dead == true then return nil, "owner must be present to identify the target" end
     local best, bestScore, bestPriority, nearestBlocked, nearestBlockedDistance
+    local ranked=options.all_routes==true and {} or nil
     -- Resolve the nearest edge beside the speaking player, never model-supplied
     -- coordinates or another player's door. Keep this search on the same floor.
     local bounds = options.bounds or { x = math.floor(point.x) - 3, y = math.floor(point.y) - 3,
@@ -526,8 +571,11 @@ function Access.prepare(owner, window, now, options)
                     scopeMatches = (buildingOf(here) == options.target_building)
                         ~= (buildingOf(there) == options.target_building)
                 end
-                local within = options.bounds ~= nil
-                    or distance <= tonumber(options.max_distance_squared or 9)
+                local limit=options.max_distance_squared and tonumber(options.max_distance_squared)
+                local within=options.max_distance_squared ~= nil
+                    and limit ~= nil and limit >= 0 and distance <= limit
+                    or options.max_distance_squared == nil
+                        and (options.bounds ~= nil or distance <= 9)
                 if within and scopeMatches and object then
                     local reason=Access.blockReason(object,window,not window,options.actor)
                     local eligible=reason==nil or (reason=="already open" and options.include_open==true)
@@ -539,6 +587,12 @@ function Access.prepare(owner, window, now, options)
                         elseif doorLocked(object) then priority=7
                         else priority=2 end
                         local score=priority*100000+distance
+                        if ranked then
+                            ranked[#ranked+1]={edge=edge,window=window==true,started_at=now,
+                                priority=priority,score=score}
+                            table.sort(ranked,function(a,b) return a.score<b.score end)
+                            if #ranked>12 then table.remove(ranked) end
+                        end
                         if not bestScore or score<bestScore then
                             best,bestScore,bestPriority=edge,score,priority
                         end
@@ -555,7 +609,7 @@ function Access.prepare(owner, window, now, options)
         return nil, "no eligible " .. kind .. " is loaded in the target scope"
     end
     return { edge = best, window = window == true, started_at = now, priority=bestPriority },
-        "going to open the nearest " .. kind .. " beside you"
+        "going to open the nearest " .. kind .. " beside you",ranked
 end
 
 local function hoppableBetween(edge)
@@ -565,6 +619,19 @@ local function hoppableBetween(edge)
     if ok and object then return object end
     ok,object=result(there,"getHoppableTo",here)
     return ok and object or nil
+end
+
+local function nativeLowFenceEdge(edge)
+    local here,there=edgeSquares(edge)
+    local directions=rawget(_G,"IsoDirections")
+    if not here or not there or not directions then return false end
+    local forward=edge.dx==1 and directions.E or directions.S
+    local reverse=edge.dx==1 and directions.W or directions.N
+    if not forward or not reverse then return false end
+    local checked,allowed=result(here,"isPlayerAbleToHopWallTo",forward,there)
+    if checked and allowed==true then return true end
+    checked,allowed=result(there,"isPlayerAbleToHopWallTo",reverse,here)
+    return checked and allowed==true
 end
 
 function Access.prepareFence(owner,now,options)
@@ -579,11 +646,12 @@ function Access.prepareFence(owner,now,options)
             for _,delta in ipairs({{1,0},{0,1}}) do
                 local edge={x=x,y=y,z=math.floor(point.z),dx=delta[1],dy=delta[2]}
                 local object=hoppableBetween(edge)
-                local tall=object and select(2,result(object,"isTallHoppable"))==true
+                local checkedTall,tall=result(object,"isTallHoppable")
                 local distance=(x+0.5+delta[1]*0.5-point.x)^2
                     +(y+0.5+delta[2]*0.5-point.y)^2
-                local within=options.bounds~=nil or distance<=tonumber(options.max_distance_squared or 9)
-                if object and not tall and within and (not bestDistance or distance<bestDistance) then
+                local within=distance<=tonumber(options.max_distance_squared or 9)
+                if object and checkedTall and tall==false and within and nativeLowFenceEdge(edge)
+                    and (not bestDistance or distance<bestDistance) then
                     best,bestDistance=edge,distance
                 end
             end
@@ -601,14 +669,47 @@ local function edgeSide(point,edge)
     return nil
 end
 
-local function approachEdge(body,edge,now)
+local function approachEdge(body,edge,now,runtime)
+    if type(runtime)~="table" then
+        runtime=Access.approaches[body]
+        if type(runtime)~="table" then runtime={};Access.approaches[body]=runtime end
+    end
     local point=Motion.position(body)
-    if not point then return false,"cannot resolve Goblin position" end
+    if not point then return false,"cannot resolve Goblin position",true end
     local side=edgeSide(point,edge)
     if side then return true,side end
+    local key=Access.canonicalEdge(edge)
+    if runtime.fence_approach_edge~=key then
+        runtime.fence_approach_edge=key
+        runtime.fence_approach_started_at=now
+        runtime.fence_approach_side=nil
+        runtime.fence_approach_switched=nil
+        runtime.fence_approach_best=nil
+        runtime.fence_approach_progress_at=nil
+    end
+    if now-(runtime.fence_approach_started_at or now)>30000 then
+        require("GoblinSurvivor/GoblinMovement").clear(body)
+        return false,"could not reach the low-fence edge",true
+    end
     local a={x=edge.x+0.5,y=edge.y+0.5,z=edge.z,radius=0.25}
     local b={x=a.x+edge.dx,y=a.y+edge.dy,z=edge.z,radius=0.25}
-    local goal=Motion.distance(point,a)<=Motion.distance(point,b) and a or b
+    if not runtime.fence_approach_side then
+        runtime.fence_approach_side=Motion.distance(point,a)<=Motion.distance(point,b) and 1 or 2
+    end
+    local goal=runtime.fence_approach_side==1 and a or b
+    local distance=Motion.distance(point,goal)
+    if not runtime.fence_approach_best or distance<runtime.fence_approach_best-0.20 then
+        runtime.fence_approach_best=distance
+        runtime.fence_approach_progress_at=now
+    elseif now-(runtime.fence_approach_progress_at or now)>=6000
+        and runtime.fence_approach_switched~=true then
+        require("GoblinSurvivor/GoblinMovement").clear(body)
+        runtime.fence_approach_side=runtime.fence_approach_side==1 and 2 or 1
+        runtime.fence_approach_switched=true
+        runtime.fence_approach_best=nil
+        runtime.fence_approach_progress_at=now
+        goal=runtime.fence_approach_side==1 and a or b
+    end
     local Movement=require("GoblinSurvivor/GoblinMovement")
     local active=Movement.active[body]
     if not active or active.payload.x~=goal.x or active.payload.y~=goal.y then
@@ -634,14 +735,47 @@ function Access.performFence(body,payload,runtime,now)
         end
         return false,true,"climbing the low fence","WORKING"
     end
-    local adjacent,from=approachEdge(body,edge,now)
-    if not adjacent then return false,true,from,"MOVING_TO_TARGET" end
+    local adjacent,from,terminal=approachEdge(body,edge,now,runtime)
+    if not adjacent then
+        if terminal then return true,false,from,"NO_PATH" end
+        return false,true,from,"MOVING_TO_TARGET"
+    end
     local dx,dy=edge.dx,edge.dy
     if from==2 then dx,dy=-dx,-dy end
     local name=dx==1 and "E" or dx==-1 and "W" or dy==1 and "S" or "N"
     local directions=rawget(_G,"IsoDirections")
     local direction=directions and directions[name]
     if not direction then return true,false,"native fence direction is unavailable","UNSUPPORTED" end
+    -- Build 42's climbOverFence returns void and silently exits when this
+    -- exact native precondition fails. Check it before reporting WORKING.
+    local here,there=edgeSquares(edge)
+    local fromSquare,toSquare=from==1 and here or there,from==1 and there or here
+    local hasCurrent,current=result(body,"getCurrentSquare")
+    if not hasCurrent then
+        return true,false,"native current-square check is unavailable","UNSUPPORTED"
+    end
+    if current~=fromSquare then
+        return true,false,"Goblin is not on the fence approach square","BLOCKED"
+    end
+    local windowClass=rawget(_G,"IsoWindow")
+    local helper=windowClass and windowClass.canClimbThroughHelper
+    if type(helper)~="function" then
+        return true,false,"native fence passage check is unavailable","UNSUPPORTED"
+    end
+    local checked,canPass=pcall(helper,body,fromSquare,toSquare,dy~=0)
+    if not checked then
+        return true,false,"native fence passage check failed","ENGINE_ERROR"
+    end
+    if canPass~=true then
+        return true,false,"native fence passage is blocked from this side","BLOCKED"
+    end
+    local checked,canHop=result(fromSquare,"isPlayerAbleToHopWallTo",direction,toSquare)
+    if not checked then
+        return true,false,"native low-fence hop check is unavailable","UNSUPPORTED"
+    end
+    if canHop~=true then
+        return true,false,"native low-fence climb is blocked from this side","BLOCKED"
+    end
     local invoked=call(body,"climbOverFence",direction)
     if not invoked then return true,false,"native IsoGameCharacter fence climb failed","ENGINE_ERROR" end
     runtime.fence_from=from;runtime.fence_at=now
@@ -674,7 +808,11 @@ function Access.prepareBreachWindow(owner,now,options)
                     scopeMatches=(buildingOf(here)==options.target_building)
                         ~=(buildingOf(there)==options.target_building)
                 end
-                local within=options.bounds~=nil or distance<=tonumber(options.max_distance_squared or 9)
+                local limit=options.max_distance_squared and tonumber(options.max_distance_squared)
+                local within=options.max_distance_squared ~= nil
+                    and limit ~= nil and limit >= 0 and distance <= limit
+                    or options.max_distance_squared == nil
+                        and (options.bounds ~= nil or distance <= 9)
                 if object and scopeMatches and not smashed and not barricaded and not destroyed and within
                     and (not bestDistance or distance<bestDistance) then
                     best,bestDistance=edge,distance
@@ -696,8 +834,11 @@ function Access.performBreachWindow(body,payload,runtime,now)
     local Policy=require("GoblinSurvivor/GoblinAccessPolicy")
     local allowed,code,detail=Policy.breach(body,object,payload.target_kind,payload)
     if not allowed then return true,false,detail,code end
-    local adjacent,status=approachEdge(body,edge,now)
-    if not adjacent then return false,true,status,"MOVING_TO_TARGET" end
+    local adjacent,status,terminal=approachEdge(body,edge,now)
+    if not adjacent then
+        if terminal then return true,false,status,"NO_PATH" end
+        return false,true,status,"MOVING_TO_TARGET"
+    end
     local tool=require("GoblinSurvivor/GoblinTools").ensure(body,"Base.Crowbar")
     if not tool then return true,false,"reserved crowbar is unavailable","MISSING_TOOL" end
     local invoked=call(object,"smashWindow")
@@ -1025,9 +1166,19 @@ function Access.update(body, goal, now, scope, pendingOnly)
             registerDoor(body, edge, object, scope, now, here, true)
             return false
         end
-        if Access.open(body, object, false) then
+        local openedNow, reason = Access.open(body, object, false)
+        if openedNow then
             registerDoor(body, edge, object, scope, now, here, false)
             return true
+        end
+        local key = Access.canonicalEdge(edge)
+        local previous = Access.lastFailure and Access.lastFailure[body]
+        if not previous or previous.edge ~= key or previous.reason ~= reason
+            or now - previous.at >= 30000 then
+            Access.lastFailure = Access.lastFailure or setmetatable({}, { __mode = "k" })
+            Access.lastFailure[body] = { edge = key, reason = reason, at = now }
+            print("[GoblinSurvivor] DOOR_ACCESS_BLOCKED edge=" .. tostring(key)
+                .. " reason=" .. tostring(reason))
         end
     end
     return false

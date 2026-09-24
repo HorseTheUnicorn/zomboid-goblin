@@ -477,8 +477,8 @@ local function rejoinLaggingFollower(player,record,body)
     data.GoblinRejoinPoint=point
     data.GoblinRejoinExpires=timestamp+10000
     Body.setTask(body,Constants.TASK.FOLLOW,record.task_payload)
-    Motion.rejoin(body,point,data.GoblinRejoinSequence,data.GoblinRejoinExpires,timestamp)
-    log("FOLLOW_REJOIN owner="..record.owner.." distance="
+    local moved=Motion.rejoin(body,point,data.GoblinRejoinSequence,data.GoblinRejoinExpires,timestamp)
+    log((moved and "FOLLOW_REJOIN" or "FOLLOW_RECOVERY_REQUEST").." owner="..record.owner.." distance="
         ..string.format("%.1f",Motion.distance(ownerPoint,bodyPoint)))
     transmitStore()
     return true
@@ -620,19 +620,66 @@ function Spawner.setBaseForPlayer(player, clear)
     local point = Body.position(player)
     if owner == nil or point == nil then return false, "player position unavailable" end
     local record = recordFor(owner, true)
+    local oldBase = record.base_set and { x = record.base_x, y = record.base_y, z = record.base_z }
     record.base_set = not clear
     record.base_x, record.base_y, record.base_z = not clear and point.x or nil, not clear and point.y or nil, not clear and point.z or nil
+    if clear or not oldBase or type(oldBase.x) ~= "number"
+        or type(oldBase.y) ~= "number" or type(oldBase.z) ~= "number"
+        or math.floor(oldBase.x) ~= math.floor(point.x)
+        or math.floor(oldBase.y) ~= math.floor(point.y)
+        or math.floor(oldBase.z) ~= math.floor(point.z) then
+        record.stockpile_rules = nil
+    end
     local body = Spawner.findForOwner(owner)
     if body ~= nil then
         local data = Body.data(body)
         if data ~= nil then
             data.GoblinBaseSet = record.base_set
             data.GoblinBaseX, data.GoblinBaseY, data.GoblinBaseZ = record.base_x, record.base_y, record.base_z
+            data.GoblinBaseReport = nil
         end
     end
     transmitStore()
     log((clear and "BASE_CLEAR owner=" or "BASE_SET owner=") .. owner)
     return true, clear and "base cleared; loot will be dropped at your feet" or "base set to your current square"
+end
+
+-- Persistent rule metadata only. The caller must prove an exact loaded,
+-- authorized container before setting a rule; this method never moves items.
+function Spawner.stockpileRulesForOwner(owner)
+    local record = recordFor(owner, false)
+    return record and type(record.stockpile_rules) == "table" and record.stockpile_rules or {}
+end
+
+function Spawner.setStockpileRuleForOwner(owner, fullType, minimum, target)
+    local record = recordFor(owner, false)
+    if not record or record.base_set ~= true or type(fullType) ~= "string"
+        or type(minimum) ~= "number" or minimum ~= math.floor(minimum)
+        or minimum < 1 or minimum > 1000 or type(target) ~= "table"
+        or type(target.id) ~= "string" or target.id == ""
+        or type(target.building_id) ~= "string"
+        or type(target.x) ~= "number" or type(target.y) ~= "number"
+        or type(target.z) ~= "number" or target.x ~= math.floor(target.x)
+        or target.y ~= math.floor(target.y) or target.z ~= math.floor(target.z)
+        or math.abs(target.x) > 10000000 or math.abs(target.y) > 10000000
+        or math.abs(target.z) > 10000000 then
+        return false, "stockpile rule is invalid or the base is not set"
+    end
+    local rules = type(record.stockpile_rules) == "table" and record.stockpile_rules or {}
+    local count = 0
+    for _ in pairs(rules) do count = count + 1 end
+    if count >= 16 and not rules[fullType] then return false, "stockpile rule limit reached" end
+    rules[fullType] = { item = fullType, minimum = minimum,
+        target = { x = target.x, y = target.y, z = target.z,
+            id = target.id, building_id = target.building_id } }
+    record.stockpile_rules = rules
+    local body = Spawner.findForOwner(owner)
+    local data = body and Body.data(body)
+    if data and type(data.GoblinBaseReport) == "table" then
+        data.GoblinBaseReport.stale = true
+    end
+    transmitStore()
+    return true, "stockpile threshold recorded; Base.Nails collection requires a separate explicit stockpile order"
 end
 
 function Spawner.baseForOwner(owner)
@@ -836,7 +883,7 @@ function Spawner.syncClientState(force)
     for _, item in ipairs(companions) do
         parts[#parts + 1] = table.concat({
             tostring(item.npc_id), tostring(item.owner), tostring(item.body_present),
-            tostring(item.online_id or ""), tostring(item.generation or 0),
+            tostring(item.online_id or ""), tostring(item.generation or 0), tostring(item.outfit_id),
             tostring(item.task), tostring(item.physical_state), tostring(item.move_type),
             tostring(item.combat_state), tostring(item.action), tostring(item.action_sequence),
             tostring(item.job_active), tostring(item.job_tool),

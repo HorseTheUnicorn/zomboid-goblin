@@ -37,6 +37,9 @@ class CommandInventoryTests(unittest.TestCase):
                 removeForPlayer=function(p) record('Spawner.removeForPlayer',p) end}
             package.loaded['GoblinSurvivor/GoblinBrain']={setTask=function(b,t,p)
                 record('Brain.setTask',b,t,p);return true,'accepted' end}
+            package.loaded['GoblinSurvivor/GoblinStockpiles']={assign=function(b,p,kind,minimum)
+                record('Stockpiles.assign',p,nil,{body=b,item=kind,minimum=minimum})
+                return true,'threshold recorded' end}
             Events={OnClientCommand={}}
             package.loaded['GoblinSurvivor/EventHooks']={install=function(key,event,fn)
                 callback=fn;return true end}
@@ -94,6 +97,28 @@ class CommandInventoryTests(unittest.TestCase):
             assert(calls[1].task=='FOLLOW' and calls[1].who==body)
         ''')
 
+    def test_track_rule_uses_authenticated_owner_and_exact_arguments(self):
+        self.lua.globals().invoke('/goblin track Base.Nails 50')
+        self.lua.execute('''
+            assert(#calls==1 and calls[1].handler=='Stockpiles.assign')
+            assert(calls[1].who==player and calls[1].payload.body==body)
+            assert(calls[1].payload.item=='Base.Nails' and calls[1].payload.minimum=='50')
+        ''')
+
+    def test_only_explicit_breach_command_grants_destructive_access(self):
+        self.lua.globals().invoke('/goblin access room')
+        self.lua.execute('''
+            assert(calls[1].task=='GAIN_ACCESS')
+            assert(calls[1].payload.target.kind=='ROOM')
+            assert(calls[1].payload.allow_breach==false)
+        ''')
+        self.lua.globals().invoke('/goblin breach room')
+        self.lua.execute('''
+            assert(calls[1].task=='GAIN_ACCESS')
+            assert(calls[1].payload.target.kind=='ROOM')
+            assert(calls[1].payload.allow_breach==true)
+        ''')
+
     def test_transport_filters_and_disabled_mod_do_not_dispatch(self):
         self.lua.execute('''
             callback('OtherMod','debug',player,{text='follow'})
@@ -138,6 +163,30 @@ class NaturalLanguageInventoryTests(unittest.TestCase):
         ):
             with self.subTest(text=text):
                 self.assertIsNone(self.lua.globals().ChatBridge.directIntent(text))
+
+    def test_natural_access_dispatch_is_non_destructive(self):
+        self.lua.execute('''
+            Events={OnClientCommand={}}
+            local hooks=package.loaded['GoblinSurvivor/EventHooks']
+            function hooks.install(key,event,fn) callback=fn;return true end
+            local spawner=package.loaded['GoblinSurvivor/GoblinSpawner']
+            body={};player={getUsername=function() return 'horse' end}
+            function spawner.ensureForPlayer(who) assert(who==player);return body end
+            package.loaded['GoblinSurvivor/GoblinBody']={say=function() return true end}
+            calls={}
+            package.loaded['GoblinSurvivor/GoblinBrain']={setTask=function(who,task,payload)
+                calls[#calls+1]={who=who,task=task,payload=payload}
+                return true,'accepted'
+            end}
+            ChatBridge.start()
+            callback('GoblinSurvivor','chat',player,{text='Goblin, access the yard'})
+            assert(#calls==1 and calls[1].who==body)
+            assert(calls[1].task=='GAIN_ACCESS')
+            assert(calls[1].payload.target.kind=='YARD')
+            assert(calls[1].payload.allow_breach==false)
+            callback('GoblinSurvivor','chat',player,{text='Goblin, breach the room'})
+            assert(#calls==1)
+        ''')
 
     def test_qwen_and_offline_action_sets_match_inventory(self):
         schema = QwenClient._chat_schema({'mode': 'ROAM', 'controlled_owner': 'horse'})

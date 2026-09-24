@@ -83,8 +83,7 @@ local function roomBounds(room)
     return { x = x, y = y, x2 = x2, y2 = y2, z = z }
 end
 
-local function captureScope(owner)
-    local ownerPoint = Motion.position(owner)
+local function captureScopeAt(ownerPoint)
     local ownerSquare = World.square(ownerPoint)
     if not ownerPoint or not ownerSquare then return nil, "stand inside a house first" end
     local okRoom, ownerIsoRoom = call(ownerSquare, "getRoom")
@@ -148,6 +147,20 @@ local function captureScope(owner)
     result.id = table.concat({ result.bounds.x, result.bounds.y, result.bounds.x2,
         result.bounds.y2, result.bounds.min_z, result.bounds.max_z }, ":")
     return result
+end
+
+-- Reuse the same exact, bounded BuildingDef scope for read-only base surveys.
+-- A saved base point can be inspected only while its building is loaded.
+function Curtains.scopeAt(point)
+    return captureScopeAt(point)
+end
+
+function Curtains.belongsToScope(scope, square)
+    return scope and sameBuilding(square, scope.building) or false
+end
+
+local function captureScope(owner)
+    return captureScopeAt(Motion.position(owner))
 end
 
 local function inRoomPerimeter(scope, x, y, z)

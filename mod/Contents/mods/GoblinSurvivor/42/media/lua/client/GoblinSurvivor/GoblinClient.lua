@@ -9,6 +9,7 @@ local CombatVisual = require("GoblinSurvivor/GoblinCombatVisual")
 local Nameplates = require("GoblinSurvivor/GoblinNameplates")
 local Visibility = require("GoblinSurvivor/GoblinVisibility")
 local Map = require("GoblinSurvivor/GoblinMap")
+local Trace = require("GoblinSurvivor/GoblinClientTrace")
 
 local Client = {
     statesById = {},
@@ -16,7 +17,9 @@ local Client = {
     lastRequestAt = 0,
     lastScanAt = 0,
     nextFollowAt = setmetatable({}, { __mode = "k" }),
-    accessRevisions = setmetatable({}, { __mode = "k" })
+    accessRevisions = setmetatable({}, { __mode = "k" }),
+    rejoinReports = setmetatable({}, { __mode = "k" }),
+    identityReports = setmetatable({}, { __mode = "k" })
 }
 
 local function call(object, method, ...)
@@ -75,6 +78,16 @@ local function rebuildState(data)
     end
 end
 
+local function outfitIdentity(value)
+    if type(value) ~= "number" or value ~= math.floor(value)
+        or value < -2147483648 or value > 4294967295 then return nil end
+    if value < 0 then value = value + 4294967296 end
+    -- Installed PersistentOutfits.setFallenHat toggles bit 0x8000 in this
+    -- value. It is clothing state, not a new actor/seed. Preserve every other
+    -- bit so an online ID reused by a different outfit still fails the check.
+    return value - (math.floor(value / 32768) % 2) * 32768
+end
+
 local function stateFor(zombie)
     local data = dataFor(zombie)
     if data ~= nil and data.GoblinNPC == true and type(data.GoblinID) == "string" then
@@ -94,7 +107,21 @@ local function stateFor(zombie)
     local state = id ~= nil and Client.statesByOnline[id] or nil
     if state and state.outfit_id ~= nil then
         local ok, outfit = call(zombie, "getPersistentOutfitID")
-        if not ok or outfit ~= state.outfit_id then return nil, false end
+        local identity = ok and outfitIdentity(outfit)
+        if identity == nil or identity ~= outfitIdentity(state.outfit_id) then
+            local signature = tostring(id) .. ":" .. tostring(outfit) .. ":" .. tostring(state.outfit_id)
+            if Client.identityReports[zombie] ~= signature then
+                log("IDENTITY_MISMATCH online=" .. tostring(id) .. " actual_outfit=" .. tostring(outfit)
+                    .. " roster_outfit=" .. tostring(state.outfit_id))
+                Client.identityReports[zombie] = signature
+            end
+            return nil, false
+        end
+        if outfit ~= state.outfit_id and Client.identityReports[zombie] ~= "hat-state" then
+            log("IDENTITY_HAT_STATE online=" .. tostring(id) .. " actual_outfit=" .. tostring(outfit)
+                .. " roster_outfit=" .. tostring(state.outfit_id))
+            Client.identityReports[zombie] = "hat-state"
+        end
     end
     return state, state ~= nil
 end
@@ -182,11 +209,14 @@ local function followAssist(zombie, state)
         navigation = navigation or {}
         navigation.obstruction_cleared = true
     end
+    navigation = navigation or {}
+    navigation.current_task = state.task
     Motion.drive(zombie, goal, move, nowMs(), navigation)
 end
 
 local function apply(zombie)
     local state, serverConfirmed = stateFor(zombie)
+    Trace.sampleBody(zombie, state)
     -- The dedicated spawn outfit arrives in the native creation packet before
     -- the identity roster. Apply only visuals/guard; it grants no owner/control.
     if state==nil and Appearance.isSpawnOutfit(zombie) then
@@ -200,7 +230,16 @@ local function apply(zombie)
         return false
     end
     Nameplates.track(zombie,state,nowMs())
-    Motion.rejoin(zombie,state.rejoin_point,state.rejoin_sequence,state.rejoin_expires,nowMs())
+    local rejoined = Motion.rejoin(zombie,state.rejoin_point,state.rejoin_sequence,state.rejoin_expires,nowMs())
+    if type(state.rejoin_sequence) == "number" then
+        local previous = Client.rejoinReports[zombie]
+        if not previous or previous.sequence ~= state.rejoin_sequence or (rejoined and not previous.rejoined) then
+            log("FOLLOW_REJOIN_CLIENT sequence=" .. state.rejoin_sequence
+                .. " moved=" .. tostring(rejoined)
+                .. " authority=" .. tostring(Motion.simulationOwner(zombie)))
+            Client.rejoinReports[zombie] = { sequence = state.rejoin_sequence, rejoined = rejoined }
+        end
+    end
     clearZombieAI(zombie)
     if Guard.apply(zombie) then Motion.paths[zombie] = nil end
     local moveType = state.move_type or "IDLE"
@@ -284,9 +323,14 @@ local function onMessage(message, tabId)
     text = cleanText(text)
     if localName == nil or text == nil or string.lower(tostring(author)) ~= string.lower(localName) then return end
     local lower = string.lower(text)
-    local command = string.match(lower, "^%s*[/!]goblin%s*(.*)$")
-    if command ~= nil then
-        local sent = send("debug", { text = "/goblin " .. command })
+    local _, prefixEnd = string.find(lower, "^%s*[/!]goblin%s+")
+    if prefixEnd == nil and string.match(lower, "^%s*[/!]goblin$") then
+        prefixEnd = #text
+    end
+    if prefixEnd ~= nil then
+        -- Match the prefix case-insensitively, but preserve the original
+        -- argument bytes: installed Item.FullType and recipe IDs are case-sensitive.
+        local sent = send("debug", { text = "/goblin " .. string.sub(text, prefixEnd + 1) })
         log("CHAT_RELAY kind=debug speaker=" .. tostring(localName) .. " sent=" .. tostring(sent))
         return
     end

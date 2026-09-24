@@ -5,8 +5,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from tools.check_goblin_inventory import validate_inventory, evidence_gaps, EVIDENCE_FIELDS
+from tools.check_goblin_inventory import (validate_inventory, evidence_gaps,
+                                          EVIDENCE_FIELDS, MILESTONE_1_SOURCES)
 from tools.check_pz_catalog import CatalogError, read_catalog
+from tools.check_milestone1_acceptance import SERVER_JAR
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,35 +97,48 @@ class InventoryTests(unittest.TestCase):
             "kind": "MILESTONE_1_FOLLOW", "path": "acceptance.json",
         })
         self.commands["existing_goblin_chat"]["commands"][0]["task"] = "FOLLOW"
-        acceptance = {
-            "schema_version": 1,
-            "clients": [
-                {"ordinary_executable": True, "storm": False, "goblin_id": "one"},
-                {"ordinary_executable": True, "storm": False, "goblin_id": "two"},
-            ],
-            "milestone_1": {"result": "pass", "requirements": [
-                "stable follow slots", "native follow investigation",
-                "expanded work approach search", "staged stuck recovery",
-                "navigation telemetry", "temporary route blacklist",
-            ], "live_scenarios_accepted": [
-                "follow through open terrain", "follow through house doorway",
-                "follow around furniture", "follow upstairs/downstairs",
-                "owner runs through building", "work target surrounded on some sides",
-                "path fails and recovers without teleport", "two players plus two Goblins",
-            ]},
-            "closed_door_follow": {"result": "pass"},
-            "durable_radius_two_staging": {"result": "pass"},
-            "open_terrain_running_follow": {"result": "pass", "teleport_after_measurement": False},
-            "native_no_progress_recovery": {"result": "pass", "native_repath_attempts": 1, "teleport": False},
-            "native_simulation_ownership_handoff": {"result": "pass", "staging": {"ownership_write": False, "goblin_teleport": False}},
-            "furniture_detour": {"result": "pass", "occupied_obstacle_square": False, "follow_rejoin_during_measurement": False, "goblin_position_write": False},
-            "stair_follow": {"result": "pass", "ascent_observations": [{"actor": {"z": 0.0}}, {"actor": {"z": 1.0}}], "descent_owner_client_trace": [{"actor": {"z": 0.2}}], "follow_rejoin_during_measurement": False, "goblin_position_write": False},
-            "running_owner_building_follow": {"result": "pass", "owner_run": {"delta_tiles": 14}, "final_gap_tiles": 3.8, "actor_route": [{"native_state": "ClimbThroughWindowState"}, {"native_state": "PathFindState"}], "follow_rejoin_during_measurement": False, "goblin_position_write": False},
-        }
+        # Synthetic in-memory verifier fixture; never written to the real
+        # Milestone 1 acceptance artifact or presented as live evidence.
+        acceptance = copy.deepcopy(read_catalog(ROOT / "reference/pz-milestone1-live-acceptance.json"))
+        acceptance["schema_version"] = 2
+        jar = self.root / SERVER_JAR
+        jar.parent.mkdir(parents=True, exist_ok=True)
+        jar.write_bytes(b"synthetic verifier jar fixture")
+        acceptance["server_jar_sha256"] = hashlib.sha256(jar.read_bytes()).hexdigest()
+        for gate in ("open_terrain_running_follow", "running_owner_building_follow"):
+            acceptance[gate]["owner_username"] = "horse"
+            acceptance[gate]["owning_client_trace"] = [
+                {"timestamp_ms": 1000 + index * 1000, "client": "horse",
+                 "entity_id": "fixture.horse", "online_id": 42, "remote": False,
+                 "player": {"x": index * 4, "y": 0, "z": 0},
+                 "actor": {"x": index * 3, "y": 0, "z": 0},
+                 "player_running": True, "player_sprinting": False}
+                for index in range(4)
+            ]
+        handoff = acceptance["native_simulation_ownership_handoff"]
+        handoff["follow_rejoin_during_measurement"] = False
+        handoff["goblin_position_write"] = False
+        handoff["actor_trace"] = [
+            {"timestamp_ms": 1000 + index * 1000,
+             "actor": {"x": index, "y": 0, "z": 0},
+             "native_owner_player": "unicorn" if index in (1, 2) else "horse"}
+            for index in range(5)
+        ]
+        acceptance["source_sha256"] = {}
+        for name, relative in MILESTONE_1_SOURCES.items():
+            source = self.root / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"return {}")
+            acceptance["source_sha256"][name] = hashlib.sha256(source.read_bytes()).hexdigest()
         (self.root / "acceptance.json").write_text(
             json.dumps(acceptance), encoding="utf-8")
         self.assertEqual(self.check(), (1, 0, 1))
-        acceptance["stair_follow"]["goblin_position_write"] = True
+        (self.root / MILESTONE_1_SOURCES["GoblinWorld.lua"]).write_bytes(b"return { changed = true }")
+        with self.assertRaisesRegex(CatalogError, "source changed since acceptance"):
+            self.check()
+        (self.root / MILESTONE_1_SOURCES["GoblinWorld.lua"]).write_bytes(b"return {}")
+        for sample in acceptance["stair_follow"]["descent_owner_client_trace"]:
+            sample["actor"]["z"] = 0.0
         (self.root / "acceptance.json").write_text(
             json.dumps(acceptance), encoding="utf-8")
         with self.assertRaisesRegex(CatalogError, "constraints failed"):
@@ -161,6 +176,16 @@ class InventoryTests(unittest.TestCase):
         self.assertGreater(count, 0)
         self.assertGreaterEqual(existing, 0)
         self.assertGreaterEqual(proposed, 0)
+
+    def test_historical_follow_acceptance_cannot_certify_changed_worktree(self):
+        ref = ROOT / "reference"
+        inventory = read_catalog(ref / "goblin-capabilities.json")
+        follow = next(record for record in inventory["capabilities"] if record["id"] == "FOLLOW")
+        self.assertFalse(follow["complete"])
+        follow["complete"] = True
+        with self.assertRaisesRegex(CatalogError, "legacy evidence cannot certify current source"):
+            validate_inventory(inventory, read_catalog(ref / "goblin-commands.json"),
+                               read_catalog(ref / "pz-items.json"), ROOT)
 
     def test_cataloged_proposed_action_still_cannot_be_existing_command(self):
         future = copy.deepcopy(self.inventory["capabilities"][0])

@@ -3,6 +3,7 @@ local Config = require("GoblinSurvivor/Config")
 local Constants = require("GoblinSurvivor/Constants")
 local Body = require("GoblinSurvivor/GoblinBody")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
+local Stockpiles = require("GoblinSurvivor/GoblinStockpiles")
 local Brain = require("GoblinSurvivor/GoblinBrain")
 local EventHooks = require("GoblinSurvivor/EventHooks")
 
@@ -41,7 +42,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "follow | wait | enter/exit vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
+    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | dismantle furniture | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -69,15 +70,79 @@ local function handle(player, rawText)
 
     local body, detail = ownBody(player, false)
     if body == nil then reply(player, detail or "Your Goblin is not present."); return end
+    if command=="track" then
+        if not parts[2] or not parts[3] or parts[4] then
+            reply(player,"use track Item.FullType minimum beside one container in your saved base")
+            return
+        end
+        local ok,result=Stockpiles.assign(body,player,parts[2],parts[3])
+        if type(print)=="function" then
+            print("[GoblinSurvivor] STOCKPILE_RULE owner="..playerName(player)
+                .." item="..tostring(parts[2]).." accepted="..tostring(ok)
+                .." detail="..tostring(result))
+        end
+        reply(player,result)
+        return
+    end
+    if command=="stockpile" then
+        if not parts[2] or parts[3] then
+            reply(player,"use stockpile Base.Nails after tracking it beside a base container")
+            return
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.STOCKPILE,
+            {item=parts[2],explicit_owner_order=true})
+        if type(print)=="function" then
+            print("[GoblinSurvivor] STOCKPILE_ORDER owner="..playerName(player)
+                .." item="..tostring(parts[2]).." accepted="..tostring(ok)
+                .." detail="..tostring(result))
+        end
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
     if command=="enter" or command=="board" or command=="exit" or command=="disembark" then
         local entering=command=="enter" or command=="board"
         local ok,result=Brain.setTask(body,entering and "ENTER_VEHICLE" or "EXIT_VEHICLE",{})
+        Body.say(body,"Comrade, "..tostring(result)..".");return
+    end
+    if command=="start" or command=="ignition" then
+        local target=string.lower(parts[2] or "vehicle")
+        if target~="vehicle" and target~="car" and target~="engine" then
+            reply(player,"use start vehicle");return
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.START_VEHICLE,{})
+        Body.say(body,"Comrade, "..tostring(result)..".");return
+    end
+    if command=="unlock" then
+        local target=string.lower(parts[2] or "vehicle")
+        if target~="vehicle" and target~="car" and target~="truck" then
+            reply(player,"use unlock vehicle");return
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.UNLOCK_VEHICLE,{})
         Body.say(body,"Comrade, "..tostring(result)..".");return
     end
     if command=="close" then
         local kind=string.lower(parts[2] or "")
         if kind~="curtain" and kind~="curtains" and kind~="blinds" then reply(player,"use close curtains");return end
         local ok,result=Brain.setTask(body,Constants.TASK.CLOSE_CURTAINS,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="inspect" and string.lower(parts[2] or "") == "base" then
+        local ok,result=Brain.setTask(body,Constants.TASK.INSPECT_BASE,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="maintain" and (parts[2] == nil or string.lower(parts[2]) == "base") then
+        local ok,result=Brain.setTask(body,Constants.TASK.MAINTAIN_BASE,{})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="dismantle" then
+        if string.lower(parts[2] or "") ~= "furniture" or parts[3] ~= nil then
+            reply(player,"use dismantle furniture while standing beside one empty wooden object in your saved base")
+            return
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.DISMANTLE,{explicit_owner_order=true})
         Body.say(body,"Comrade, "..tostring(result)..".")
         return
     end
@@ -112,7 +177,9 @@ local function handle(player, rawText)
         return
     end
     if command == "fortify" or command == "barricade" then
-        local ok,result = Brain.setTask(body, Constants.TASK.FORTIFY, {})
+        local task = command == "fortify" and string.lower(parts[2] or "") == "base"
+            and Constants.TASK.FORTIFY_BASE or Constants.TASK.FORTIFY
+        local ok,result = Brain.setTask(body, task, {})
         Body.say(body,result)
         return
     end

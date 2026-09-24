@@ -35,7 +35,7 @@ function Support.supply(body,job,anchor,predicate,now,label)
     end
     if not job.supply and now>=(job.nextSupplyScan or 0) then
         job.nextSupplyScan=now+3000
-        for _,source in ipairs(World.sources(anchor,8,predicate)) do
+        for _,source in ipairs(World.sources(anchor,8,predicate,body)) do
             if not job.skipped[source.item] then job.supply=source;job.supplyAt=now;break end
         end
     end

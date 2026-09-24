@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from tools.check_milestone1_acceptance import CURRENT_SOURCES, validate as validate_milestone1
 from tools.check_pz_catalog import CatalogError, read_catalog
 
 
@@ -30,6 +31,8 @@ EVIDENCE_FIELDS = {
     "unit_test_ids": ("unit_test_ids", "unit_tests"),
     "multiplayer_evidence": ("multiplayer_evidence",),
 }
+
+MILESTONE_1_SOURCES = CURRENT_SOURCES
 
 
 def evidence_gaps(inventory):
@@ -93,6 +96,7 @@ def validate_physical_evidence(record, root):
     if not resolved.is_relative_to(root) or not resolved.is_file():
         raise CatalogError(f"{label}: physical evidence review missing or outside workspace")
     evidence = read_catalog(resolved)
+    validate_milestone1(evidence, root)
     milestone = evidence.get("milestone_1")
     required = {
         "stable follow slots", "native follow investigation",
@@ -105,7 +109,7 @@ def validate_physical_evidence(record, root):
         "owner runs through building", "work target surrounded on some sides",
         "path fails and recovers without teleport", "two players plus two Goblins",
     }
-    if (evidence.get("schema_version") != 1 or not isinstance(milestone, dict)
+    if (evidence.get("schema_version") != 2 or not isinstance(milestone, dict)
             or milestone.get("result") != "pass"
             or not required <= set(milestone.get("requirements", []))
             or not scenarios <= set(milestone.get("live_scenarios_accepted", []))):

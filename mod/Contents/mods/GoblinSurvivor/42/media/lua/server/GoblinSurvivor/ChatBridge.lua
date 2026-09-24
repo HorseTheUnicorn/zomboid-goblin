@@ -72,18 +72,38 @@ function ChatBridge.directIntent(text)
         or contains(lower,"get in the vehicle") or contains(lower,"get into the vehicle")
         or contains(lower,"enter the vehicle") or contains(lower,"enter vehicle")
         or contains(lower,"get in the truck") or lower:match("^get in[%p%s]*$") then return "ENTER_VEHICLE" end
+    if (lower:match("^start%s+") or lower:match("^turn on%s+"))
+        and (contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"engine")
+            or contains(lower,"truck")) then return Constants.TASK.START_VEHICLE end
+    if lower:match("^unlock%s+")
+        and (contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"truck")) then
+        return Constants.TASK.UNLOCK_VEHICLE
+    end
     -- Singular/plural and intervening words must still dispatch a real order.
     if (lower:match("%f[%a]kill%f[%A]") or lower:match("%f[%a]attack%f[%A]"))
         and (contains(lower,"zombie") or contains(lower,"zed")) then return Constants.TASK.ATTACK end
     local curtain=contains(lower,"curtain") or lower:match("%f[%a]blinds%f[%A]")
     if curtain and (lower:match("%f[%a]close%f[%A]") or lower:match("%f[%a]shut%f[%A]")
         or lower:match("%f[%a]draw%f[%A]")) then return Constants.TASK.CLOSE_CURTAINS end
+    if (contains(lower,"inspect") or contains(lower,"survey") or contains(lower,"check"))
+        and (contains(lower,"base") or contains(lower,"house")) then
+        return Constants.TASK.INSPECT_BASE
+    end
+    if (contains(lower,"maintain") or contains(lower,"maintenance"))
+        and (contains(lower,"base") or contains(lower,"house")) then
+        return Constants.TASK.MAINTAIN_BASE
+    end
+    if lower:match("^dismantle%s+[^%p]*furniture[%p%s]*$")
+        or lower:match("^take%s+apart%s+[^%p]*furniture[%p%s]*$") then
+        return Constants.TASK.DISMANTLE
+    end
     if not curtain and string.match(lower,"%f[%a]open%f[%A]") then
         if string.match(lower,"%f[%a]window%f[%A]") or contains(lower,"windows") then return Constants.TASK.OPEN_WINDOW end
         if string.match(lower,"%f[%a]door%f[%A]") or contains(lower,"doors") then return Constants.TASK.OPEN_DOOR end
     end
-    if contains(lower,"gain access") or contains(lower,"get into the building")
-        or contains(lower,"get inside the building") or lower:match("%f[%a]breach%f[%A]") then
+    if lower:match("^access%s+") or contains(lower,"gain access")
+        or contains(lower,"get into the building")
+        or contains(lower,"get inside the building") then
         return "GAIN_ACCESS"
     end
     if string.match(lower,"%f[%a]craft%f[%A]") or contains(lower,"saw logs") or contains(lower,"make planks") then
@@ -111,6 +131,9 @@ function ChatBridge.directIntent(text)
         or contains(lower, "this is our base")
         or contains(lower, "make this base") or contains(lower, "home is here") then
         return Constants.TASK.SET_BASE
+    end
+    if contains(lower,"fortify the base") or contains(lower,"fortify base") then
+        return Constants.TASK.FORTIFY_BASE
     end
     if contains(lower, "secure the base") or contains(lower,"secure our base") or contains(lower,"secure base")
         or contains(lower, "fortify") or contains(lower, "board up") or contains(lower, "barricade") then return Constants.TASK.FORTIFY end
@@ -142,6 +165,7 @@ local function applyDirect(player, speaker, task, text)
     local body, detail = Spawner.ensureForPlayer(player, false)
     if body == nil then return false, tostring(detail or "Goblin unavailable") end
     local payload = { owner = speaker, manual = task == Constants.TASK.FOLLOW }
+    if task == Constants.TASK.DISMANTLE then payload.explicit_owner_order = true end
     local lower=string.lower(text or "")
     if task==Constants.TASK.CRAFT or task==Constants.TASK.FARM or task==Constants.TASK.REPAIR_VEHICLE then
         payload=ChatBridge.jobPayload(task,text)
@@ -191,7 +215,9 @@ function ChatBridge.accessPayload(text)
     local kind=(contains(lower,"vehicle") or contains(lower,"car") or contains(lower,"truck")) and "VEHICLE"
         or contains(lower,"yard") and "YARD" or contains(lower,"room") and "ROOM"
         or contains(lower,"container") and "CONTAINER" or "BUILDING"
-    return {target={kind=kind},allow_breach=lower:match("%f[%a]breach%f[%A]")~=nil}
+    -- Natural chat can select a semantic destination, but only the explicit
+    -- authenticated debug command may authorize destructive breach work.
+    return {target={kind=kind},allow_breach=false}
 end
 
 function ChatBridge.start()

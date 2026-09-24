@@ -22,6 +22,52 @@ class GoblinLuaTests(unittest.TestCase):
             self.lua.globals().source = path.read_text(encoding='utf-8-sig')
             self.lua.execute('assert(loadstring(source))')
 
+    def test_client_trace_is_opt_in_and_samples_only_identified_goblins(self):
+        source = LUA / 'client/GoblinSurvivor/GoblinClientTrace.lua'
+        self.lua.globals().trace_source = source.read_text(encoding='utf-8')
+        self.lua.execute('''
+            clientMode=true; getPlayer=function() return player end
+            clock=1790190000000
+            messages={}; print=function(line) messages[#messages+1]=line end
+            getFileReader=function() return nil end
+            local disabled=assert(loadstring(trace_source))()
+            assert(type(disabled.sampleBody)=='function')
+            disabled.sampleBody(actor(0,0,0),nil);assert(#messages==0)
+
+            local closed=false
+            getFileReader=function(path,create)
+                assert(path=='goblin-m1-trace.flag' and create==false)
+                return {readLine=function() return 'enabled' end,
+                    close=function() closed=true end}
+            end
+            local trace=assert(loadstring(trace_source))()
+            assert(not closed and type(trace.sampleBody)=='function')
+            player.running=true;player.sprinting=false
+            function player:isRunning() return self.running end
+            function player:isSprinting() return self.sprinting end
+            local a=actor(4.25,5.5,0);a.data.GoblinNPC=true
+            a.data.GoblinID='dev.survivor.001.horse'
+            local b=actor(7,5,0);b.id=6
+            function b:getOutfitName() return Config.npcOutfit end
+            local ordinary=actor(8,8,0)
+            trace.sampleBody(a,{npc_id=a.data.GoblinID})
+            trace.sampleBody(b,nil)
+            trace.sampleBody(ordinary,nil)
+            assert(closed and #messages==3)
+            assert(string.find(messages[1],'M1_CLIENT_TRACE_READY',1,true))
+            assert(string.find(messages[2],'remote=false',1,true))
+            assert(string.find(messages[2],'prun=true psprint=false',1,true))
+            assert(string.find(messages[2],'id=dev.survivor.001.horse',1,true))
+            assert(string.find(messages[3],'id=online.6',1,true))
+            clock=clock+50;trace.sampleBody(a,{npc_id=a.data.GoblinID});assert(#messages==3)
+            clock=clock+50;a.x=4.5;a.remote=true
+            player.running=false;player.sprinting=true
+            trace.sampleBody(a,{npc_id=a.data.GoblinID});trace.sampleBody(b,nil)
+            assert(#messages==5 and string.find(messages[4],'remote=true',1,true))
+            assert(string.find(messages[4],'x=4.5000',1,true))
+            assert(string.find(messages[4],'prun=false psprint=true',1,true))
+        ''')
+
     def test_real_lua_ipc_and_python_share_the_wire_protocol(self):
         self.assertEqual(self.lua.eval('Config.protocol'), PROTOCOL_VERSION)
         self.lua.execute('''
@@ -117,7 +163,124 @@ class GoblinLuaTests(unittest.TestCase):
             for i=0,50 do Motion.drive(a,goal,'WALK',clock+i*100) end
             assert(a.pathCalls == 1)
             Motion.drive(a,goal,'WALK',clock+6100)
-            assert(a.pathCalls == 2 and Motion.paths[a].failures == 1)
+            assert(a.pathCalls == 1 and a.behaviorCalls == 1
+                and a.nativeState == 'PathFindState' and Motion.paths[a].failures == 1)
+        ''')
+
+    def test_managed_destination_suppresses_native_idle_wander_only_on_controller(self):
+        self.lua.execute('''
+            a=actor(0,0,0); goal={x=10,y=0,z=0}; delays={}
+            function a:getCurrentStateName() return self.nativeState end
+            function a:setStateEventDelayTimer(value) delays[#delays+1]=value end
+            a.nativeState='ZombieIdleState'
+            for i=0,5 do Motion.drive(a,goal,'WALK',clock+i*100) end
+            assert(#delays==6 and delays[1]==1000 and delays[6]==1000)
+            assert(a.pathCalls==1,'refreshing the idle timer must not repath')
+            a.nativeState='WalkTowardState'
+            Motion.drive(a,goal,'WALK',clock+700)
+            assert(#delays==6,'other native states retain their own timers')
+            Motion.drive(a,nil,'IDLE',clock+800)
+            assert(#delays==6,'idle without a managed destination is untouched')
+            clientMode=true; a.remote=true; a.nativeState='ZombieIdleState'
+            Motion.drive(a,goal,'WALK',clock+900)
+            assert(#delays==6,'remote peers never alter the simulator timer')
+        ''')
+
+    def test_native_route_leaves_zombie_idle_on_simulation_owner(self):
+        self.lua.execute('''
+            WalkTowardState={instance=function() return 'native-walk' end}
+            PathFindState={instance=function() return 'native-pathfind' end}
+            a=actor(0,0,0);a.nativeState='ZombieIdleState'
+            function a:getCurrentStateName() return self.nativeState end
+            function a:getVariableBoolean(key) return self.variables[key]==true end
+            function a:changeState(value) self.entered=value;self.nativeState=value end
+            local original=a.pathToLocationF
+            function a:pathToLocationF(x,y,z)
+                original(self,x,y,z);self.variables.bPathfind=false
+            end
+            Motion.drive(a,{x=10,y=0,z=0},'WALK',clock)
+            assert(a.entered=='native-walk' and a.pathCalls==1)
+            a.nativeState='ZombieIdleState';a.entered=nil
+            a.x=1
+            a.variables.bPathfind=true
+            function a:pathToLocationF(x,y,z)
+                original(self,x,y,z);self.variables.bPathfind=true
+            end
+            Motion.drive(a,{x=20,y=0,z=0},'WALK',clock+100)
+            assert(a.entered=='native-pathfind' and a.pathCalls==2)
+            clientMode=true;a.remote=true;a.nativeState='ZombieIdleState';a.entered=nil
+            Motion.drive(a,{x=25,y=0,z=0},'WALK',clock+200)
+            assert(a.entered==nil and a.pathCalls==2)
+        ''')
+
+    def test_stalled_managed_route_uses_native_behavior_beyond_void_wrapper(self):
+        self.lua.execute('''
+            PathFindState={instance=function() return 'PathFindState' end}
+            a=actor(0,0,0);a.nativeState='WalkTowardState'
+            function a:getCurrentStateName() return self.nativeState end
+            function a:changeState(state) self.nativeState=state end
+            function a:pathToLocationF(x,y,z)
+                -- IsoZombie returns void without submitting while throttled.
+                if self.allowRepathDelay>0 then return end
+                self.pathCalls=self.pathCalls+1
+            end
+            local behavior={cancel=function() end,
+                pathToLocationF=function(self,x,y,z)
+                    self.calls=(self.calls or 0)+1;self.goal={x=x,y=y,z=z}
+                end}
+            function a:getPathFindBehavior2() return behavior end
+            a.allowRepathDelay=3
+            Motion.drive(a,{x=10,y=0,z=0},'WALK',clock)
+            assert(a.pathCalls==0 and not behavior.calls)
+            Motion.drive(a,{x=10,y=0,z=0},'WALK',clock+6100)
+            assert(behavior.calls==1 and behavior.goal.x==10)
+            assert(a.nativeState=='PathFindState' and a.variables.bPathfind==true)
+            clientMode=true;a.remote=true
+            Motion.drive(a,{x=20,y=0,z=0},'WALK',clock+6200)
+            assert(behavior.calls==1,'remote peer must not request native path')
+        ''')
+
+    def test_native_idle_or_face_interrupt_recovers_managed_route_before_stuck_timeout(self):
+        self.lua.execute('''
+            a=actor(0,0,0);goal={x=10,y=0,z=0}
+            Motion.drive(a,goal,'WALK',clock)
+            assert(a.pathCalls==1 and a.behaviorCalls==0)
+            a.nativeState='ZombieFaceTargetState'
+            Motion.drive(a,goal,'WALK',clock+500)
+            assert(a.behaviorCalls==0,'respect the native repath cooldown')
+            Motion.drive(a,goal,'WALK',clock+1300)
+            assert(a.behaviorCalls==1 and a.nativeState=='PathFindState')
+            assert(Motion.paths[a].failures==1,'state interruption consumes the bounded recovery')
+            a.nativeState='ZombieIdleState'
+            Motion.drive(a,goal,'WALK',clock+1400)
+            assert(a.behaviorCalls==1,'do not retry every frame')
+            Motion.drive(a,goal,'WALK',clock+2600)
+            assert(a.behaviorCalls==1,'do not reissue a stationary interrupted route')
+            local ok,reason=Motion.drive(a,goal,'WALK',clock+7400)
+            assert(not ok and reason=='no progress after native repath')
+            clientMode=true;a.remote=true;a.nativeState='ZombieFaceTargetState'
+            Motion.drive(a,goal,'WALK',clock+4000)
+            assert(a.behaviorCalls==1,'only the simulator may recover the route')
+        ''')
+
+    def test_stalled_pathfind_state_exits_before_replacement_request(self):
+        self.lua.execute('''
+            a=actor(0,0,0);a.nativeState='PathFindState'
+            local transitions={}
+            function a:changeState(state)
+                transitions[#transitions+1]=state;self.nativeState=state
+            end
+            local submit=a.pathBehavior.pathToLocationF
+            a.pathBehavior.pathToLocationF=function(self,x,y,z)
+                assert(a.nativeState=='ZombieIdleState',
+                    'native PathFindState.exit must run before replacing its request')
+                submit(self,x,y,z)
+            end
+            local goal={x=10,y=0,z=0}
+            Motion.drive(a,goal,'WALK',clock)
+            Motion.drive(a,goal,'WALK',clock+6100)
+            assert(transitions[1]=='ZombieIdleState' and transitions[2]=='PathFindState')
+            assert(a.behaviorCalls==1 and a.nativeState=='PathFindState')
         ''')
 
     def test_opened_access_revision_forces_immediate_native_repath(self):
@@ -136,6 +299,43 @@ class GoblinLuaTests(unittest.TestCase):
             Movement=require('GoblinSurvivor/GoblinMovement')
             assert(Movement.command(a,'MOVE_TO',{x=2,y=0,z=0}))
             assert(a.data.GoblinMoveType == 'WALK' and a.pathCalls == 1)
+        ''')
+
+    def test_invalid_movement_coordinates_and_radius_never_reach_native_pathing(self):
+        self.lua.execute('''
+            a=actor(0,0,0);a.data={GoblinNPC=true,GoblinOwner='horse'}
+            Movement=require('GoblinSurvivor/GoblinMovement')
+            for _,payload in ipairs({
+                {x=0/0,y=1,z=0}, {x=math.huge,y=1,z=0},
+                {x=2,y=1,z=0,radius=math.huge},
+                {x=2,y=1,z=0,radius=-1}
+            }) do
+                local ok,detail=Movement.command(a,'MOVE_TO',payload)
+                assert(not ok and detail=='target unavailable')
+                assert(a.pathCalls==0 and a.data.GoblinMovementGoal==nil)
+            end
+            local ok,detail=Motion.drive(a,{x=math.huge,y=0,z=0},'RUN',clock)
+            assert(not ok and detail=='invalid destination' and a.pathCalls==0)
+            a.x=math.huge
+            assert(Motion.position(a)==nil)
+            assert(Motion.distance({x=0,y=0,z=0},{x=0/0,y=0,z=0})==math.huge)
+        ''')
+
+    def test_invalid_actor_position_waits_without_access_or_path_side_effects(self):
+        self.lua.execute('''
+            a=actor(math.huge,0,0);a.data={GoblinNPC=true,GoblinOwner='horse'}
+            Movement=require('GoblinSurvivor/GoblinMovement')
+            local Access=require('GoblinSurvivor/GoblinAccess')
+            local original=Access.update
+            Access.update=function() error('access ran with invalid actor position') end
+            local accepted,detail=Movement.command(a,'MOVE_TO',{x=4,y=0,z=0})
+            assert(accepted and detail=='movement queued; waiting for Goblin position')
+            assert(Movement.snapshot(a).task=='MOVE_TO' and a.pathCalls==0)
+            assert(a.data.GoblinMovementGoal==nil and a.data.GoblinMoveType=='IDLE')
+            Access.update=original
+            a.x=0
+            Movement.update(a,clock+250)
+            assert(a.pathCalls==1 and a.data.GoblinMovementGoal.x==4)
         ''')
 
     def test_visuals_wait_for_asset_then_add_once_and_repair_replication_overwrite(self):
@@ -181,6 +381,25 @@ class GoblinLuaTests(unittest.TestCase):
             assert(second and Motion.followSlots[a]==slot)
         ''')
 
+    def test_clear_follow_route_accepts_half_tile_position_jitter(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=3.75,0.5
+            local goal,gap,navigation=Motion.followGoal(a,player,clock)
+            assert(not goal and gap>3 and navigation.goal_key=='arrived')
+            local original=cell.getGridSquare
+            function cell:getGridSquare(x,y,z)
+                local square=original(self,x,y,z)
+                function square:isBlockedTo(other)
+                    return (self:getX()==1 and other:getX()==2)
+                        or (self:getX()==2 and other:getX()==1)
+                end
+                return square
+            end
+            goal,gap,navigation=Motion.followGoal(a,player,clock+100)
+            assert(goal and navigation.goal_key~='arrived',
+                'an obstacle must not be hidden by the arrival margin')
+        ''')
+
     def test_stalled_character_follow_repath_uses_current_coordinate_fallback(self):
         self.lua.execute('''
             a=actor(0,0,0);player.x=12
@@ -190,9 +409,268 @@ class GoblinLuaTests(unittest.TestCase):
             player.x=13
             goal,gap,context=Motion.followGoal(a,player,clock+6100)
             assert(Motion.drive(a,goal,'RUN',clock+6100,context))
-            assert(a.characterPathCalls==1 and a.pathCalls==2)
+            assert(a.characterPathCalls==1 and a.pathCalls==1 and a.behaviorCalls==1)
             assert(Motion.paths[a].route=='location-repath')
             assert(a.destination.x==13)
+        ''')
+
+    def test_blocked_follow_routes_use_bounded_open_edge_detour(self):
+        self.lua.execute('''
+            clientMode=true
+            a=actor(0,0,0);player.x=10;player.y=0
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if math.abs(x)>12 or math.abs(y)>12 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo(other)
+                        return self.y==0 and other.y==0
+                            and ((self.x==0 and other.x==1)
+                                or (self.x==1 and other.x==0))
+                    end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            local goal,gap,context=Motion.followGoal(a,player,clock)
+            assert(context.goal_type=='character')
+            assert(Motion.drive(a,goal,'RUN',clock,context))
+            goal,gap,context=Motion.followGoal(a,player,clock+6100)
+            assert(Motion.drive(a,goal,'RUN',clock+6100,context))
+            goal,gap,context=Motion.followGoal(a,player,clock+12100)
+            local ok,reason=Motion.drive(a,goal,'RUN',clock+12100,context)
+            assert(not ok and reason=='no progress after native repath')
+            local detour,_,navigation=Motion.followGoal(a,player,clock+12101)
+            assert(detour and detour.x==0.5 and math.abs(detour.y)==0.5)
+            assert(navigation.goal_type=='follow_detour')
+            assert(Motion.drive(a,detour,'RUN',clock+12101,navigation))
+            assert(a.destination.x==detour.x and a.destination.y==detour.y)
+            assert(a.x==0 and a.y==0,'detour must not position-write')
+            Motion.stop(a)
+            assert(Motion.followDetours[a]==nil)
+            player.x=2
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='follow_slot'
+            local slotDetour,_,slotNavigation=Motion.followGoal(a,player,clock+12102)
+            assert(slotDetour and slotDetour.x==0.5 and math.abs(slotDetour.y)==0.5)
+            assert(slotNavigation.goal_type=='follow_detour')
+            Motion.stop(a)
+            player.x=10
+            for _,square in pairs(squares) do
+                function square:isBlockedTo(other) return true end
+            end
+            local sealed,_,sealedNavigation=Motion.followGoal(a,player,clock+12102)
+            assert(sealed and sealed.x==player.x and sealedNavigation.goal_type=='character')
+            assert(a.x==0 and a.y==0,'a sealed route must not teleport')
+        ''')
+
+    def test_work_detour_routes_around_wall_and_requires_exact_destination(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0)
+            local goal={x=3.5,y=0.5,z=0}
+            local sealed=false
+            function cell:getGridSquare(x,y,z)
+                if x<0 or x>3 or y<0 or y>1 or z~=0 then return nil end
+                local square={x=x,y=y}
+                function square:getX() return self.x end
+                function square:getY() return self.y end
+                function square:getZ() return 0 end
+                function square:isFree() return true end
+                function square:haveFire() return false end
+                function square:getMovingObjects() return list() end
+                function square:isBlockedTo(other)
+                    if sealed then return true end
+                    return self.y==0 and other.y==0 and self.x~=other.x
+                end
+                return square
+            end
+            Motion.blacklist(a,goal,'blocked wall',clock)
+            assert(Motion.drive(a,goal,'WALK',clock))
+            assert(a.destination.x==0.5 and a.destination.y==1.5)
+            assert(Motion.paths[a].goalType=='work_detour')
+            a.x,a.y=0.5,1.5;clock=clock+500
+            assert(Motion.drive(a,goal,'WALK',clock))
+            assert(a.destination.x==1.5 and a.destination.y==1.5)
+            Motion.stop(a);sealed=true
+            local calls=a.pathCalls
+            assert(not Motion.drive(a,goal,'WALK',clock+1))
+            assert(a.pathCalls==calls,'sealed route must not submit a through-wall path')
+            assert(a.x==0.5 and a.y==1.5,'recovery must not teleport')
+            sealed=false;Motion.stop(a)
+            goal={x=3,y=0,z=0}
+            Motion.blacklist(a,goal,'blocked wall',clock)
+            assert(Motion.drive(a,goal,'WALK',clock+2))
+            assert(Motion.paths[a].goalType=='work_detour',
+                'non-centred destinations still need a route to their tile')
+            a.x,a.y=3.5,0.5
+            assert(Motion.drive(a,goal,'WALK',clock+1000))
+            assert(a.destination.x==3 and a.destination.y==0,
+                'final work coordinate must not be replaced with tile centre')
+        ''')
+
+    def test_follow_detour_can_enter_a_square_from_an_alternate_edge(self):
+        self.lua.execute('''
+            a=actor(0,0,0);player.x=4;player.y=0
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='character'
+            local open={}
+            local function allow(x1,y1,x2,y2)
+                open[x1..':'..y1..'|'..x2..':'..y2]=true
+                open[x2..':'..y2..'|'..x1..':'..y1]=true
+            end
+            allow(0,0,0,1);allow(0,1,1,1);allow(1,1,1,0)
+            allow(1,0,2,0);allow(2,0,3,0);allow(3,0,4,0)
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if x<0 or x>4 or y<0 or y>1 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo(other)
+                        return not open[self.x..':'..self.y..'|'..other.x..':'..other.y]
+                    end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            local waypoint,_,navigation=Motion.followGoal(a,player,clock)
+            assert(waypoint and waypoint.x==0.5 and waypoint.y==1.5)
+            assert(navigation.goal_type=='follow_detour')
+        ''')
+
+    def test_blocked_follow_detour_can_go_around_a_long_fence(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=0.5,4.5
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='character'
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if math.abs(x)>23 or y < -2 or y > 7 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo(other)
+                        return ((self.y==1 and other.y==2)
+                            or (self.y==2 and other.y==1))
+                            and math.abs(self.x)<=14
+                    end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            local waypoint,_,navigation=Motion.followGoal(a,player,clock)
+            assert(waypoint and navigation.goal_type=='follow_detour',
+                'navigation='..tostring(navigation and navigation.goal_type))
+            assert(waypoint.x==0.5 and waypoint.y==1.5,
+                'waypoint='..tostring(waypoint.x)..','..tostring(waypoint.y))
+            assert(a.x==0.5 and a.y==0.5,'detour must not position-write')
+        ''')
+
+    def test_blocked_follow_detour_still_runs_after_a_long_idle_patrol(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=20.5,0.5
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='character'
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if x<0 or x>21 or math.abs(y)>2 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo() return false end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            local waypoint,_,navigation=Motion.followGoal(a,player,clock)
+            assert(waypoint and navigation.goal_type=='follow_detour')
+            assert(waypoint.x==1.5 and waypoint.y==0.5)
+        ''')
+
+    def test_blocked_follow_detour_reaches_diagonal_leader_within_search_budget(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=11.5,11.5
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='character'
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if x<0 or x>12 or y<0 or y>12 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo() return false end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            local waypoint,_,navigation=Motion.followGoal(a,player,clock)
+            assert(waypoint and navigation.goal_type=='follow_detour')
+            assert((waypoint.x==1.5 and waypoint.y==0.5)
+                or (waypoint.x==0.5 and waypoint.y==1.5))
+            assert(a.x==0.5 and a.y==0.5,'detour must not position-write')
+        ''')
+
+    def test_follow_detour_can_use_only_exit_blacklisted_as_full_target(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=0.5,4.5
+            a.data.GoblinPathState='blocked'
+            a.data.GoblinNavigationGoalType='follow_slot'
+            local squares={}
+            function cell:getGridSquare(x,y,z)
+                if x~=0 or y<0 or y>4 or z~=0 then return nil end
+                local key=x..':'..y
+                if not squares[key] then
+                    local square={x=x,y=y}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return 0 end
+                    function square:isFree() return true end
+                    function square:haveFire() return false end
+                    function square:getMovingObjects() return list() end
+                    function square:isBlockedTo() return false end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            Motion.blacklist(a,{x=0.5,y=1.5,z=0},'failed slot',clock,'target')
+            local waypoint,_,navigation=Motion.followGoal(a,player,clock+1)
+            assert(waypoint and waypoint.x==0.5 and waypoint.y==1.5)
+            assert(navigation.goal_type=='follow_detour')
+            assert(navigation.blacklist_kind=='approach')
+            assert(Motion.drive(a,waypoint,'RUN',clock+1,navigation))
+            assert(a.destination.x==0.5 and a.destination.y==1.5)
+            assert(a.x==0.5 and a.y==0.5,'detour must not position-write')
         ''')
 
     def test_follow_slot_rejects_occupied_preference_and_selects_an_alternate(self):
@@ -220,6 +698,8 @@ class GoblinLuaTests(unittest.TestCase):
                     function square:getY() return self.y end
                     function square:getZ() return self.z end
                     function square:isFree() return self.x==0 and self.y==4 end
+                    function square:getMovingObjects() return list() end
+                    function square:haveFire() return false end
                     function square:isBlockedTo(other)
                         return self.x==0 and other.x==0
                             and ((self.y==1 and other.y==2) or (self.y==2 and other.y==1))
@@ -242,19 +722,160 @@ class GoblinLuaTests(unittest.TestCase):
             assert(context.goal_type=='character' and context.goal_key=='character-fallback')
         ''')
 
+    def test_follow_slot_rejects_diagonal_corner_with_no_cardinal_route(self):
+        self.lua.execute('''
+            local squares={}
+            local openSide=false
+            function cell:getGridSquare(x,y,z)
+                local key=x..':'..y..':'..z
+                if not squares[key] then
+                    local square={x=x,y=y,z=z}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return self.z end
+                    function square:isFree() return self.x==3 and self.y==3 end
+                    function square:getMovingObjects() return list() end
+                    function square:haveFire() return false end
+                    function square:isBlockedTo(other)
+                        if self.x==3 and self.y==3
+                            and ((other.x==2 and other.y==3) or (other.x==3 and other.y==2)) then
+                            return not openSide
+                        end
+                        return false
+                    end
+                    squares[key]=square
+                end
+                return squares[key]
+            end
+            a=actor(3.5,3.5,0);player.x,player.y=0.5,0.5
+            local goal,gap,context=Motion.followGoal(a,player,clock)
+            assert(goal and context.goal_type=='character' and Motion.followSlots[a]==nil)
+            openSide=true
+            goal,gap,context=Motion.followGoal(a,player,clock+100)
+            assert(goal==nil) -- already standing in the now-reachable slot
+            assert(context.goal_type=='follow_slot' and Motion.followSlots[a]==2)
+        ''')
+
+    def test_follow_does_not_claim_arrival_when_edge_check_is_unavailable(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=3.1,0.5
+            for _,failure in ipairs({'missing','throws','nil'}) do
+                function cell:getGridSquare(x,y,z)
+                    local square={x=x,y=y,z=z}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return self.z end
+                    function square:isFree() return true end
+                    function square:getMovingObjects() return list() end
+                    function square:haveFire() return false end
+                    if failure=='throws' then
+                        function square:isBlockedTo() error('edge unavailable') end
+                    elseif failure=='nil' then
+                        function square:isBlockedTo() return nil end
+                    end
+                    return square
+                end
+                local goal,gap,context=Motion.followGoal(a,player,clock)
+                assert(gap<=3 and goal and goal.x==player.x and goal.y==player.y)
+                assert(context.goal_type=='character' and context.goal_key=='character-fallback')
+                assert(Motion.followSlots[a]==nil)
+            end
+        ''')
+
+    def test_follow_slot_requires_readable_occupants_and_fire_state(self):
+        self.lua.execute('''
+            a=actor(0.5,0.5,0);player.x,player.y=2.5,0.5
+            for _,failure in ipairs({'missing-occupants','bad-list','missing-fire','throws-fire'}) do
+                function cell:getGridSquare(x,y,z)
+                    local square={x=x,y=y,z=z}
+                    function square:getX() return self.x end
+                    function square:getY() return self.y end
+                    function square:getZ() return self.z end
+                    function square:isFree() return true end
+                    function square:isBlockedTo() return false end
+                    if failure~='missing-occupants' then
+                        function square:getMovingObjects()
+                            if failure=='bad-list' then return {size=function() return 'unknown' end} end
+                            return list()
+                        end
+                    end
+                    if failure=='throws-fire' then
+                        function square:haveFire() error('fire check unavailable') end
+                    elseif failure~='missing-fire' then
+                        function square:haveFire() return false end
+                    end
+                    return square
+                end
+                local goal,gap,context=Motion.followGoal(a,player,clock)
+                assert(gap<2.5 and goal==nil)
+                assert(context.goal_type=='follow_slot' and context.goal_key=='clearance-unavailable')
+                assert(Motion.followSlots[a]==nil)
+            end
+        ''')
+
     def test_stuck_recovery_repaths_once_blacklists_then_expires_without_looping(self):
         self.lua.execute('''
             a=actor(0,0,0);goal={x=10,y=0,z=0}
             assert(Motion.drive(a,goal,'WALK',clock))
             assert(Motion.drive(a,goal,'WALK',clock+6100))
-            assert(a.pathCalls==2)
+            assert(a.pathCalls==1 and a.behaviorCalls==1)
             local ok,detail=Motion.drive(a,goal,'WALK',clock+12200)
-            assert(not ok and detail=='no progress after native repath' and a.pathCalls==2)
+            assert(not ok and detail=='no progress after native repath'
+                and a.pathCalls==1 and a.behaviorCalls==1)
+            assert(a.cancelCalls==1 and a.variables.bPathfind==false
+                and a.variables.bMoving==false,
+                'abandoned path must not keep native pathfinding active')
+            -- With no loaded alternate route, retries must remain bounded.
+            squareUnavailable=true
             for i=1,20 do Motion.drive(a,goal,'WALK',clock+12200+i*100) end
-            assert(a.pathCalls==2 and Motion.isBlacklisted(a,goal,clock+15000))
+            assert(a.pathCalls==1 and a.behaviorCalls==1 and Motion.isBlacklisted(a,goal,clock+15000))
+            squareUnavailable=false
+            local alternate={x=10,y=1,z=0}
+            assert(Motion.drive(a,alternate,'WALK',clock+16000))
+            assert(a.pathCalls==2 and a.destination.y==1,
+                'a different approach must start a fresh native path')
             assert(Motion.drive(a,goal,'WALK',clock+43000) and a.pathCalls==3)
             local snapshot=Motion.snapshot(a,clock+43000)
             assert(snapshot.path_state=='pathing' and snapshot.simulation_owner=='server')
+        ''')
+
+    def test_blocked_navigation_logs_diagnostic_once_and_keeps_last_movement(self):
+        self.lua.execute('''
+            a=actor(0,0,0)
+            local messages={}
+            print=function(line) messages[#messages+1]=line end
+            local goal={x=10,y=0,z=0}
+            local options={current_task='MOVE_TO'}
+            assert(Motion.drive(a,goal,'WALK',clock,options))
+            a.x=1
+            assert(Motion.drive(a,goal,'WALK',clock+100,options))
+            local last=a.data.GoblinLastSuccessfulMovementAt
+            local unsafePathReads=0
+            function a:getPath2()
+                return setmetatable({}, {__index=function()
+                    unsafePathReads=unsafePathReads+1
+                    error('native Path methods are not Lua exposed')
+                end})
+            end
+            function a:pathToLocationF(x,y,z) return false end
+            local other={x=12,y=0,z=0}
+            local ok,reason=Motion.drive(a,other,'WALK',clock+200,options)
+            assert(not ok and reason=='native path rejected')
+            local snapshot=Motion.snapshot(a,clock+200)
+            assert(snapshot.current_task=='MOVE_TO' and snapshot.path_state=='blocked')
+            assert(snapshot.last_successful_movement_at==last)
+            assert(#messages==1)
+            assert(string.find(messages[1],'NAV_BLOCKED',1,true))
+            assert(string.find(messages[1],'task=MOVE_TO',1,true))
+            assert(string.find(messages[1],'reason=native path rejected',1,true))
+            assert(unsafePathReads==0,'blocked diagnostic must not index native Path methods')
+            Motion.drive(a,other,'WALK',clock+300,options)
+            local blockedLogs=0
+            for _,message in ipairs(messages) do
+                if string.find(message,'NAV_BLOCKED',1,true) then blockedLogs=blockedLogs+1 end
+            end
+            assert(blockedLogs==1,'a detour attempt must not duplicate the blocked diagnostic')
+            assert(Motion.snapshot(a,clock+300).blocked_reason=='native path rejected')
         ''')
 
     def test_spawn_outfit_uses_lua_exposed_character_accessor_not_raw_outfit_object(self):
@@ -300,6 +921,18 @@ class GoblinLuaTests(unittest.TestCase):
             assert(a.useless==true)
         ''')
 
+    def test_turnalerted_human_fallback_can_finish_the_native_transition(self):
+        import xml.etree.ElementTree as ET
+        node = ET.parse(ROOT / 'mod/Contents/mods/GoblinSurvivor/common/media/AnimSets/'
+                        'zombie/turnalerted/goblinHumanFallback.xml').getroot()
+        self.assertEqual(node.findtext('m_Looped'), 'false')
+        self.assertEqual(node.findtext('m_StopAnimOnExit'), 'true')
+        self.assertEqual(node.findtext('m_AnimName'), 'Bob_IdleRifle')
+        self.assertEqual(node.findtext('m_Conditions/m_Name'), 'GoblinNPC')
+        self.assertEqual(node.findtext('m_Conditions/m_Value'), 'true')
+        guard = (LUA / 'shared/GoblinSurvivor/GoblinGuard.lua').read_text()
+        self.assertNotIn('getActionContext', guard)  # not Lua-exposed in installed B42
+
     def test_follow_mirrors_owner_running_and_sprinting_without_waiting_for_a_large_gap(self):
         self.lua.execute('''
             Movement=require('GoblinSurvivor/GoblinMovement')
@@ -315,7 +948,40 @@ class GoblinLuaTests(unittest.TestCase):
             Movement.update(a,clock+500);assert(a.data.GoblinMoveType=='WALK')
             a.x=7.1;Movement.update(a,clock+750)
             assert(a.data.GoblinMoveType=='IDLE')
+            assert(Movement.snapshot(a).task=='FOLLOW')
+            player.x=20
+            Movement.update(a,clock+1000)
+            assert(a.data.GoblinMoveType=='RUN' and a.pathCalls>=2)
             assert(Motion.moveType(nil,1,player)=='IDLE')
+        ''')
+
+    def test_follow_waits_for_streamed_squares_without_forgetting_its_task(self):
+        self.lua.execute('''
+            Movement=require('GoblinSurvivor/GoblinMovement')
+            a=actor(8.5,0,0);a.data={GoblinNPC=true,GoblinOwner='horse'}
+            squareUnavailable=true
+            local accepted,detail=Movement.command(a,'FOLLOW',{})
+            assert(accepted and detail=='follow queued; waiting for owner or world data')
+            local ok,reason=Movement.update(a,clock+100)
+            assert(not ok and reason=='follow position unavailable')
+            assert(Movement.snapshot(a).task=='FOLLOW' and a.pathCalls==0)
+            squareUnavailable=false
+            player.x=20
+            Movement.update(a,clock+250)
+            assert(a.pathCalls==1 and Movement.snapshot(a).task=='FOLLOW')
+        ''')
+
+    def test_follow_waits_for_offline_owner_and_resumes_on_rejoin(self):
+        self.lua.execute('''
+            Movement=require('GoblinSurvivor/GoblinMovement')
+            a=actor(0,0,0);a.data={GoblinNPC=true,GoblinOwner='horse'}
+            online=list({})
+            local accepted,detail=Movement.command(a,'FOLLOW',{})
+            assert(accepted and detail=='follow queued; waiting for owner or world data')
+            assert(Movement.snapshot(a).task=='FOLLOW' and a.pathCalls==0)
+            online=list({player})
+            Movement.update(a,clock+250)
+            assert(a.pathCalls==1 and Movement.snapshot(a).task=='FOLLOW')
         ''')
 
     def test_map_draws_only_the_local_owners_marker_and_labels_stale_positions(self):
@@ -348,6 +1014,39 @@ class GoblinLuaTests(unittest.TestCase):
             assert(not Motion.rejoin(a,point,1,clock+1000,clock) and calls==1)
             assert(not Motion.rejoin(a,point,2,clock-1,clock))
             squareUnavailable=true;assert(not Motion.rejoin(a,point,2,clock+1000,clock))
+        ''')
+
+    def test_rejoin_does_not_consume_sequence_when_native_teleport_is_ignored(self):
+        self.lua.execute('''
+            a=actor(0,0,0);clientMode=true;a.remote=false
+            point={x=20,y=30,z=0};attempts=0
+            function a:teleportTo(x,y,z) attempts=attempts+1 end
+            assert(not Motion.rejoin(a,point,1,clock+1000,clock))
+            function a:teleportTo(x,y,z)
+                attempts=attempts+1;self.x=x;self.y=y;self.z=z
+            end
+            assert(Motion.rejoin(a,point,1,clock+1000,clock))
+            assert(attempts==2 and a.x==20 and a.y==30)
+        ''')
+
+    def test_server_native_rejoin_releases_remote_simulation_authority(self):
+        self.lua.execute('''
+            a=actor(0,0,0);a.engineOwner={};calls=0
+            function a:teleportTo(x,y,z) calls=calls+1;self.x=x;self.y=y;self.z=z end
+            goblinServerRejoin=function(body,x,y,z)
+                assert(body==a and isServer() and a.engineOwner)
+                a.engineOwner=nil
+                body:teleportTo(x,y,z)
+                return true
+            end
+            point={x=120,y=130,z=0}
+            assert(Motion.rejoin(a,point,1,clock+1000,clock))
+            assert(calls==1 and a.x==120 and a.y==130)
+            assert(not Motion.rejoin(a,point,1,clock+1000,clock) and calls==1)
+            clientMode=true;a.remote=true;a.engineOwner={}
+            assert(not Motion.rejoin(a,point,2,clock+1000,clock) and calls==1)
+            clientMode=false;goblinServerRejoin=nil
+            assert(not Motion.rejoin(a,point,2,clock+1000,clock) and calls==1)
         ''')
 
     def test_native_walk_entry_is_enabled_only_for_requested_path(self):
@@ -606,6 +1305,25 @@ class GoblinLuaTests(unittest.TestCase):
             assert(Brain.setTask(a,'SPEAK',{text='hello'}))
             assert(Brain.setTask(a,'EQUIP',{}))
             assert(saved.records.horse.task == 'FOLLOW' and a.data.GoblinTask == 'FOLLOW')
+        ''')
+
+    def test_follow_command_is_accepted_and_persisted_while_squares_are_unavailable(self):
+        self.lua.execute('''
+            Spawner=require('GoblinSurvivor/GoblinSpawner'); Spawner.load()
+            a=Spawner.ensureForPlayer(player)
+            Body.setCombatPose=function() end
+            Brain=require('GoblinSurvivor/GoblinBrain')
+            squareUnavailable=true
+            local accepted,detail=Brain.setTask(a,'FOLLOW',{owner='horse'})
+            assert(accepted and detail=='follow queued; waiting for owner or world data',
+                tostring(accepted)..' '..tostring(detail)..' gap='..tostring(math.abs(a.x-player.x)))
+            assert(saved.records.horse.task=='FOLLOW' and a.data.GoblinTask=='FOLLOW')
+            local Movement=require('GoblinSurvivor/GoblinMovement')
+            assert(Movement.snapshot(a).task=='FOLLOW')
+            squareUnavailable=false
+            player.x=20
+            Movement.update(a,clock+250)
+            assert(a.pathCalls>=1 and Movement.snapshot(a).task=='FOLLOW')
         ''')
 
 

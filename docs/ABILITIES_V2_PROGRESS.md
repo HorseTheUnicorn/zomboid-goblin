@@ -1,18 +1,575 @@
 # Abilities V2 evidence ledger
 
-## Gate: Milestone 0 runtime catalog and compatibility inventory complete
+## Current checkpoint — 2026-09-24
 
-Section 31's non-mutating, exact-installed-runtime catalog and conservative
-compatibility inventory closed on 2026-09-19. This closes only Milestone 0.
-Milestone 1 implementation is now in a unit-tested candidate state: native
+- M3 route retest: disposable server PID50848 and ordinary no-Storm client
+  PID44340. Brain accepted GAIN_ACCESS for a test padlocked `IsoThumpable` at
+  edge 10881,9989. Native padlock removal succeeded (key consumed, one matching
+  padlock returned) and the door opened/unlocked. The actor did not register a
+  physical crossing; the task ended `NO_PATH`, and cleanup=true restored FOLLOW
+  and removed the test objects. This was a freestanding gate in an open yard,
+  without a wall/frame around it; native pathfinding could route around the
+  artificial obstruction. Treat this result as **inconclusive for production
+  access traversal**—it is neither a route pass nor evidence of a production
+  regression. Next physical test must use a real wall-framed doorway or an
+  enclosed fixture, then verify the opened state from a second client. Earlier
+  probe logging was also corrected to use the installed `IsoThumpable:IsOpen`
+  method and isolate observations with `pcall`. Production code was not
+  changed in response to the invalid fixture.
+- Milestone 3 native padlock probe PASSED on disposable goblin-local, server
+  PID10604 with no-Storm clients rejoinfang_74 PID6088 and trailfang_74 PID41668.
+  At st=514940500 the actual managed actor had test key ID722718787. The native
+  adapter consumed that key, returned exactly one Base.Padlock with original
+  lock key ID214660123/key-count one, cleared padlocked and set gate key ID=-1.
+  Repeated removal was refused; world/item fixture cleanup logged true at
+  st=514940510. Preserved trace:
+  C:\Users\tomgr\Zomboid\Logs\m3-padlock-native-20260924.stdout.log.
+  GoblinAccess, GoblinPadlocks and GoblinTools source hashes matched both staged
+  packages. Removed staged probe and opt-in flag; reusable source remains only
+  in tools/probes. Latest full suite: 525 passed, 2 expected failures and 1,274
+  subtests. This proves native managed-actor inventory/world mutation, not
+  movement, second-client visual replication, or persistence; Milestone 3 is
+  not yet complete.
+- Milestone 3 matching-key padlock candidate implemented in GoblinPadlocks.lua.
+  Base.Padlock resolves enabled/nonobsolete in the loaded catalog, from
+  media/scripts/generated/items/key.txt. Installed ISPadlockAction removal and
+  Java key/setter signatures were inspected. Ordinary access may now remove
+  a single gate padlock only with an actual contained matching key; it returns
+  the lock with the same key ID and one key, consumes that key, clears lock/key
+  ID and calls native sync. Safehouse/server/managed-actor policy stays enforced.
+  Native failures trigger compensation and a runtime target latch to prevent
+  repeated partial transfers. No player-container packets are sent for Goblin.
+  Combined/double-panel padlocks and combination-code removal stay unsupported.
+  Five new tests cover transfer identity/counts, replay, missing key, client
+  authority, compensation and safehouse denial. No actual gate movement,
+  replication or save/reload proof is claimed yet. This supersedes the prior
+  note that all padlock removal was unimplemented.
+- Milestone 3 special-lock audit: reproduced ordinary unlocking silently
+  clearing isLockedByPadlock/getLockedByCode without the installed native
+  item transfers or code authorization. Removed those setters from ordinary
+  unlocking; special locks are rejected at selection and every grouped door
+  panel is preflighted before any mutation. All 117 targeted access/work/house
+  tests pass, including no mutation for keyed-padlock, combination-lock and
+  mixed-panel cases. This corrects a bypass, not implementation of padlock
+  removal. Remaining adapter requirements from installed ISPadlockAction are:
+  real matching key, Base.Padlock with same key ID and one key count, consume
+  that exact key, clear lock/key ID, synchronize world object; managed inventory
+  must not use the unsupported player-container packet path. Combination locks
+  require an explicitly supplied matching code and return Base.CombinationPadlock
+  per ISPadlockByCodeAction. Neither may infer authorization from being indoors,
+  from a normal door key, or from Qwen's guessed data. Local-only source change;
+  no new physical or multiplayer acceptance is claimed.
+- Milestone 3 native door-policy parity: installed ISLockDoor:isValid explicitly
+  refuses keyless inside unlocking when door modData.CustomLock is truthy.
+  Goblin's inside-edge adapter omitted that condition. A regression reproduced
+  the bypass; the adapter now retains the native restriction while allowing a
+  real matching key and preserving ordinary inside-to-outside unlocking.
+  All 116 targeted work/access/house tests pass. This change is not yet staged
+  or live-multiplayer-tested; source inventory hashes describe implementation,
+  not new physical acceptance. Padlock removal uses a separate installed native
+  action with item/key transfers and must not be inferred from ordinary door
+  unlocking. Milestone 3 remains open for the remaining compatibility and live
+  evidence checks.
+- Milestone 3 toolkit review found that fuel removal was unchecked and the
+  previous idempotence test had no drainable fixture. Added a failing regression
+  for throwing/ineffective drainable setters and ineffective fluid mutation.
+  Provisioning now verifies zero with installed getCurrentUsesFloat/getAmount
+  and removes a newly created tool on failure before marking it reserved.
+  Existing reserved tools retain real fuel acquired later. Installed Java
+  signatures and FluidContainer.adjustAmount bytecode were inspected directly.
+  This is a local source/test correction, not a new live ability claim; no
+  restart, deployment, or publication was performed. Access and tool inventory
+  retain their existing explicit unverified-native-action limitations.
+- Milestone 2 framework is closed following the user's acceptance of earlier
+  local tests and request to complete its remaining work. See
+  [Milestone 2 closeout](MILESTONE2_CLOSEOUT.md) for the requirement mapping,
+  terminal-replay fix, actual craft evidence and explicit per-ability limits.
+  This supersedes pending-framework wording in the chronological entries below.
+- The user subsequently confirmed "everything is working for goblin following"
+  and asked to move on. Stop repeating follow acceptance routes; preserve that
+  baseline. Formal historical no-teleport/door/stair evidence limitations remain
+  recorded rather than being converted into invented current-build proof.
+- Milestone 2 follow-up: reproduced repeated handler execution after terminal
+  completion/error in a focused regression. The capability runtime now latches
+  its canonical terminal result until Jobs.clear/cancel starts a new job.
+  This prevents duplicate ticks from replaying a potentially partial physical
+  operation. Success, exception, malformed result, copy isolation and explicit
+  restart are covered. All 78 focused capability/job/base/logistics tests pass.
+  This is worktree-only and not yet loaded into the running local test server.
+- Subsequent M2 test staging: full suite 520 tests passes (two expected
+  failures). Restarted only disposable goblin-local with the registry latch.
+  Server PID17896; ordinary clients rejoinfang_74 PID58732 and trailfang_74
+  PID58128, no client Storm. An explicit-owner/profile-gated temporary probe
+  from tools/probes/Milestone2CraftProbe.lua is staged server-side, with the
+  opt-in flag. It seeds one real log only if test material counts start at
+  zero, routes SawLogs through Brain/Jobs, and observes terminal repeat safety.
+  The probe must be removed from the staged server and its flag removed after
+  the test. It is outside the release mod tree in the repository. Live result
+  is pending world entry; no physical success is claimed by the staging step.
+- M2 live craft/result checkpoint completed on 2026-09-24: rejoinfang_74
+  entered with Rattlefang Soupthief. Probe observed initial logs=0/planks=0,
+  seeded Base.Log ID1372441715 at st=513484854, and Brain accepted SawLogs x1.
+  Native WORKING results retained log=1/planks=0, then COMPLETE at
+  st=513509449 had log=0/planks=3. A duplicate Cap.update returned COMPLETE
+  with inventory_unchanged=true before Brain delivered the outputs. The
+  ordinary no-Storm client visibly displayed Plank (3) in Ground inventory at
+  the owner's feet. Source log preserved at
+  `C:\Users\tomgr\Zomboid\Logs\m2-craft-terminal-20260924.stdout.log`.
+  Registry SHA256: 26f6b7aef7eeb83152120bb4a2b08663f450790aa2292116bed651e11163c11b.
+  Jobs SHA256: be06dd44d51baab8d4e1b4a617a6fe64f85c40f6f6d8a87d42be9b33876844c0.
+  Craft SHA256: 8640ee2f58a0ebfadce58e6ef1bff4c762b22e79f39b486b2da4431e78d4e4cd.
+  Probe SHA256: cacc6e3e04b5b6b199ebf2318e67d78d444c0516b48504d44db489a638626272.
+  These three Lua modules matched both staged packages. Removed only the
+  temporary staged probe and opt-in flag after its wrapper restored Jobs.update;
+  reusable probe source stays outside the release mod. Both players connected,
+  but the distant second client did not inspect the outputs and reload was not
+  tested. This closes the narrow craft/terminal-repeat smoke check, not all M2
+  regression, multiplayer replication, or persistence requirements.
+
+- The user accepted the local movement/freezing correction: "perfect, fixed".
+  The final change makes the Goblin-only turnalerted fallback non-looping,
+  matching the installed native completion transition. The attempted direct
+  ActionContext Lua recovery was removed after the live runtime rejected it.
+- Preserve this accepted movement baseline. This acceptance is not a claim
+  that all V2 abilities or all current-build multiplayer gates are finished.
+- M1 evidence now binds 17 source files, including the guard and turnalerted
+  XML, plus the server JAR. Historical source-bound passes remain historical.
+- Next: Milestone 3 tools/access gap review, preserving the user-accepted follow
+  baseline. Production and published artifacts remain untouched. Dated entries
+  below retain historical status, not current instructions to repeat testing.
+
+## Gate: Milestone 0 catalog refreshed for the 2026-09-23 `.03` snapshot
+
+Section 31's non-mutating loaded-registry catalog and conservative compatibility
+inventory have been refreshed from an exact disposable copy of `.03`'s current
+installed scripts and configured Workshop content. The source archive SHA-256
+was `cbc1f755858f7c5f4ed3d2c29e498c5f8500d3b87179f25ef31e08f481223471`;
+the local copy matched, and the temporary archive was removed from `.03`.
+The installed game JAR still hashes to
+`80e405a4bfc42f6072e75b3735f458a6514143da011d3226007ded305a442f44`.
+The isolated Build 42.20.4/Storm server exported 5,397 loaded items and 1,118
+loaded recipes with `CONTENT_VERIFIED` selected-content fingerprint
+`c7fefb1cff630f72b8277acefdab7f796b55b62ed614edb9650e8ab854385b67`.
+Independent reconciliation matched all 68 configured mods and both vanilla
+scripts/Lua trees; only the explicit candidate Goblin Java helper differs.
+The configured Goblin Workshop item is `3797199625`; an installed but
+unconfigured older item `3794624741` also contains a `GoblinSurvivor` folder
+and is excluded by the corrected staging/reconciliation tools. The new and old
+catalogs have identical item and recipe ID sets, though the installed script
+checksum and selected-content fingerprint changed. Strict catalog and 64-record
+capability-inventory checks pass. This is a dated snapshot, not a perpetual
+assertion about future Workshop updates. The `.03` game service was inactive
+throughout; it was not started, and no installed game or mod files were changed.
+
+Milestone 0 is catalog/compatibility inventory only. No new physical ability,
+multiplayer replication, or managed-IsoZombie compatibility is inferred from
+the loaded registry.
+
+2026-09-23 handoff: the user accepted the current local follow behavior as-is,
+including the occasional stall that clears when the player returns close to
+Goblin. No further follow-path changes are planned for this acceptance. The
+Milestone 2 result boundary now canonicalizes handler results before storing
+or returning them, so extra engine references and caller mutations cannot
+enter the persistent snapshot. Targeted capability/job tests and the Section
+31 inventory check pass. Requirement metadata, prepared payloads and runtime
+snapshots now return independent primitive copies; a dynamic requirement
+callback failure returns no requirement instead of escaping the registry.
+The full local suite reports 496 tests passing with two expected failures.
+This framework hardening is unit-tested only; the
+historical Milestone 2 multiplayer record remains source-stale and is not
+current live acceptance.
+
+2026-09-23 Milestone 2 retest attempt: a disposable `goblin-local` server with
+server-side Storm loaded the current nine-handler registry, and two ordinary
+no-Storm clients connected. Both clients reached the loaded-world screen but
+had not entered play; no managed Goblin spawned, so the one-time physical
+SawLogs probe never ran. The Windows game-window helper failed to capture its
+target after refresh, so no input was issued. The local server and both clients
+were stopped, and the probe was removed from every staged package. This is a
+failed/incomplete acceptance attempt, not evidence of crafting or replication.
+The same window-capture error recurred with only one game client open. That
+client connected but did not enter play. The single-client retry was stopped
+as well; no local game process was left running. The user is not currently
+available to click into the world, so the live gate remains pending.
+
+2026-09-23 current-source multiplayer follow-up: after a fresh desktop-control
+session, `rejoinfang_74` and `trailfang_74` entered a disposable local Build
+42.20.4 world using ordinary no-Storm clients. The Storm server spawned exactly
+one named, visually applied Goblin for each player. A temporary server-only
+probe observed all nine registered capability names, seeded exactly one real
+`Base.Log` into `rejoinfang_74`'s Goblin, and called `Brain.setTask` for one
+`SawLogs` batch. The server recorded `WORKING` then `COMPLETE`; its inventory
+changed from one seeded log to zero. Goblin immediately delivered its cargo,
+so the delayed probe found zero planks still carried, but the first ordinary
+client visibly showed `Plank (3)` in the ground inventory at the player's
+feet and displayed the craft/delivery messages. No capability/job error
+appeared around this operation. Sixteen relevant Lua files and the server JAR
+matched the current worktree in both staged packages by SHA-256. The second
+client was at another location and did **not** verify those planks' replication.
+The local pair was stopped and the one-time probe removed. This is strong
+current-source evidence for the Milestone 2 registry and representative native
+craft route, but it does not close the separate per-ability multiplayer and
+persistence gates or the nine current-source Milestone 1 live gates.
+The schema-2 Milestone 1 verifier now also binds the exact server JAR that
+provides native movement/authority support; a missing or changed JAR rejects
+acceptance. Eight focused verifier/trace tests pass. No new navigation behavior
+or live-route claim was introduced by this proof-boundary change.
+
+Milestone 1 implementation is in a unit-tested candidate state: native
 character-follow, stable nearby slots, radius-2 work staging, bounded stuck
 recovery, temporary route blacklists, exact Build 42 path-next field handling,
-and navigation telemetry are implemented. It is **not complete** until a live
-local multiplayer run proves movement and replication. An installed method,
+and navigation telemetry are implemented. Immediate native rejection of a work
+approach now retires that candidate and tries another; boundary tests cover both
+alternate selection and exhaustion after 25 candidates. This is not live engine
+acceptance. A full local multiplayer run passed
+on 2026-09-20 for its captured source, but all six source-bound files have since
+changed. Milestone 2's historical acceptance likewise differs from five of its
+eight bound files. Neither historical pass certifies the current worktree;
+Milestone 1 is **not currently complete** until the changed build is revalidated.
+Blocked navigation now emits a single `NAV_BLOCKED` transition log with task,
+goal, retry, authority, progress age and last-movement context; telemetry
+preserves the original rejection reason and last successful movement while a
+route remains blacklisted. These diagnostics have boundary tests only.
+The last full repository suite run on 2026-09-23 had 468 tests and passed with
+two expected failures; the subsequent targeted navigation/work set has 144
+passing tests. Historical Milestone 1 and Milestone 2 records now have separate
+structure checks; their strict current-source acceptance commands reject both
+records as stale. A fresh `goblin-local` server with server-side Storm and one
+ordinary no-Storm client loaded the current worktree on 2026-09-23. SHA-256
+comparison matched all six Milestone 1 source-bound files between worktree and
+local package. Server/client logs show one `fencefang_73` Goblin spawned and
+its visual applied. A ten-second exact-state sample showed one tile of Goblin
+movement while the player was stationary. This is a one-client smoke check,
+not the required two-client physical/authority acceptance.
+FOLLOW now retains its active movement record while the owner is offline or
+nearby squares are temporarily unavailable, and after reaching a stable slot;
+these lifecycle cases have Lua boundary tests but no new live acceptance.
+An installed method,
 parsed definition, accepted command or
 mock test is still not proof of physical execution or multiplayer replication.
 Every capability remains `complete: false` until its own movement, material,
 world-state, second-client and persistence acceptance evidence is recorded.
+The current worktree also rejects unknown post-removal inventory state during
+material reservation and holds exact item references for an in-process refund
+retry. This is unit-tested only; restart/crash recovery and multiplayer material
+accounting remain unverified.
+
+2026-09-23 local Milestone 1 follow-up: the current candidate loaded on a
+server with Storm and two ordinary no-Storm clients, and exactly one managed
+Goblin spawned for each of `fencefang_73` and `bramblefang_92`. The server
+observed `fencefang_73` switch from autonomous LOOT to FOLLOW when its owner
+moved; exact-state samples then showed client-owned Goblin movement. The first
+run also showed a real blocked native route: a client logged
+`NAV_BLOCKED task=FOLLOW ... no progress after native repath` while the actor
+remained behind. The server previously regarded delegated path acceptance as
+progress; `GoblinWorld.approach` now checks observed actor displacement and
+blacklists a stalled work approach after the native repath window. A boundary
+  test covers alternate selection after that stall, and 145 focused
+navigation/work/chat/acceptance-structure tests pass. This is not a fresh
+nine-gate Milestone 1 live acceptance. Two local client window activations by
+desktop automation each caused a native `glfw.dll` crash, so further game-window
+automation was abandoned. A temporary local RCON test port used for player
+staging was closed, its password cleared, and the probe removed. No production,
+GitHub, or Workshop files were changed. Milestone 1 remains incomplete pending
+fresh closed-door, radius-2, no-progress recovery, handoff, furniture, stair,
+building-follow, and managed-door evidence on the current source.
+
+The next exact-state trace exposed a separate follow/idle handoff: while
+`fencefang_73` was stationary, his Goblin was roughly 80 tiles away and had
+already changed from FOLLOW to autonomous LOOT. The idle decision now waits
+until an online owner's Goblin has reached the same floor and is within the
+nearby follow band. A Lua boundary test covers the far-then-caught-up sequence;
+the focused set of 145 tests passes. The disposable local server and both
+no-Storm clients were restarted with this change on 2026-09-23. Both clients
+connected, then entered the world after a longer load; the server recorded
+one Goblin per player and `native_owner_player` matched each owner. A
+current-source trace showed `bramblefang_92` moving about six tiles while his
+Goblin closed an 11-tile gap to about three tiles. Later, after more than 30
+seconds of owner idle time, that Goblin entered autonomous LOOT from nearby
+and moved away. This is partial follow/idle evidence, not the nine-gate
+Milestone 1 acceptance run: no controlled closed-door, stairs, building-run,
+furniture-detour, or simulation-owner handoff has been recorded on this build.
+An initial desktop capture presented an occluding Firefox page for a selected
+PZ window. Later foreground capture showed the live game, and keyboard/chat
+input was attempted without another crash, but it did not yield reliable
+controlled avatar movement or an observable submitted chat order. Those
+inputs are not acceptance evidence. Leave the local pair running for the
+remaining physical checks; Milestone 1 remains incomplete.
+
+A subsequent attempt to foreground a local PZ window on 2026-09-23 caused
+the isolated `bramblefang_92` client to exit with a native `glfw.dll` access
+violation in `Display.processMessages`. The dedicated server and
+`fencefang_73` client stayed up; the isolated client was relaunched without
+Storm. No further desktop injection is planned for this acceptance run.
+The restarted client rejoined with its personal Goblin, returning the topology
+to two ordinary clients and two companions. The historical nine-gate record
+remains readable as schema 1, but strict current-source acceptance now requires
+a fresh schema-2 record binding 14 relevant follow, access, authority, work,
+and telemetry modules (including `GoblinAutonomy.lua` and
+`GoblinMovement.lua`). The checker and its four focused tests pass; the
+current acceptance command correctly rejects the legacy record.
+The inventory's FOLLOW completion review now delegates to that same strict
+schema-2 checker rather than independently accepting the six-file historical
+manifest. Five source-audit hashes for UNLOCK_VEHICLE, FOLLOW, MOVE_TO, and
+EQUIP were refreshed after reviewing the corresponding world/locomotion/body
+diffs; none of those records was marked physically complete by the hash update.
+
+2026-09-23 current-source handoff probe: the disposable local server loaded
+all 14 schema-2 bound modules with hashes matching this worktree. A temporary
+random-password RCON channel moved only the two test players. Before staging,
+`goblin.primary.fencefang_73` was beside its owner near `(10728,10576,0)`
+under `fencefang_73`'s native simulation authority. With `bramblefang_92` at
+`(10727.02,10575.95,0)` and fencefang at `(10747.96,10576.20,0)`, the same
+Goblin was observed at `(10726.79,10575.32,0)` with
+`native_owner_player=bramblefang_92`. Later it was observed at
+`(10754.40,10577.57,0)` near fencefang, with native authority returned to
+`fencefang_73`. The server logged no `FOLLOW_REJOIN` for the target Goblin
+during this probe; the other Goblin did rejoin after its own player was moved
+more than 800 tiles, so it is not part of the handoff claim. Both players were
+returned to their pre-test areas. This is direct handoff and follow evidence,
+but the samples are too coarse to certify a no-teleport trajectory, so the
+schema-2 handoff gate and Milestone 1 remain formally incomplete. The local
+RCON listener and password were removed, its helper deleted, and the local
+server restarted with RCON disabled.
+Schema-2 validation now requires at least five time-ordered handoff samples,
+no gap over two seconds, no actor step over five tiles, an observed native
+owner change and return, and explicit no-rejoin/no-position-write evidence.
+The old record cannot satisfy that by relabeling its version or updating hashes.
+
+2026-09-23 follow-up: private exact-state telemetry now records native
+simulation owner with each one-second Goblin position sample; a focused Lua
+boundary test passes. After a local-only restart, `fencefang_73` and
+`bramblefang_92` each had one Goblin on two ordinary no-Storm clients. A
+temporary localhost RCON probe staged only the players, then restored them.
+The same `goblin.primary.fencefang_73` actor moved from approximately
+`(10748.68,10574.62,1)` to `(10760.33,10575.67,0)` while native authority
+changed from fencefang to bramblefang and back. Seventeen consecutive exact
+samples in `reference/pz-milestone1-current-handoff.json` had a maximum gap
+of 1,205 ms and a maximum 3-D step of 4.149 tiles. No target-Goblin
+`FOLLOW_REJOIN` appeared in the server log, and the probe issued no Goblin
+position write. This supports the *handoff gate only* for the telemetry source
+hash recorded there; it does not recertify other changed source modules or
+the nine-gate Milestone 1 record. The RCON listener and password were removed,
+its temporary probes deleted, and the local pair was restarted with RCON off.
+
+2026-09-23 stair-test precondition did **not** pass: a player-only relocation
+to the historical staircase moved `fencefang_73` over 1,000 tiles from his
+Goblin. The server emitted repeated `FOLLOW_REJOIN`, but the managed actor
+stayed in its old cell under the other client's native simulation ownership.
+The stair gate was not measured. This is a separate long-distance rejoin
+regression to resolve before reusing remote test sites; it must not be counted
+as stair or teleport acceptance.
+
+While the local pair was running, bramblefang reported that his Goblin walked
+into an exterior door instead of following outside. Installed
+`ISLockDoor:isValid` permits keyless unlocking from a non-exterior square;
+Goblin's adapter had required a matching key on every side. The adapter now
+permits that vanilla inside-side case only when the managed actor stands on
+the exact door edge, while retaining safehouse, barricade and outside-key
+guards. It also logs a throttled `DOOR_ACCESS_BLOCKED` reason for future live
+failures. The 101 focused work/access tests pass. After a disposable local
+restart with server-side Storm and two ordinary no-Storm clients, bramblefang
+visually confirmed that the same Goblin opened the exterior door, crossed it,
+and followed outside. Exact-state positions then showed Goblin about 13 tiles
+closer to the player's new location. The exact door lock field was not
+inspected before this run, so the inside-key rule is source-aligned and
+boundary-tested, while the live observation proves the current doorway
+behavior—not the historical lock state or second-client/save replication.
+Milestone 1 remains incomplete.
+
+The separate long-distance rejoin path now has a server-only native transfer
+candidate. Installed Build 42.20.4 bytecode shows that direct `setOwner(null)`
+does not update the network owner's zombie list, whereas
+`NetworkZombieManager.moveZombie(body, null, null)` does and schedules an extra
+network update. The new Storm helper checks a loaded free destination, uses
+that native transfer, teleports, then lets native `updateAuth` reassign the
+simulator near the player. Server Lua uses it only for an expiring FOLLOW
+rejoin request; ordinary clients require no Storm. The prior log line now
+distinguishes completed `FOLLOW_REJOIN` from `FOLLOW_RECOVERY_REQUEST`.
+The JDK 25 build and 145 focused Lua tests pass, but this is **not** a live
+movement or replication pass until the disposable two-client session is
+restarted and a far-away player is rejoined without a duplicate or lost
+inventory. No production or published version has changed.
+
+2026-09-23 live rejoin follow-up: the rebuilt JAR loaded on the disposable
+Storm server; `rejoinfang_74` and `trailfang_74` connected from two ordinary
+no-Storm clients, each with one Goblin. An authenticated temporary local RCON
+probe moved only the players. With both players together, the engine assigned
+`goblin.primary.rejoinfang_74` to trailfang's native simulation client. After
+rejoinfang alone moved roughly 886 tiles away, the server logged one completed
+`FOLLOW_REJOIN owner=rejoinfang_74 distance=885.7`. The *same* NPC ID and
+generation-1 body appeared beside rejoinfang at approximately
+`(10640.36,10265.17,0)`, under rejoinfang's native client ownership, while
+trailfang retained one separate Goblin. Server runtime state reported two
+companions, both inventory-persistent, with no inventory error or rejoinfang
+respawn in the trace. Read-only captures of both actual game windows also
+showed the named Goblin beside the matching player after transfer. This is
+positive two-client visual/authority evidence for long-distance rejoin, not
+proof that particular carried items survived: the disposable Goblin had no
+separately inventoried test item. It does not certify the nine-gate Milestone 1
+record. The temporary local RCON port and password were then cleared, and the
+disposable server and both ordinary clients restarted with RCON disabled;
+no production or published version changed.
+
+2026-09-23 current-source route trace: a read-only 240-second exact-state
+capture recorded 201 fresh snapshots with zero read errors from the disposable
+two-client session. `rejoinfang_74` moved up to 76.6 tiles from the starting
+position; the same named Goblin moved up to 75 tiles and ended 3.9 tiles away,
+under rejoinfang's native simulation ownership. In a measured 24-second
+segment between rejoin events, the owner moved 37.8 tiles and the Goblin
+moved 38.5 tiles. The server logged three successful long-distance
+`FOLLOW_REJOIN` operations after the owner outran the companion by about 30
+tiles. A door on this route was locked, producing `DOOR_ACCESS_BLOCKED`, and
+neither player nor Goblin changed floors in the capture. This supports
+running-follow and rejoin behavior, but is not evidence for an unlocked
+closed-door crossing or stair-follow, and teleport-assisted parts cannot
+certify a no-teleport movement gate. The raw capture remains at
+`C:\tmp\goblin-m1-route-20260923-b.json`; it is explicitly not an acceptance
+record. The server also emitted two `ItemStats` packet exceptions while
+autonomous Goblins carried aging food; that inventory replication defect is
+separate from the navigation gate and remains to be resolved.
+The raw-capture tool now hashes all 14 Milestone 1 source files and the server
+JAR before and after collection, and refuses to write evidence if the
+worktree, shared server/client1 package, or client2 package differs. A five-second
+local provenance smoke capture and six focused acceptance/capture tests passed.
+This tool improvement prevents a later live run from being attributed to
+stale installed files; it does not satisfy any unperformed physical gate.
+
+2026-09-23 house-route retest: two ordinary local clients again connected with
+one Goblin each. The `trailfang_74` Goblin initially failed native FOLLOW at
+two different nearby follow slots (`NAV_BLOCKED`, each after one six-second
+repath), then physically approached the player around living-room furniture.
+The subsequent player route from inside to the sidewalk showed the Goblin
+outside too, with no server `FOLLOW_REJOIN`; a source-matched 120-second raw
+capture recorded 101 fresh snapshots and zero read errors at
+`C:\tmp\goblin-m1-house-door-20260923.json`. This is useful recovery and
+house-route evidence, but the sampled positions do not by themselves certify
+which door edge he crossed or every Milestone 1 gate. Another 180-second raw
+capture at `C:\tmp\goblin-m1-detour-retest-20260923.json` recorded 151 fresh
+snapshots; its second client exited with an external native `glfw.dll` access
+violation during window-message processing and was relaunched. The live
+follow-slot failure led to extending the bounded open-edge detour to blocked
+`follow_slot` and `follow_detour` goals, not only blocked character goals.
+The extension passed 146 focused Lua/access/work tests and the 64-record
+catalog check. It was then staged into both disposable clients and restarted;
+its own post-restart physical acceptance is still pending. Milestone 1 remains
+incomplete, and `.03`, GitHub main, and Workshop remain untouched.
+
+2026-09-23 follow-slot revision smoke: after staging the extension, the
+disposable two-client server reported one player and one managed Goblin for
+each of `rejoinfang_74` and `trailfang_74`, with ordinary clients and
+server-only Storm. A 120-second source-matched capture at
+`C:\tmp\goblin-m1-follow-slot-retest-20260923.json` recorded 101 fresh
+snapshots and zero read errors. Trailfang moved on open ground while its
+Goblin remained active, wandered during the idle interval, and ultimately
+returned within roughly three tiles. No Goblin `NAV_BLOCKED` or
+`FOLLOW_REJOIN` appeared in this run. Live input was detected in the client,
+so automated control stopped; this run did not reproduce the blocked
+furniture/doorway slot and cannot certify the new detour branch or Milestone 1.
+
+2026-09-23 operator-controlled navigation follow-up: the disposable second
+client was driven through a house entrance and back toward the road. A
+source-matched 180-second capture at `C:\tmp\goblin-m1-alt-edge-live-20260923.json`
+recorded 151 fresh positions and no read errors, with both actor IDs owned by
+`trailfang_74`; Goblin visibly crossed the threshold with the player. A second
+source-matched 120-second capture at
+`C:\tmp\goblin-m1-indoor-follow-20260923.json` recorded 101 positions and
+exposed a failure: the owner reached `(10686.5, 9361.5)` while Goblin remained
+near `(10691.8, 9358.3)`. The client logged blocked FOLLOW slots and native
+repaths with no progress, while the server repeatedly reported a locked
+adjacent door edge. The first client also crashed twice in native `glfw.dll`
+window-message processing during loading; no Lua error established a Goblin
+cause, but the two-client acceptance gate was not available in this run.
+
+The blocked-follow search now marks an alternate square visited only after a
+valid entry edge is confirmed. A diagnostic run found the native path request
+accepted while `ZombieIdleState` persisted and `bPathfind` was false. A
+temporary path-flag experiment and actor-specific `testPathFindAdjacent` edge
+rule were staged only in the disposable local copy. An exploratory
+source-matched 90-second capture at
+`C:\tmp\goblin-m1-pathflag-retest-20260923.json` showed the owner move from
+`(10683.5, 9363.5)` to `(10675.5, 9360.5)` and Goblin from
+`(10684.9, 9364.5)` to `(10681.9, 9360.6)` under client simulation
+ownership, but Goblin then stalled at a high fence. With both experimental
+changes staged, Goblin subsequently moved around the fenced area and onto the
+road in an operator-controlled smoke check. A source-matched capture for that
+post-diagnostic candidate at `C:\tmp\goblin-m1-final-open-road-20260923.json`
+recorded 75 positions and another failure: the owner moved to
+`(10665.5, 9344.5)` while Goblin stayed at `(10672.8, 9352.1)` after two
+blocked native character paths. The detour branch did not engage. Both
+unverified changes and the temporary native-state log were therefore removed
+from the worktree; neither experiment is credited as an ability. The retained
+alternate-entry BFS correction has a failing-before/passing-after unit test,
+but its own live acceptance remains open. The 64-record Section 31 consistency
+check passes, and Milestone 1 remains incomplete. Production `.03`, GitHub
+main and Workshop remain untouched.
+
+2026-09-23 native idle-wander follow-up: installed `ZombieIdleState.execute`
+can choose a random nearby square and issue its own `pathToLocation` when a
+non-useless zombie's state-event timer expires. Goblin's managed movement keeps
+its body non-useless, so an active native FOLLOW path can be overwritten by
+that idle-state path. The current candidate refreshes the native idle timer
+only while a locally controlled Goblin has a managed destination and is in
+`ZombieIdleState`; it does not move the actor or change combat/access states.
+The focused Lua/access/acceptance run passed 78 tests. A source-hash-matched
+disposable capture at `C:\tmp\goblin-m1-idle-guard-route-20260923.json` recorded
+101 fresh server positions with zero read errors while the local player was
+relocated along several road/grass points. Goblin closed the gap physically,
+including from `(10668.4, 9344.7)` to `(10681.4, 9358.3)` after the player
+returned near `(10682, 9361)`, without a `FOLLOW_REJOIN` log. The server-side
+sample stream still contained an 11.62-tile step because its client-owned
+zombie coordinates arrive in batches; this capture alone cannot certify
+continuous movement or the nine-gate Milestone 1 acceptance. The local-only
+3600-second autonomy-idle and RCON fixtures used to isolate the route must be
+removed after testing. Nothing was changed on `.03`, GitHub main or Workshop.
+
+2026-09-23 owning-client follow trace: the opt-in local client sampler now
+records the managed Goblin's online ID, native simulation ownership and
+actor/player positions at roughly 10 Hz, with matching source and installed
+mod hashes. `C:\tmp\goblin-m1-astar-retest-20260923.json` captured 101 fresh
+server snapshots without read errors. The matching owning-client extraction
+`C:\tmp\goblin-m1-astar-owning-client-20260923.json` contained 2,026 samples
+for online ID 9563, always `remote=false`. It caught an actual stalled FOLLOW
+route and a 27.16-tile actor jump in 100 ms; the server logged
+`FOLLOW_REJOIN distance=30.5`. That jump is a rejoin, **not** physical path
+recovery, and cannot pass live scenario 9. A bounded A*-ordered detour search
+did not resolve the stall. A subsequent local diagnostic at `(10778,9762)`
+reported all four neighbors: three `not_free`, and the sole open exit
+`(10778,9763)` `blacklisted` after an earlier full-target failure. The current
+candidate separates `follow_detour` waypoint failure memory from full FOLLOW
+target failure memory, allowing that physically open exit to be tried once as
+an approach while still blacklisting a genuinely failed waypoint. The new
+only-exit regression and 86 focused tests pass. A source-matched local run at
+`C:\tmp\goblin-m1-detour-approach-live-20260923.json` captured 101 fresh
+server snapshots; the matching owning-client extraction at
+`C:\tmp\goblin-m1-detour-approach-client-20260923.json` contains 1,587 samples
+for online ID 1763, always `remote=false`, with 176 moving steps and a maximum
+observed step of 0.469 tiles. Goblin visibly followed outside the house, but
+the local sync had removed the temporary 3600-second idle override; server
+logs show FOLLOW/LOOT task switches during this run. It is therefore evidence
+of physical movement, not isolated blocked-FOLLOW recovery or the full live
+scenario 9 pass. The client trace flag was removed, and the disposable local
+client/server pair was stopped after capture; no idle override remains in the
+local bridge config. Milestone 1 remains open;
+production `.03`, GitHub main and Workshop remain untouched.
+
+2026-09-23 accepted local follow behavior: with `idle_seconds=3600` applied
+*after* local staging, `C:\tmp\goblin-m1-isolated-follow-20260923.json`
+captured 101 fresh server snapshots and
+`C:\tmp\goblin-m1-isolated-follow-client-20260923.json` captured 1,607
+owning-client samples (`remote=false`, maximum observed actor step 0.472
+tiles). Goblin followed over open ground, then stalled about 15 tiles behind
+the player. The client tried native character and alternate detour paths;
+those calls were accepted but the actor made no further progress. A later
+local diagnostic logged `native_state=ZombieIdleState pathing=false
+bPathfind=false has_path2=false should_move=true collided=false` at a blocked
+FOLLOW slot. The user then observed the practical behavior and explicitly
+accepted the current movement as-is. This is user acceptance of the current
+local build, **not** proof that specification scenario 9 (blocked-path
+recovery without teleport) passes. No path-state experiment was promoted.
+The temporary idle override and client trace flag were removed, and the
+disposable pair was stopped. Production `.03`, GitHub and Workshop were not
+changed.
 
 The dated checkpoint notes below are chronological and retain their at-the-time
 "incomplete" status; this current gate summary supersedes those earlier states.
@@ -1404,3 +1961,296 @@ prove the initialized mod creates/delivers/recreates pistols. See next checkpoin
   code; dismantling creates salvage before world removal and perform references
   ISInventoryPage. Neither full timed-action chain has run on a managed
   IsoZombie or passed two-client/save acceptance.
+
+## Current-source two-client follow sample — 2026-09-23
+
+- A disposable `goblin-local` server ran with server-side Storm and two ordinary
+  no-Storm clients, `rejoinfang_74` and `trailfang_74`. Both joined with distinct
+  named Goblins. This did not alter `.03`, GitHub, or Workshop.
+- Raw source-bound snapshots are in local test logs:
+  `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-open-terrain-active-20260923.json`
+  and `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-second-player-active-20260923.json`.
+  Both captures matched the staged Lua/JAR fingerprint before and after, with
+  zero read errors. They are raw evidence, **not** Milestone 1 acceptance.
+- Rejoinfang traversed 13.93 tiles while Rattlefang moved 12.80 tiles and
+  finished 2.81 tiles from the owner. Trailfang independently traversed 13.00
+  tiles while Gutterclaw moved 13.35 tiles and finished 1.36 tiles away.
+  The observed routes used the ordinary client's `Walk to` cursor (including
+  double-click), so this does not by itself prove the formal *running* gate.
+- While two clients were up, the background client process exited twice
+  without an obvious fatal line in the current `console.txt` or a matching
+  Windows Application event. The foreground client continued. Treat sustained
+  two-client stability and all other current-source live gates, especially
+  closed-door crossing and ownership handoff, as unverified. The accepted
+  follow implementation was not changed for this sample.
+- After this capture, the opt-in client trace gained native player
+  `isRunning()`/`isSprinting()` observations. Installed Build 42 vanilla Lua
+  uses these methods in `ISSearchManager.lua` and `ISBaseIcon.lua`; the Walk To
+  cursor instead starts `ISWalkToTimedAction`, which does not establish running.
+  The extractor now reports observed running-distance separately and treats
+  older traces without those fields as unknown, not running. Four focused
+  tests pass. Because this instrumentation changes a source hash, the two raw
+  captures above are historical to the current worktree and cannot by
+  themselves certify a current-source live gate; recapture with the opt-in
+  client flag and a genuinely running owner is required.
+
+## Current-source run-state live check — 2026-09-23
+
+- Re-staged the current worktree to a disposable `goblin-local` server with
+  server-side Storm, then joined as `rejoinfang_74` using one ordinary no-Storm
+  client. The opt-in native `isRunning()`/`isSprinting()` trace produced 1,732
+  matched samples for Rattlefang. Its summary reports a 7.07-tile net owner
+  displacement and 4.35-tile net Goblin displacement, with 735 moving Goblin
+  steps. The server's separate 59-snapshot capture had zero read errors and
+  matched the installed source fingerprint before and after.
+- Every sampled native player run state was false; observed running distance
+  was zero. The route was issued through the game's `Walk to` cursor, so this
+  is positive evidence that the cursor route is **not** a running-follow test.
+  Raw traces (rotated by the next client launch):
+  `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-run-native-20260923.json`
+  and `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-run-client-20260923.json`.
+- A second isolated, no-Storm client (`trailfang_74`) connected and loaded the
+  world, but its process exited immediately after the loading screen, before
+  an in-world actor/Goblin capture. Its console ended at `game loading took 18
+  seconds` without a fatal Lua line; no matching Windows Application event was
+  found. This repeats the earlier second-client instability, so two-client
+  replication and the formal running-follow gate remain open. No gameplay
+  code was changed, and no production or published installation was touched.
+
+The current-source Milestone 1 checker now requires native run/sprint states,
+continuous owning-client positions and a final Goblin gap no greater than five
+tiles for both running gates. The walking-only trace above fails those gates by
+design; the dated schema-1 record remains historical, not current acceptance.
+
+## Follow/idle stall investigation — 2026-09-23
+
+- The disposable local server and ordinary client reproduced repeated
+  `NAV_NATIVE_REPATH` calls against a stationary obstacle. An interrupted native
+  Idle/Face state now gets one direct recovery, followed by the existing
+  timeout/blacklist when no movement resumes; 129 focused Lua/work tests pass.
+- After restaging and restarting locally, `rejoinfang_74` walked out of a
+  fenced yard and across the road; the same Goblin followed to approximately
+  four tiles. A second account, `trailfang_74`, joined with its own Goblin.
+  The isolated second-client package was initially stale; it was then restaged
+  to the current worktree and rejoined. Neither client uses Storm.
+- This run also exposed a distinct autonomous-loot stall: rejoinfang's Goblin
+  stayed at one coordinate while many different nearby work approaches became
+  blocked. A cross-route 30-second physical-progress cutoff now ends that
+  chore and backs off autonomous loot for 60 seconds before retrying. This
+  subsequent change has **unit-test evidence only**; the running local pair
+  has not yet reloaded it.
+- Source-bound raw captures are in local test logs as
+  `m1-current-repath-two-client-20260923.json` and
+  `m1-current-repath-two-client-moving-20260923.json`. Both matched the staged
+  server/client source before and after, with zero read errors, but their
+  player samples remained stationary during the capture windows. These are
+  diagnostic snapshots, **not** running-follow or Milestone 1 acceptance.
+  The browser control reported new user input, so no further game-window
+  interaction was attempted. `.03`, GitHub, and Workshop remain untouched.
+
+## Follow/idle stall follow-up — 2026-09-23
+
+- Reloaded the first autonomous-loot progress cutoff on the disposable local
+  server and ordinary client. The live Goblin stopped making progress at
+  `10796.47,10067.50`; after 30 seconds the server logged `LOOT_BLOCKED`,
+  switched to FOLLOW, and the owning client physically moved him back to
+  approximately `10791.43,10054.51` without a position write. After the
+  60-second backoff, however, the new LOOT task restarted its patrol at
+  waypoint 1 and eventually returned to the same blocked area. This was a
+  partial recovery, not a complete freeze fix.
+- The patrol cursor now survives autonomous LOOT/FOLLOW handoffs for the same
+  stationary anchor. In the next live run, the blocked cycle used waypoints
+  1–3, recovered to FOLLOW, and resumed at waypoint 4 rather than waypoint 1.
+  That different route physically reached supplies: eight items were logged
+  as collected and deposited at the player. This verifies the route-memory
+  change in the local game, not merely in a fixture.
+- Moving the player then exposed a separate FOLLOW limit across a long white
+  fence. The owning client reported `NAV_BLOCKED task=FOLLOW` and
+  `FOLLOW_DETOUR_UNAVAILABLE ... expanded=192`; Goblin remained across the
+  fence. The local detour search was bounded to 12 tiles/192 nodes and only
+  enabled when the Goblin-player gap was at most 18 tiles. The source now
+  allows a 24-tile search/1,024 examined nodes, with a 32-tile activation
+  bound and a 5-second failed-search cache. Long-fence and long-idle-gap
+  fixture tests pass, but the exact fence route has **not yet passed a live
+  retest**. The latest disposable local client is running on this build.
+- One source-bound owning-client trace of the initial blocked-to-FOLLOW
+  recovery contains 2,107 position samples over 219 seconds, 677 physical
+  Goblin movement steps, and no native player running samples. It is a
+  diagnostic trace, not a running-follow or Milestone 1 acceptance record:
+  `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-client-stall-recovery-20260923.json`.
+- The most recent live client then recorded native player running while Goblin
+  followed. A whole-log extraction mixed two Goblin online IDs across a
+  rejoin gap and showed an invalid 108-tile apparent step; it is **not**
+  continuous-motion evidence. The extractor now supports filtering to one
+  native online ID. The source-bound, single-incarnation `21834` trace has
+  1,740 samples, 51.77 tiles of player movement while native run/sprint state
+  was true, 23.26 tiles net Goblin movement, a maximum physical Goblin step
+  of 0.48 tile, 119 ms maximum sampling interval, and a 3.26-tile final gap.
+  This supports a running FOLLOW segment but does not cover the exact blocked
+  fence route or replace the full two-client Milestone 1 checklist:
+  `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-native-run-incarnation-21834-20260923.json`.
+- A later local run (`2026-09-23_22-02_DebugLog.txt`, actor online ID 26904)
+  recovered from a blocked FOLLOW approach but froze again. At 22:08:11.604,
+  its trace identity changed from `goblin.primary.horse` to `online.26904` and
+  remained unconfirmed for 3,738 samples. This proves the client stopped
+  binding the actor to its roster; path recovery alone cannot fix that guard.
+  Installed `PersistentOutfits.setFallenHat` bytecode sets/clears `0x8000` in
+  `getPersistentOutfitID`, while the client had compared the entire value.
+  The comparison now ignores that clothing-state bit while retaining the
+  outfit, seed, and gender bits. Regression checks accept both hat states and
+  reject different seeds. Local logs now record raw outfit IDs on a mismatch
+  to distinguish this cause from any other identity loss. Live validation in
+  `2026-09-23_23-35_DebugLog.txt` recorded actor 4509 changing outfit state
+  from 14155917 to 14188685 (exactly 32768) at 23:37:17.611 while retaining
+  `goblin.primary.horse`; the clothing-state identity correction is verified.
+- That same run exposed a separate native path stall: at 23:38:25 and
+  23:38:37 Goblin remained at 10980,9730 with `PathFindState`, a non-null
+  Path2, and `should_move=true`. Installed bytecode shows that behavior
+  `cancel()` only sets a flag, whereas `PathFindState.exit` cancels the queued
+  request and resets finder progress. The bounded stuck retry now exits that
+  state before submitting its replacement route. Added regression coverage
+  checks exit-before-submit ordering; 168 focused Lua/work/client/transport
+  checks pass. The restarted local run (`2026-09-23_23-42_DebugLog.txt`,
+  actor 2378) exercised native repaths and resumed physical movement without
+  a NAV_BLOCKED or identity rejection in the captured interval. The
+  source-bound 131-second trace contains 1,251 samples, 303 moving steps,
+  13.90 tiles net actor displacement and a maximum 0.47-tile step:
+  `C:\Users\tomgr\Zomboid\Logs\logs_2026-09-23\m1-path-state-reset-2378.json`.
+  This is a short, single-client recovery check, not proof that all recurring
+  freezes are resolved or full Milestone 1 acceptance. Six extractor checks
+  also pass after accepting the new optional outfit diagnostics.
+- Longer observation contradicted a complete freeze fix: the same actor
+  logged blocked FOLLOW at 23:47:16 and 23:47:28 with zero deferred movement.
+  A diagnostic restart reproduced the curtain obstruction at 10979,9729:
+  the native actor was colliding, had a WALK animation with nonzero deferred
+  movement, but repeatedly targeted 10979,9726. Thus this work-route stall
+  is physical navigation, not an unreceived command. Server chat records
+  confirm CLOSE_CURTAINS and subsequent FOLLOW orders were accepted.
+- Coordinate work goals now use the existing bounded loaded-edge detour
+  search after native failure, with separate weak runtime cache and precise
+  destination reachability (not FOLLOW's three-tile acceptance radius).
+  The original world-operation target is unchanged. Native simulation
+  ownership, collision checks and no-teleport behavior are preserved.
+  Wall-route, sealed-route, job, transport and work checks: 201 pass.
+  This candidate is staged locally; actual same-house work-detour acceptance
+  is still pending. Production and published packages remain untouched.
+- The local work-detour retest could not enter play: the first connection
+  failed during startup, then a client-only retry was explicitly denied for
+  horse's saved credentials (`2026-09-23_23-58_DebugLog.txt`). The account was
+  not reset; the user was asked to connect through the game without sharing
+  a password. While awaiting that, the work-detour endpoint handling was
+  corrected for destinations that are not tile centres, preserving their
+  exact final coordinates. All 201 focused checks pass, including bounded
+  retries when no alternate loaded route exists. This final endpoint change
+  is source-only and still needs staging/restart before live acceptance.
+- 2026-09-24: staged the endpoint correction in the empty disposable server
+  and isolated client cache, then connected the existing `trailfang_74`
+  account without changing horse's credentials. One named Goblin spawned.
+  A source-bound 204-second ordinary-client smoke trace recorded 1,972
+  samples, 1,078 moving steps and a maximum 0.57-tile step; the server
+  transitioned from FOLLOW to idle LOOT and patrol waypoints. No blocked
+  route or work-detour event occurred, so this confirms movement on the new
+  build but does **not** verify the wall-detour branch or running follow.
+  Evidence: `C:\Users\tomgr\Zomboid-Goblin-Client2\Logs\work-detour-candidate-smoke-20260924.json`.
+  The account remains in-world for continued local testing.
+- Broader unittest discovery exposed three inventory-test failures: one
+  synthetic verifier fixture lacked the current JAR/native-run fields, and
+  two are caused by stale capability source-audit hashes (first reported:
+  GoblinTransport.lua). The synthetic temporary fixture was updated and its
+  targeted test passes; no real acceptance artifact was changed. The source
+  audit still needs review, and full-suite success is not claimed.
+- 2026-09-24 source-audit refresh: reviewed current transport preparation,
+  keyless-start postconditions, unlock permissions/physical approach, native
+  passenger transition changes, loot stall/transfer changes, and locomotion
+  recovery. Refreshed seven stale source references across six capability
+  records (four distinct files). All affected records remain incomplete;
+  historical multiplayer observations were not promoted to current proof.
+  Installed `IsoGridSquare` signatures were checked: the InventoryItem
+  AddWorldInventoryItem overload returns InventoryItem, consistent with the
+  exact-item delivery postcondition. No new live transfer claim is made.
+  Inventory tests: 19 pass. Inventory consistency: 64 records pass with
+  explicit proof gaps. Full discovery: 518 tests run successfully, with two
+  pre-existing expected failures. The ordinary local client remains running;
+  no NAV_BLOCKED or WORK_DETOUR event was recorded through 00:09:04, so the
+  particular wall-detour branch still lacks live acceptance.
+- Current-build transport smoke observation, 2026-09-24: while the user
+  controlled `trailfang_74`, the local server accepted natural-chat unlock
+  and start orders. For vehicle 254 it recorded `TRANSPORT_UNLOCK_RESULT`
+  (seat 0, unlocked=true) at st=511318282, boarding at st=511330287,
+  a native keyless attempt at st=511341982, and the observed engine-running
+  postcondition at st=511343786. The ordinary client visibly showed Goblin
+  aboard and the ignition conversation; runtime state independently retained
+  riding=true and transport_active=true. This is one-client smoke evidence,
+  not two-client lock/engine replication, reload, or wall-navigation proof.
+  Transport source SHA-256: cc94ea28400fef3e854f258d3434298196f6f9000e91440201e9cedeb8812b3a.
+  Source log: `C:\Users\tomgr\Zomboid\Logs\goblin-local-server.stdout.log`.
+  No client controls were issued once the user's vehicle test was observed.
+- Subsequent freeze diagnosis (2026-09-24 00:14:18 client log): online actor
+  6499 had native PathFindState, a valid Path2, bMoving=true and bPathfind=true,
+  but animation/action state `turnalerted` and deferred_length=0. Installed
+  vanilla turnalerted transitions require ActiveAnimFinishing; Goblin's
+  Bob_IdleRifle fallback does not emit it. GoblinGuard previously inspected
+  only the native FSM. Added a simulator-only ActionContext recovery from
+  exactly turnalerted to the group's idle state, preserving the current path.
+  Remote actors, normal navigation, and fence/window contexts are unchanged.
+  Regression covers ownership, path retention, unrelated contexts and missing
+  API behavior. Full suite: 519 tests, two existing expected failures.
+  Staged locally and restarted the disposable pair; live acceptance remains
+  pending. This does not certify the wall-detour branch or multiplayer gates.
+- Live correction to the preceding candidate: the 00:19 client run exposed
+  `attempted index: getGroup of non-table: zombie.characters.action.ActionContext`.
+  The public Java API is not Lua-exposed. Removed the entire direct-context
+  recovery and its misleading mocked-API regression. Installed AnimLayer
+  bytecode confirms onNonLoopedAnimFadeOut/onNonLoopedAnimFinished emit
+  ActiveAnimFinishing; vanilla turnalerted Default.xml sets m_Looped=false.
+  The Goblin fallback omitted that field. It now explicitly sets false and
+  stops on exit, retaining Bob_IdleRifle and its Goblin-only condition.
+  Added a packaged-XML contract regression plus a check against reintroducing
+  the unsupported Lua context call. All 60 focused Lua tests pass. Restarted
+  the disposable setup for this corrected candidate; no live pass yet.
+- The corrected candidate loaded in the 00:23 client run (online actor6094).
+  Client and server processes remain active; the user resumed vehicle control,
+  so no further UI inputs were sent. Boarding succeeded at st=512237056.
+  Through 00:24:27 there were no getGroup exceptions or NAV_BLOCKED events;
+  movement at that point was vehicle travel, not on-foot recovery evidence.
+  Added GoblinGuard and the turnalerted XML to current M1 source fingerprints
+  (17 files plus JAR), preventing reuse of evidence from the broken fallback.
+  All 33 acceptance/trace/inventory checks pass. No gate promoted to complete.
+- User acceptance of the corrected animation/pathing build: "perfect, fixed"
+  on 2026-09-24. The same local run recorded getting out at st=512286857,
+  back on foot at st=512287756, and a successful defensive shotgun hit at
+  st=512318063. No NAV_BLOCKED events appeared through that observation.
+  The reported freeze is accepted; do not keep changing this movement baseline
+  absent a new reproduction. This is not blanket completion of the wider V2
+  specification or the separate two-client milestone gates.
+- Current-source second-client attempt: ordinary no-Storm rejoinfang_74 client
+  PID4688 connected and reached Click to Start, then terminated at 00:28:10.
+  `hs_err_pid4688.log` identifies EXCEPTION_ACCESS_VIOLATION in glfw.dll+0x10fa1
+  under Display.processMessages/RenderThread, outside the Java VM. No causal
+  attribution to Goblin or UI automation is established. The first client and
+  server remained live. Retrying the second client without window automation;
+  this failed attempt does not establish a two-client gameplay pass.
+- The retry entered play at approximately 00:30:46. Live exact-state and
+  ordinary-client traces show rejoinfang_74 with online actor6215 and
+  trailfang_74 with actor6094, exactly one Goblin per player, each controlled
+  by its respective native client owner. The players are about 3,100 tiles
+  apart, so this is spawn/separate-ownership evidence only, not mutual
+  visibility, native handoff, or world-change replication. Source-bound raw
+  capture: `C:\Users\tomgr\Zomboid\Logs\m1-two-client-spawn-20260924.json`.
+  Requested an ordinary run/door/stair route from rejoinfang_74; no gameplay
+  code changed and no production or publication action occurred.
+- Current rejoinfang route observation: 39 exact-state snapshots captured
+  without read errors, then 1,469 owning-client samples extracted for actor6215
+  in `C:\Users\tomgr\Zomboid\Logs\m1-rejoinfang-route-client-20260924.json`.
+  Player running distance was 80.27 tiles; Goblin finished about 2.93 tiles
+  from the player. However, the maximum actor step was 33.83 tiles in a trace
+  with at most 212ms between samples. This is not continuous no-teleport
+  running-follow acceptance. Preserve the accepted gameplay baseline; do not
+  promote the entire trace merely because the final follow distance is good.
+  Closed-door and stairs are not proven by this position-only observation.
+- Correlation established: the 33.829-tile client jump between timestamp
+  1790224376630 and 1790224376732 matches server FOLLOW_REJOIN at
+  st=512750309, owner=rejoinfang_74, distance=31.2. It is companion catch-up,
+  not continuous native walking proof. No movement implementation was changed.
+  The confirmed ActionContext Lua exposure limitation and native non-looped
+  turnalerted lifecycle are now recorded in docs/PZ_REFERENCES.md.

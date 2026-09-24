@@ -35,7 +35,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "fcc24e822fff0894d23ba69a904ec25c846a0807febfbd81ea8c4a1d5244382a"
+    "sha256": "dc95788cfc91de373d1df77dcd6d44fa6c34768c85ff200a273f5b0cba2d4fe6"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -106,6 +106,22 @@
         "engine_tested": false
       },
       {
+        "command": "start vehicle",
+        "aliases": ["start car", "start engine", "ignition vehicle"],
+        "task": "START_VEHICLE",
+        "handler": "Brain.setTask",
+        "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "UNIT_TESTED"],
+        "engine_tested": false
+      },
+      {
+        "command": "unlock vehicle",
+        "aliases": ["unlock car", "unlock truck"],
+        "task": "UNLOCK_VEHICLE",
+        "handler": "Brain.setTask",
+        "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "UNIT_TESTED"],
+        "engine_tested": false
+      },
+      {
         "command": "open door",
         "aliases": [],
         "task": "OPEN_DOOR",
@@ -152,6 +168,48 @@
         "evidence": [
           "REPO_EXISTING"
         ],
+        "engine_tested": false
+      },
+      {
+        "command": "inspect base",
+        "aliases": [],
+        "task": "INSPECT_BASE",
+        "handler": "Brain.setTask",
+        "evidence": ["MILESTONE_4_FIXTURE_IMPLEMENTED"],
+        "engine_tested": false
+      },
+      {
+        "command": "maintain",
+        "aliases": ["maintain base"],
+        "task": "MAINTAIN_BASE",
+        "handler": "Brain.setTask",
+        "evidence": ["MILESTONE_4_FIXTURE_IMPLEMENTED_LIMITED"],
+        "engine_tested": false
+      },
+      {
+        "command": "dismantle furniture",
+        "aliases": [],
+        "task": "DISMANTLE",
+        "handler": "Brain.setTask",
+        "evidence": ["LUA_FIXTURE_ONLY_NATIVE_IsoZombie_UNVERIFIED"],
+        "engine_tested": false
+      },
+      {
+        "command": "track Base.Nails 50",
+        "aliases": [],
+        "task": null,
+        "handler": "Stockpiles.assign",
+        "semantic_arguments": "Case-sensitive exact installed Item.FullType and integer threshold 1..1000, bound to one nearby container in the owner's saved base; the separate explicit physical stockpile run currently supports Base.Nails only",
+        "evidence": ["LUA_FIXTURE_ONLY"],
+        "engine_tested": false
+      },
+      {
+        "command": "stockpile Base.Nails",
+        "aliases": [],
+        "task": "STOCKPILE",
+        "handler": "Brain.setTask",
+        "semantic_arguments": "Explicit online-owner run for one previously tracked exact installed item, bounded to nearby real sources and at most 20 deliveries",
+        "evidence": ["LUA_FIXTURE_ONLY_NO_LIVE_TRANSFER"],
         "engine_tested": false
       },
       {
@@ -216,6 +274,14 @@
         "evidence": [
           "REPO_EXISTING"
         ],
+        "engine_tested": false
+      },
+      {
+        "command": "fortify base",
+        "aliases": [],
+        "task": "FORTIFY_BASE",
+        "handler": "Brain.setTask",
+        "evidence": ["MILESTONE_4_FIXTURE_IMPLEMENTED"],
         "engine_tested": false
       },
       {
@@ -332,23 +398,30 @@
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "61b04a4f998e96b7952d48adb59252127493b9799f6c837b9168adc2e8d7bf92"
+      "sha256": "0abe30d3c1f8b8330b540a0f0a29eb8bee4f12508cbd1e2276806d6c59e29c79"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
       {"task": "EXIT_VEHICLE", "example": "Goblin, get out of the vehicle"},
       {"task": "ENTER_VEHICLE", "example": "Goblin, get in the car"},
+      {"task": "START_VEHICLE", "example": "Goblin, start the car", "semantic_payload": "owner must drive the same stopped vehicle with Goblin aboard; native key bypass only"},
+      {"task": "UNLOCK_VEHICLE", "example": "Goblin, unlock the car", "semantic_payload": "explicit owner command, nearest loaded locked vehicle within five tiles and safehouse policy"},
       {"task": "ATTACK", "example": "Goblin, kill that zombie"},
       {"task": "CLOSE_CURTAINS", "example": "Goblin, close the curtains"},
+      {"task": "INSPECT_BASE", "example": "Goblin, inspect the base", "semantic_payload": "read-only bounded survey of the saved loaded base house; partial coverage explicitly reported"},
+      {"task": "MAINTAIN_BASE", "example": "Goblin, maintain the base", "semantic_payload": "limited deterministic survey then material-backed window fortification; other defects reported as partial"},
+      {"task": "DISMANTLE", "example": "Goblin, dismantle this furniture", "semantic_payload": "explicit online owner only; exactly one nearby empty wooden single-tile object inside saved base"},
       {"task": "OPEN_WINDOW", "example": "Goblin, open the window"},
       {"task": "OPEN_DOOR", "example": "Goblin, open the door"},
       {"task": "GAIN_ACCESS", "example": "Goblin, gain access to the building", "semantic_payload": "building, room, yard, vehicle, or container; only an explicit deterministic breach phrase can authorize destructive window access"},
+      {"task": "GAIN_ACCESS", "example": "Goblin, access the yard", "semantic_payload": "yard destination only; destructive breach permission is never granted by natural chat"},
       {"task": "CRAFT", "example": "Goblin, craft 2 SawLogs", "semantic_payload": "recipe text plus bounded count"},
       {"task": "REPAIR_VEHICLE", "example": "Goblin, repair the engine", "semantic_payload": "all, engine or bodywork"},
       {"task": "FARM", "example": "Goblin, sow cabbage seeds", "semantic_payload": "plow, sow, water, harvest or tend plus optional crop"},
       {"task": "FOLLOW", "example": "Goblin, follow me"},
       {"task": "WAIT", "example": "Goblin, hold position"},
       {"task": "SET_BASE", "example": "Goblin, this is our base"},
+      {"task": "FORTIFY_BASE", "example": "Goblin, fortify the base", "semantic_payload": "saved base house; bounded exact-BuildingDef window scan; real plank and nail consumption"},
       {"task": "FORTIFY", "example": "Goblin, secure the base"},
       {"task": "BUILD", "example": "Goblin, build a crate", "semantic_payload": "crate, wall or fence plus optional north"},
       {"task": "RETURN_TO_BASE", "example": "Goblin, return to base"},
@@ -356,6 +429,7 @@
     ],
     "guards": [
       "Negated orders and what/why/how/are/do questions do not become deterministic jobs",
+      "Natural chat access selects a destination without breach permission; only the authenticated explicit breach command sets allow_breach",
       "No model-supplied coordinates, npc_id, task name or client owner is accepted",
       "A direct task is applied before the Qwen event and its applied/result flags are included so Qwen does not substitute or duplicate it"
     ],
@@ -373,28 +447,7 @@
   ],
   "proposed_goblin_chat": [
     {
-      "command": "inspect base",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
-      "command": "maintain",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
       "command": "sort",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
-      "command": "stockpile",
       "evidence": [
         "PROPOSED"
       ],

@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "kind": "pz-stage-reconciliation",
-  "export_timestamp": "2026-09-19T20:52:13.906230400Z",
+  "export_timestamp": "2026-09-23T13:20:03.600853800Z",
   "game_build": "42.20.4 b0bbce05d5",
-  "runtime_enabled_mods_fingerprint": "4f99f45372dfce785c7d6acddf62ae45333574a16575218e514548b24910596e",
-  "captured_selected_mods_fingerprint": "749a839d215ae7c2f6a4a57ec23fc17e8d5294c33995d067cedc48b7d7869bfa",
+  "runtime_enabled_mods_fingerprint": "c7fefb1cff630f72b8277acefdab7f796b55b62ed614edb9650e8ab854385b67",
+  "captured_selected_mods_fingerprint": "bcedf6fbc39474c125a8800771b1436f9675f45569c3230ed377a37b2bce1104",
   "captured_selected_mods": [
     {
       "mod_id": "storm-core-b42-dev",
-      "sha256": "01f248d8a86dd2a11c02c78a8c43ec7170f07072cf142beb36c3e2cfae94236b",
+      "sha256": "0261275167a45e5fbd7f0c67ed8b8ce42bb4e21bbe3c52cb0fa7e43065b3bd42",
       "roots": [
         {
           "bytes": 35149,
@@ -18,10 +18,10 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 19864319,
+          "bytes": 19962543,
           "file_count": 32,
           "path": "42",
-          "sha256": "8f49b27810cd0c7d748dcfb80f5552559a5f577b8de55e98be3f7a1b350d184d",
+          "sha256": "124f83da34c0bb0b442f0c179e1cc8cd88442b38b736ab630b6c89ec383ddbe0",
           "status": "PRESENT"
         }
       ]
@@ -228,20 +228,20 @@
     },
     {
       "mod_id": "AatheomEMVFSM",
-      "sha256": "5881a0be308f0153fa39ae06b3d4593dcdac3d4dc482ef29c588b691bf0cf90a",
+      "sha256": "3483d3e6b17fae014c54f78ee09e60241abc8344f9fd7e0749f1c07a69f0da18",
       "roots": [
         {
-          "bytes": 769968,
-          "file_count": 40,
+          "bytes": 783212,
+          "file_count": 41,
           "path": "common",
-          "sha256": "6ce87979b9902f61bf1ad4e731361343a483a9009f9412aa63ae45e2ca47fc95",
+          "sha256": "54cfd5221158114b48e0300d0211c86a8cad898824c66b3337a84d3cae640d58",
           "status": "PRESENT"
         },
         {
-          "bytes": 683651,
+          "bytes": 683402,
           "file_count": 5,
           "path": "42",
-          "sha256": "1789c959733289a291662b6cab59162b199322b259b7dd3134f6d9af2341ee99",
+          "sha256": "86716b33cc366f1b1639f73c650d323b621a50e8553ea1f2598c9c47ae0cade7",
           "status": "PRESENT"
         }
       ]
@@ -388,7 +388,7 @@
     },
     {
       "mod_id": "NeatUI_Framework",
-      "sha256": "faf48d5fea1482e853482280ebbcbfb101f5b311b0fd8ff81c528ccfe72d5fc0",
+      "sha256": "7bff81b59253508d858a94ef66733f5d5b415f8fe0b6005d54d9ada35ccd863d",
       "roots": [
         {
           "bytes": 388,
@@ -398,17 +398,17 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 2300528,
-          "file_count": 92,
+          "bytes": 2307712,
+          "file_count": 95,
           "path": "42",
-          "sha256": "1f190dc7e558e7847d3034085be8d790dc978fcd2786e8ee11d6ec5df0b45844",
+          "sha256": "6ae6d3846de5d8b2f490adfbdd516fa2debcf3dfeaf17d972f7abdea27412e33",
           "status": "PRESENT"
         }
       ]
     },
     {
       "mod_id": "CleanUI",
-      "sha256": "44d4853da21d039ab5bb5c2e7073d794d909063fd3c51a1c28ce60e48fd2e1b3",
+      "sha256": "5c68634e16933f4e83a81b8020a737183f018ba1a219435f16454ffd5d5588f7",
       "roots": [
         {
           "bytes": 4083,
@@ -418,10 +418,10 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 2176616,
+          "bytes": 2179942,
           "file_count": 158,
           "path": "42.19",
-          "sha256": "7fe27b932dc4b910840b3c6bba2d5ad272d6486ddc2a925d808b31d8dc5bf450",
+          "sha256": "ff0f6518a6f7a5911124ea2188fa9c07e3122ca6178228b4772852875af1c422",
           "status": "PRESENT"
         }
       ]
@@ -508,20 +508,20 @@
     },
     {
       "mod_id": "Neat_Crafting",
-      "sha256": "8100b3fe70243158da5ed4956594b89e0ea9c03924f30c59356ae242ef8488eb",
+      "sha256": "3e538a67c5a42d796a6f509cfe16d142e68d1b7a07a8e873b31beee477474578",
       "roots": [
         {
-          "bytes": 3523342,
-          "file_count": 211,
+          "bytes": 3918001,
+          "file_count": 268,
           "path": "common",
-          "sha256": "bd9d5390b05ba0052f8374e386d42fc9ac664e30a018f7a30761c431cdb80b38",
+          "sha256": "83c5af4ce2bdb5ad50126f867276eccd1b8a0af5c2f6482bb470e7f52b4940b0",
           "status": "PRESENT"
         },
         {
-          "bytes": 75664,
+          "bytes": 79279,
           "file_count": 7,
           "path": "42.13",
-          "sha256": "3672d6582f40eae4500ad1d38d217609b6ce18dfc2d7dbec39fdb91899dd5f47",
+          "sha256": "2b06ce41ffcc8bafbbec95daae56c807d6c8183dbae41101101d6165d9bf8591",
           "status": "PRESENT"
         }
       ]
@@ -868,7 +868,7 @@
     },
     {
       "mod_id": "BB_CommonSenseFix",
-      "sha256": "52d34edad062c9aa22f3feedcd07a9717ea2657af2e91cee247df25f8f6b76db",
+      "sha256": "9deee01f416cda6d87593ee5924d00f60e8be2c286f7a09d9e589aa7dcf63cb1",
       "roots": [
         {
           "bytes": 251,
@@ -878,17 +878,17 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 712415,
+          "bytes": 713282,
           "file_count": 184,
           "path": "42",
-          "sha256": "5d7746144ba1379547e65abbeea653f8ec9acffd525124438de76f4a43de2005",
+          "sha256": "aad181440a2f12f2db62d20c4a4468db8582e8a3de088840ad0a8b730cc60f10",
           "status": "PRESENT"
         }
       ]
     },
     {
       "mod_id": "PSR",
-      "sha256": "bbc4201fc257459968d7c0cb104c586e6550fca288f0bfe8903f165bf3fc22bd",
+      "sha256": "51805f6b73da468e7e29d08a6f4183f7bc06bbf6325ddf69d01868fe9ed55339",
       "roots": [
         {
           "bytes": 801250,
@@ -898,10 +898,10 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 3112684,
+          "bytes": 3130676,
           "file_count": 247,
           "path": "42.1",
-          "sha256": "75a8b7ca72ad2adf3119cd05ff3b20589950b50ec594befb765b577e9d83d0a3",
+          "sha256": "babe07007c6d1e2629f00b6fcdbb580fe38d230fba6d5c7fce49b51b0da7ecda",
           "status": "PRESENT"
         }
       ]
@@ -1188,7 +1188,7 @@
     },
     {
       "mod_id": "ExactMinuteClock",
-      "sha256": "a520c73a36e0a8a47412706df236104632d9a5aed3b4a35f093c6bb58b81849a",
+      "sha256": "d52c6f10800a376d0dea0507d97e674fcd3a485f5a4a2e64509622edf446f645",
       "roots": [
         {
           "bytes": 0,
@@ -1198,10 +1198,10 @@
           "status": "ABSENT"
         },
         {
-          "bytes": 136223,
+          "bytes": 137325,
           "file_count": 17,
           "path": "42",
-          "sha256": "afd7a34532c800f3d40455e7c0dbfd66a5b3a74c2cf282c0be03044219f4d097",
+          "sha256": "9aef3c17ddf1f4df285bbf0dec686c9cf4ec112d5cfcd145b59b233b96401789",
           "status": "PRESENT"
         }
       ]
@@ -1268,7 +1268,7 @@
     },
     {
       "mod_id": "CyesPushDoors",
-      "sha256": "14b95f727e65ca8c7de3e075f1bfcd831fb1074c805929b33e4f4193f45718da",
+      "sha256": "ba9781bb45d39c69d352bb969ad70cbcb4113281de35aa2190be0901a7d6fd94",
       "roots": [
         {
           "bytes": 2,
@@ -1278,10 +1278,10 @@
           "status": "PRESENT"
         },
         {
-          "bytes": 1186489,
-          "file_count": 42,
+          "bytes": 1233388,
+          "file_count": 44,
           "path": "42",
-          "sha256": "e2100f47251da029e706ac652c2f522196df8bbcef280add37d0e8ef8c03f112",
+          "sha256": "09a3b5ed46211cf0d7a2969362af2b8b57702ecfa74eb1c6b895fa225610fe63",
           "status": "PRESENT"
         }
       ]

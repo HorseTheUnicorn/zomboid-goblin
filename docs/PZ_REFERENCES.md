@@ -2,15 +2,16 @@
 
 Milestone 0's exact-runtime catalog and conservative compatibility inventory are
 **complete** as of 2026-09-19. See [the ledger](ABILITIES_V2_PROGRESS.md).
-Nothing in this document enables a new command or establishes engine acceptance;
-all sixty-one abilities remain incomplete pending their own physical multiplayer
-evidence.
+Nothing in this document enables a new command or establishes engine acceptance.
+The current inventory contains 64 abilities (27 existing, 37 proposed), with no
+current-worktree capability marked complete. Historical live acceptance is kept
+separate from proof for the changed source now in this worktree.
 
 The disposable `.03` copy resolved 5,397 items and 1,118 craft recipes plus the
 effective crop, vehicle, survival, fishing and moveable registries. Strict
 validation preserves two known fishing raw-reference exceptions rather than
-inventing an alias. The capability inventory contains 19 existing and 42
-proposed records with zero unclassified names. The command inventory separately
+inventing an alias. The current capability inventory contains 27 existing and
+37 proposed records with zero unclassified names. The command inventory separately
 records `/goblin`, deterministic natural language, proposed commands, Qwen
 intents, native API references, loopback administration and the audited absence
 of repository RCON integration.
@@ -32,7 +33,13 @@ discovery evidence, not proof of compatibility with the installed build.
 | UNSUPPORTED | Known incompatibility; do not expose to the planner. |
 
 These labels describe different evidence, not automatic promotion stages.
-No current M0 entry has earned ENGINE_TESTED.
+No current-worktree capability has an active completion certificate. A narrower
+OPEN_DOOR record still carries prior local engine-test evidence, but is not
+marked complete. The dated
+Milestone 1 and 2 acceptance files remain historical evidence: all six
+Milestone 1 source hashes and five of eight Milestone 2 source hashes differ
+from this worktree. Their scenario results must be revalidated before those
+milestones can be claimed complete for the current build.
 
 ## Registry discovery
 
@@ -112,7 +119,17 @@ managed IsoZombie, with before/after material and world state, authority handoff
 second-client observation, cancellation and restart checks. Export success alone
 does not satisfy any of those physical-action tests.
 
-## Loaded-content proof (19 September 2026)
+## Loaded-content proof (23 September 2026)
+
+The current reference export is bound to a 23 September exact copy of `.03`'s
+installed scripts and configured Workshop items. It supersedes the 19 September
+snapshot after changed configured Workshop roots were detected. The disposable
+server exported the loaded registry and its selected-content SHA-256 fingerprint
+is `c7fefb1cff630f72b8277acefdab7f796b55b62ed614edb9650e8ab854385b67`.
+No live registry export was attempted on the stopped production server. An
+unconfigured installed Workshop item also contained `GoblinSurvivor`; staging
+and reconciliation now select only the server's explicit `WorkshopItems` IDs,
+not every folder present under the Workshop cache.
 
 The disposable server now emits SHA256 provenance through installed
 `ZomboidFileSystem.getModIDs/getModDir/getModInfoForDir` and
@@ -220,3 +237,19 @@ retry safety and the complete managed-actor action lifecycle remain unresolved.
 Official [IsoThumpable](https://projectzomboid.com/modding/zombie/iso/objects/IsoThumpable.html)
 and [IsoGridSquare](https://projectzomboid.com/modding/zombie/iso/IsoGridSquare.html)
 pages document the native primitives, not Goblin compatibility.
+
+### Installed turnalerted lifecycle — 2026-09-24
+
+The installed `media/actiongroups/zombie/turnalerted/to_walktoward*.xml`
+transitions require `ActiveAnimFinishing`. Vanilla's corresponding AnimSets
+Default.xml is non-looping. Installed AnimLayer bytecode emits that event from
+`onNonLoopedAnimFadeOut` and `onNonLoopedAnimFinished`. Goblin's human fallback
+must also be non-looping; a looping idle can strand the action context while
+the native FSM already reports PathFindState and a valid path.
+
+Do not treat the public ActionContext API as Lua-callable. The local Build
+42.20.4 runtime returned the object but rejected indexing `getGroup` with
+`attempted index ... of non-table`. The attempted Lua recovery was removed;
+the packaged animation now follows the native completion lifecycle instead.
+User accepted the resulting local fix. This does not prove all other public
+ActionContext methods are exposed or establish a multiplayer milestone pass.

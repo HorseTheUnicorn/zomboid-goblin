@@ -35,7 +35,7 @@ class StageReconciliationTests(unittest.TestCase):
                       "export_timestamp": "fixture", "game_build": "fixture"}
 
     def run_reconcile(self, proof=None):
-        return reconcile(proof or self.proof, self.snapshot, self.runtime, self.helper)
+        return reconcile(proof or self.proof, self.snapshot, self.runtime, self.helper, ["123"])
 
     def test_only_explicit_helper_overlay_is_accepted(self):
         report = self.run_reconcile()
@@ -57,6 +57,18 @@ class StageReconciliationTests(unittest.TestCase):
             locate([self.mod], "not-installed", "42")
         with self.assertRaisesRegex(ValueError, "exactly one"):
             locate([self.mod, self.source], "GoblinSurvivor", "42")
+
+    def test_unconfigured_duplicate_workshop_item_is_ignored(self):
+        stray = self.snapshot / "steamapps/workshop/content/108600/124/mods/Goblin"
+        (stray / "42").mkdir(parents=True)
+        (stray / "42/mod.info").write_text("id=GoblinSurvivor\n", encoding="utf-8")
+        self.assertEqual(len(self.run_reconcile()["captured_selected_mods"]), 1)
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            reconcile(self.proof, self.snapshot, self.runtime, self.helper, ["123", "124"])
+
+    def test_missing_configured_workshop_item_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "missing from the snapshot"):
+            reconcile(self.proof, self.snapshot, self.runtime, self.helper, ["125"])
 
     def test_changed_vanilla_rejected(self):
         (self.snapshot / "media/lua/fixture.txt").write_text("changed", encoding="utf-8")

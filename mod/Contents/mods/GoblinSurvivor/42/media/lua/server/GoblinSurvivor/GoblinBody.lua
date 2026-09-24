@@ -413,6 +413,7 @@ local function navigationSnapshot(body, data)
     local nativeAuthority, nativeOwnerPlayer = nativeSimulationOwner(body)
     return {
         path_state = data.GoblinPathState or "idle",
+        current_task = data.GoblinTask,
         goal_type = data.GoblinNavigationGoalType,
         approach_target = data.GoblinCurrentApproach,
         progress_age_ms = data.GoblinLastProgressAt and math.max(0, timestamp-data.GoblinLastProgressAt) or nil,
@@ -427,6 +428,29 @@ local function navigationSnapshot(body, data)
         last_successful_movement_at = data.GoblinLastSuccessfulMovementAt,
         revision = tonumber(data.GoblinNavigationRevision) or 0
     }
+end
+
+local function baseReportSummary(data)
+    local report = data.GoblinBaseReport
+    if type(report) ~= "table" then return nil end
+    local summary = {
+        stale = report.stale == true, partial = report.partial == true,
+        timestamp_ms = tonumber(report.timestamp_ms),
+        squares_scanned = tonumber(report.squares_scanned) or 0,
+        squares_unloaded = tonumber(report.squares_unloaded) or 0,
+        squares_inaccessible = tonumber(report.squares_inaccessible) or 0,
+        missing_supplies = type(report.missing_supplies) == "table"
+            and report.missing_supplies.status or "UNKNOWN"
+    }
+    for _, category in ipairs({"unbarricaded_windows", "damaged_barricades",
+        "damaged_structures", "open_exterior_doors", "broken_windows",
+        "storage_nearly_full", "crops_needing_attention", "nearby_threats"}) do
+        summary[category] = tonumber(report[category]) or 0
+    end
+    local generator = report.generator_status
+    summary.generator_status = type(generator) == "table" and generator.status
+        or (type(generator) == "table" and #generator > 0 and "OBSERVED" or "UNKNOWN")
+    return summary
 end
 
 function Body.snapshot(body)
@@ -494,6 +518,7 @@ function Body.snapshot(body)
         loot_count = tonumber(data.GoblinLootCount) or 0,
         loot_status = data.GoblinLootStatus,
         base_set = data.GoblinBaseSet == true,
+        base_report = baseReportSummary(data),
         base_x = tonumber(data.GoblinBaseX),
         base_y = tonumber(data.GoblinBaseY),
         base_z = tonumber(data.GoblinBaseZ),

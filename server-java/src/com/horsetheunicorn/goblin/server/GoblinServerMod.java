@@ -9,6 +9,7 @@ import io.pzstorm.storm.mod.ZomboidMod;
 import io.pzstorm.storm.util.StormEnv;
 import zombie.Lua.LuaManager;
 import zombie.characters.IsoGameCharacter;
+import zombie.characters.IsoZombie;
 import zombie.entity.components.crafting.recipe.HandcraftLogic;
 import zombie.inventory.InventoryItem;
 import zombie.scripting.objects.Fixing;
@@ -42,13 +43,16 @@ public final class GoblinServerMod implements ZomboidMod {
             expose("goblinServerWriteFile", "writeBridge", String.class, String.class);
             expose("goblinServerInventorySave", "saveInventory", IsoGameCharacter.class, String.class);
             expose("goblinServerInventoryRestore", "restoreInventory", IsoGameCharacter.class, String.class);
+            LuaManager.exposer.exposeGlobalClassFunction(LuaManager.env, CompanionRejoin.class,
+                CompanionRejoin.class.getMethod("rejoin", IsoZombie.class, int.class, int.class, int.class),
+                "goblinServerRejoin");
             LuaManager.exposer.exposeGlobalClassFunction(LuaManager.env, CompanionJobs.class,
                 CompanionJobs.class.getMethod("craft", IsoGameCharacter.class, HandcraftLogic.class), "goblinServerCraft");
             LuaManager.exposer.exposeGlobalClassFunction(LuaManager.env, CompanionJobs.class,
                 CompanionJobs.class.getMethod("repair", IsoGameCharacter.class, InventoryItem.class, Fixing.class, Fixing.Fixer.class), "goblinServerRepair");
             LuaManager.exposer.exposeGlobalClassFunction(LuaManager.env, CompanionSeats.class,
                 CompanionSeats.class.getMethod("ready"), "goblinServerPassengerReady");
-            System.out.println("[GoblinSurvivor] SERVER_JAVA_READY inventory=native jobs=craft,repair atomic_ipc=true client_hooks=none");
+            System.out.println("[GoblinSurvivor] SERVER_JAVA_READY inventory=native jobs=craft,repair rejoin=native_authority atomic_ipc=true client_hooks=none");
             System.out.println("[GoblinSurvivor] PASSENGER_SEAT_GUARD ready="+CompanionSeats.ready());
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Goblin server API registration failed", error);

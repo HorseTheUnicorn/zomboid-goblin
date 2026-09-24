@@ -78,6 +78,8 @@ local function coarseCompanion(snapshot)
         persisted = snapshot.persisted == true,
         generation = snapshot.generation,
         base_set = snapshot.base_set == true,
+        -- Qwen receives only counts/status, never exact house coordinates or raw objects.
+        base_report = snapshot.base_report,
         friendly = true,
         protected = Config.protected == true,
         spawn_attempts = snapshot.spawn_attempts or 0,
@@ -198,10 +200,14 @@ function Telemetry.writeExact(force)
     end
     for _, snapshot in ipairs(Spawner.snapshotAll()) do
         if snapshot.body_present == true and snapshot.position ~= nil then
+            local navigation = snapshot.navigation or {}
             entities[#entities + 1] = {
                 entity_id = snapshot.npc_id,
                 kind = "goblin",
+                online_id = snapshot.online_id,
                 owner = snapshot.owner,
+                simulation_owner = navigation.simulation_owner,
+                native_owner_player = navigation.native_owner_player,
                 x = snapshot.position.x,
                 y = snapshot.position.y,
                 z = snapshot.position.z

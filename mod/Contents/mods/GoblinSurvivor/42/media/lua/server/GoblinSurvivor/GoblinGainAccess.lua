@@ -9,6 +9,7 @@ local Movement=require("GoblinSurvivor/GoblinMovement")
 local GainAccess={}
 local kinds={BUILDING=true,ROOM=true,YARD=true,VEHICLE=true,CONTAINER=true}
 local kindAliases={NEARBY_BUILDING="BUILDING",BASE="BUILDING",CURRENT_POSITION="ROOM",AREA="YARD"}
+local routeFields={"access_method","edge","window","breach","started_at","priority","score"}
 
 local function nowMs()
     return type(getTimestampMs)=="function" and getTimestampMs() or 0
@@ -32,7 +33,7 @@ local function copyRoute(route,kind,method,request)
     return {
         anchor=request.anchor,target_kind=kind,access_method=method,
         edge=route.edge,window=route.window==true,breach=route.breach==true,
-        started_at=route.started_at,priority=route.priority,
+        started_at=route.started_at,priority=route.priority,score=route.score,
         allow_breach=request.allow_breach==true,autonomous=request.autonomous==true,
         offline=request.offline==true
     }
@@ -125,12 +126,18 @@ function GainAccess.prepare(body,owner,payload)
     if not scope then return nil,scopeDetail end
     scope.include_open=true
     scope.actor=body
+    scope.all_routes=true
     local candidates={}
-    local door=Access.prepare(owner,false,preparedAt,scope)
-    if door then candidates[#candidates+1]=copyRoute(door,kind,"DOOR",request) end
+    local breachRoute
+    local _,_,doors=Access.prepare(owner,false,preparedAt,scope)
+    for _,door in ipairs(doors or {}) do
+        candidates[#candidates+1]=copyRoute(door,kind,"DOOR",request)
+    end
     if kind~="YARD" then
-        local window=Access.prepare(owner,true,preparedAt,scope)
-        if window then candidates[#candidates+1]=copyRoute(window,kind,"WINDOW",request) end
+        local _,_,windows=Access.prepare(owner,true,preparedAt,scope)
+        for _,window in ipairs(windows or {}) do
+            candidates[#candidates+1]=copyRoute(window,kind,"WINDOW",request)
+        end
     end
     if kind=="YARD" then
         local fence=Access.prepareFence(owner,preparedAt,scope)
@@ -138,12 +145,61 @@ function GainAccess.prepare(body,owner,payload)
     end
     if request.allow_breach and kind~="YARD" then
         local breach=Access.prepareBreachWindow(owner,preparedAt,scope)
-        if breach then candidates[#candidates+1]=copyRoute(breach,kind,"BREACH_WINDOW",request) end
+        if breach then
+            breachRoute=copyRoute(breach,kind,"BREACH_WINDOW",request)
+            candidates[#candidates+1]=breachRoute
+        end
     end
-    table.sort(candidates,function(a,b) return (a.priority or 99)<(b.priority or 99) end)
+    table.sort(candidates,function(a,b)
+        local ap,bp=a.priority or 99,b.priority or 99
+        if ap~=bp then return ap<bp end
+        return (a.score or ap*100000)<(b.score or bp*100000)
+    end)
+    if #candidates>16 then
+        for index=#candidates,17,-1 do table.remove(candidates,index) end
+        -- Explicitly authorized breach remains a last resort even when many
+        -- ordinary entrances exist, while the persisted route set stays small.
+        if breachRoute and candidates[16]~=breachRoute then candidates[16]=breachRoute end
+    end
     local selected=candidates[1]
     if not selected then return nil,"no supported access route is loaded in the target scope" end
+    -- Preserve only the already-authorized primitive route descriptors. A
+    -- nearby open door can be less destructive yet unreachable from this side
+    -- of a yard; failing that route must not discard a viable low fence.
+    selected.alternates={}
+    for index=2,#candidates do
+        local alternate={}
+        for _,field in ipairs(routeFields) do alternate[field]=candidates[index][field] end
+        selected.alternates[#selected.alternates+1]=alternate
+    end
     return selected,"using least-destructive access method "..string.lower(selected.access_method)
+end
+
+local recoverable={NO_PATH=true,TARGET_UNLOADED=true,LOCKED=true,BLOCKED=true}
+local runtimeFields={"access_opened","cross_from","cross_approach_started_at","cross_started_at",
+    "fence_from","fence_at","access_approach_edge","access_approach_side",
+    "access_approach_switched","access_approach_best","access_approach_progress_at",
+    "fence_approach_edge","fence_approach_started_at","fence_approach_side",
+    "fence_approach_switched","fence_approach_best","fence_approach_progress_at"}
+
+local function tryAlternate(body,payload,runtime,now,done,success,detail,code)
+    if not done or success or not recoverable[code] or payload.access_method=="BREACH_WINDOW"
+        or type(payload.alternates)~="table" or #payload.alternates==0 then
+        return done,success,detail,code
+    end
+    local nextRoute=table.remove(payload.alternates,1)
+    if type(nextRoute)~="table" or type(nextRoute.access_method)~="string" then
+        return true,false,"saved alternate access route is invalid","TARGET_CHANGED"
+    end
+    local previous=payload.access_method
+    for _,field in ipairs(routeFields) do payload[field]=nextRoute[field] end
+    payload.started_at=now
+    for _,field in ipairs(runtimeFields) do runtime[field]=nil end
+    Access.clearApproach(body)
+    Movement.clear(body)
+    print("[GoblinSurvivor] ACCESS_ROUTE_FALLBACK owner="..tostring(Body.owner(body))
+        .." from="..previous.." to="..payload.access_method.." reason="..code)
+    return false,true,"trying alternate "..string.lower(payload.access_method).." route","MOVING_TO_TARGET"
 end
 
 function GainAccess.update(body,payload,runtime,now)
@@ -157,14 +213,20 @@ function GainAccess.update(body,payload,runtime,now)
         return true,success,detail,success and "COMPLETE" or failureCode(detail)
     end
     if method=="DOOR" or method=="WINDOW" then
-        if runtime.access_opened==true then return crossOpenedEdge(body,payload,runtime,now) end
+        if runtime.access_opened==true then
+            return tryAlternate(body,payload,runtime,now,crossOpenedEdge(body,payload,runtime,now))
+        end
         local done,success,detail=Access.perform(body,payload,now,runtime)
         if not done then return false,success,detail,"MOVING_TO_TARGET" end
-        if not success then return true,false,detail,failureCode(detail) end
+        if not success then
+            return tryAlternate(body,payload,runtime,now,true,false,detail,failureCode(detail))
+        end
         runtime.access_opened=true
-        return crossOpenedEdge(body,payload,runtime,now)
+        return tryAlternate(body,payload,runtime,now,crossOpenedEdge(body,payload,runtime,now))
     end
-    if method=="FENCE" then return Access.performFence(body,payload,runtime,now) end
+    if method=="FENCE" then
+        return tryAlternate(body,payload,runtime,now,Access.performFence(body,payload,runtime,now))
+    end
     if method=="BREACH_WINDOW" then
         if runtime.access_opened==true then return crossOpenedEdge(body,payload,runtime,now) end
         local done,success,detail,code=Access.performBreachWindow(body,payload,runtime,now)

@@ -21,7 +21,10 @@ local function targetFor(body, record, timestamp)
         local owner = findOwner(body)
         if not owner then return nil, 0, "owner offline" end
         local target, gap, navigation = Motion.followGoal(body, owner, timestamp)
-        return target, gap, target and "pathing" or "arrived", owner, navigation
+        if target then return target, gap, "pathing", owner, navigation end
+        local key = navigation and navigation.goal_key
+        local arrived = key == "arrived" or (type(key) == "string" and string.match(key,"^slot:%d+$"))
+        return nil, gap, arrived and "arrived" or "follow position unavailable", owner, navigation
     end
     local target = record.payload
     if record.task == Constants.TASK.RETURN_TO_BASE then
@@ -29,12 +32,17 @@ local function targetFor(body, record, timestamp)
         if not data or not data.GoblinBaseSet then return nil, 0, "base unavailable" end
         target = { x = data.GoblinBaseX, y = data.GoblinBaseY, z = data.GoblinBaseZ }
     end
-    if type(target.x) ~= "number" or type(target.y) ~= "number" or type(target.z) ~= "number" then
+    if not Motion.validPoint(target) then
         return nil, 0, "target unavailable"
     end
     local point = Body.position(body)
+    if not Motion.validPoint(point) then return nil, 0, "position unavailable" end
     local gap = Motion.distance(point, target)
-    if point and math.floor(point.z) == math.floor(target.z) and gap <= (tonumber(record.payload.radius) or 1.5) then
+    local radius = record.payload.radius == nil and 1.5 or tonumber(record.payload.radius)
+    if not radius or radius ~= radius or radius < 0 or radius > 10 then
+        return nil, 0, "target unavailable"
+    end
+    if math.floor(point.z) == math.floor(target.z) and gap <= radius then
         return nil, gap, "arrived"
     end
     return target, gap, "pathing"
@@ -61,7 +69,15 @@ function Movement.command(body, task, payload, scope)
     -- outside the task payload so Body.setTask/ModData never serializes Java
     -- userdata.  House jobs pass it back on each movement command.
     Movement.active[body] = { task = task, payload = payload or {}, scope = scope }
-    return Movement.update(body)
+    local ok, detail = Movement.update(body)
+    if not ok and detail == "position unavailable" then
+        return true, "movement queued; waiting for Goblin position"
+    end
+    if task == Constants.TASK.FOLLOW and not ok
+        and (detail == "owner offline" or detail == "follow position unavailable") then
+        return true, "follow queued; waiting for owner or world data"
+    end
+    return ok, detail
 end
 
 function Movement.update(body, timestamp)
@@ -71,7 +87,17 @@ function Movement.update(body, timestamp)
     timestamp = timestamp or getTimestampMs()
     local target, gap, detail, owner, navigation = targetFor(body, record, timestamp)
     if not target then
-        if record.task==Constants.TASK.FOLLOW and detail=="arrived" then record.payload.rejoin_run=nil end
+        if record.task == Constants.TASK.FOLLOW or detail == "position unavailable" then
+            if record.goal or record.moveType ~= Constants.MOVE_TYPE.IDLE then Motion.stop(body) end
+            record.goal, record.moveType = nil, Constants.MOVE_TYPE.IDLE
+            local data = Body.data(body)
+            if data then data.GoblinMovementGoal = nil end
+            Body.setPhysicalState(body,Constants.PHYSICAL.IDLE,Constants.MOVE_TYPE.IDLE,Constants.COMBAT.NONE)
+            if record.task == Constants.TASK.FOLLOW and detail == "arrived" then
+                record.payload.rejoin_run = nil
+            end
+            return detail == "arrived", detail
+        end
         Movement.clear(body)
         return detail == "arrived", detail
     end

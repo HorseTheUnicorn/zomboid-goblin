@@ -44,6 +44,13 @@ function Capabilities.serializable(value)
     return primitive(value,{},0,{count=0})
 end
 
+local function copyPrimitive(value)
+    if type(value)~="table" then return value end
+    local copy={}
+    for key,child in pairs(value) do copy[key]=copyPrimitive(child) end
+    return copy
+end
+
 function Capabilities.result(done,success,code,detail,progress)
     if type(done)~="boolean" or type(success)~="boolean" then
         error("capability result requires boolean done/success")
@@ -115,10 +122,14 @@ end
 function Capabilities.requirements(name,payload)
     local definition=registry[name]
     if not definition then return nil end
-    local value=type(definition.requirements)=="function"
-        and definition.requirements(payload or {}) or definition.requirements or {}
+    local value=definition.requirements or {}
+    if type(value)=="function" then
+        local ok,computed=pcall(value,payload or {})
+        if not ok then return nil end
+        value=computed
+    end
     if not Capabilities.serializable(value) then return nil end
-    return value
+    return copyPrimitive(value)
 end
 
 function Capabilities.prepare(name,body,owner,payload)
@@ -131,17 +142,25 @@ function Capabilities.prepare(name,body,owner,payload)
         if allowed~=true then return nil,boundedDetail(detail or "capability cannot prepare") end
     end
     local ran,prepared,detail=pcall(definition.prepare,body,owner,payload or {})
-    if not ran then return nil,"capability preparation failed" end
+    if not ran then
+        if type(print)=="function" then
+            print("[GoblinSurvivor] CAPABILITY_PREPARE_ERROR task="..tostring(name)
+                .." error="..tostring(prepared))
+        end
+        return nil,"capability preparation failed"
+    end
     if prepared==nil then return nil,boundedDetail(detail) end
     if not Capabilities.serializable(prepared) then
         return nil,"capability produced a non-serializable job payload"
     end
-    return prepared,boundedDetail(detail)
+    return copyPrimitive(prepared),boundedDetail(detail)
 end
 
-local function validResult(value)
-    if type(value)~="table" then return false end
-    return pcall(Capabilities.result,value.done,value.success,value.code,value.detail,value.progress)
+local function canonicalResult(value)
+    if type(value)~="table" then return nil end
+    local ok,result=pcall(Capabilities.result,value.done,value.success,
+        value.code,value.detail,value.progress)
+    return ok and result or nil
 end
 
 function Capabilities.update(name,body,payload,now)
@@ -154,22 +173,34 @@ function Capabilities.update(name,body,payload,now)
     local runtime=Capabilities.active[body]
     if runtime and runtime.task~=name then Capabilities.cancel(body);runtime=nil end
     if not runtime then runtime={task=name,startedAt=now,skipped={}};Capabilities.active[body]=runtime end
+    -- A duplicate tick must not repeat a completed or partially failed native
+    -- operation. Jobs.clear/cancel marks the boundary for an explicit new job.
+    local terminal=runtime.last_result
+    if terminal and terminal.done then
+        return Capabilities.result(terminal.done,terminal.success,terminal.code,
+            terminal.detail,terminal.progress)
+    end
     local timeout=tonumber(definition.timeout_ms) or 300000
     if type(now)=="number" and type(runtime.startedAt)=="number" and now-runtime.startedAt>timeout then
         local result=Capabilities.result(true,false,"TIMEOUT",
             "job stopped after five minutes; check materials and access, then retry",0)
-        runtime.last_result=result;return result
+        runtime.last_result=result
+        return Capabilities.result(result.done,result.success,result.code,result.detail,result.progress)
     end
     local ran,result=pcall(definition.update,body,payload,runtime,now)
-    if not ran or not validResult(result) then
+    local canonical=ran and canonicalResult(result) or nil
+    if not canonical then
         if type(print)=="function" then
             print("[GoblinSurvivor] CAPABILITY_ERROR task="..name
                 .." detail="..boundedDetail(ran and "invalid structured result" or result))
         end
         result=Capabilities.result(true,false,"ENGINE_ERROR",
             "the native job failed; I stopped to avoid repeating a partial operation",0)
+    else
+        result=canonical
     end
-    runtime.last_result=result;return result
+    runtime.last_result=result
+    return Capabilities.result(result.done,result.success,result.code,result.detail,result.progress)
 end
 
 function Capabilities.cancel(body,nextName)
@@ -187,10 +218,12 @@ function Capabilities.snapshot(body)
     local runtime=Capabilities.active[body]
     if not runtime then return nil end
     local definition=registry[runtime.task]
-    local result={task=runtime.task,started_at=runtime.startedAt,result=runtime.last_result}
+    local last=runtime.last_result
+    local result={task=runtime.task,started_at=runtime.startedAt,
+        result=last and Capabilities.result(last.done,last.success,last.code,last.detail,last.progress) or nil}
     if definition and type(definition.snapshot)=="function" then
         local ok,extra=pcall(definition.snapshot,body,runtime)
-        if ok and Capabilities.serializable(extra) then result.runtime=extra end
+        if ok and Capabilities.serializable(extra) then result.runtime=copyPrimitive(extra) end
     end
     return result
 end

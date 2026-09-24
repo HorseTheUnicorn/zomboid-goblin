@@ -1,8 +1,13 @@
 -- Engine-facing inventory and reach checks shared by looting and construction.
 local Body = require("GoblinSurvivor/GoblinBody")
+local Config = require("GoblinSurvivor/Config")
 local Movement = require("GoblinSurvivor/GoblinMovement")
 local Motion = require("GoblinSurvivor/GoblinLocomotion")
-local World = { approaches = setmetatable({}, { __mode = "k" }) }
+local Policy = require("GoblinSurvivor/GoblinAccessPolicy")
+local World = {
+    approaches = setmetatable({}, { __mode = "k" }),
+    pendingMaterials = setmetatable({}, { __mode = "k" })
+}
 
 function World.call(object, method, ...)
     if object == nil then return false, nil end
@@ -15,8 +20,25 @@ local call = World.call
 function World.values(list)
     local result = {}
     local _, n = call(list, "size")
-    for i = 0, (tonumber(n) or 0) - 1 do
-        local _, value = call(list, "get", i)
+    n = tonumber(n) or 0
+    if n <= 0 then return result end
+    local indexed, first = call(list, "get", 0)
+    if indexed then
+        if first then result[#result+1] = first end
+        for i = 1, n - 1 do
+            local _, value = call(list, "get", i)
+            if value then result[#result+1] = value end
+        end
+        return result
+    end
+    -- IsoCell.getVehicles() is a java.util.Set in the installed game build.
+    -- Unlike inventory ArrayLists it has size(), but no indexed get().
+    local _, iterator = call(list, "iterator")
+    for _ = 1, n do
+        local checked, hasNext = call(iterator, "hasNext")
+        if not checked or hasNext ~= true then break end
+        local got, value = call(iterator, "next")
+        if not got then break end
         if value then result[#result+1] = value end
     end
     return result
@@ -33,18 +55,43 @@ function World.point(square)
     return { x = square:getX()+0.5, y = square:getY()+0.5, z = square:getZ() }
 end
 
+local function edgeClear(from, target)
+    local checked, blocked = call(from, "isBlockedTo", target)
+    if not checked or blocked ~= false then return false end
+    local dx, dy = target:getX() - from:getX(), target:getY() - from:getY()
+    if math.abs(dx) ~= 1 or math.abs(dy) ~= 1 then return true end
+    -- A diagonal edge alone can appear clear even when both cardinal ways
+    -- around a corner cross a wall. At least one two-edge route must exist.
+    local cell = getCell()
+    if not cell then return false end
+    for _, offset in ipairs({ { dx, 0 }, { 0, dy } }) do
+        local side = cell:getGridSquare(from:getX() + offset[1], from:getY() + offset[2], from:getZ())
+        local firstOK, firstBlocked = call(from, "isBlockedTo", side)
+        local secondOK, secondBlocked = call(side, "isBlockedTo", target)
+        if side and firstOK and firstBlocked == false and secondOK and secondBlocked == false then
+            return true
+        end
+    end
+    return false
+end
+
 function World.reachable(body, square)
     local here = World.square(Body.position(body))
     if not here or not square or here:getZ() ~= square:getZ() then return false end
     if math.abs(here:getX()-square:getX()) > 1 or math.abs(here:getY()-square:getY()) > 1 then return false end
     if here == square then return true end
-    local ok, blocked = call(here, "isBlockedTo", square)
-    return ok and blocked == false
+    return edgeClear(here, square)
 end
 
 local function squareOccupied(square, body)
-    local objects = World.values(select(2, call(square, "getMovingObjects")))
-    for _, object in ipairs(objects) do if object ~= body then return true end end
+    local gotList, objects = call(square, "getMovingObjects")
+    local gotSize, size = call(objects, "size")
+    if not gotList or not objects or not gotSize or type(size) ~= "number"
+        or size ~= math.floor(size) or size < 0 or size > 10000 then return true end
+    for index = 0, size - 1 do
+        local gotObject, object = call(objects, "get", index)
+        if not gotObject or not object or object ~= body then return true end
+    end
     return false
 end
 
@@ -68,13 +115,12 @@ local function candidates(body, target, ring, now)
             if ring == 0 or math.max(math.abs(dx), math.abs(dy)) == ring then
                 local square = getCell():getGridSquare(target:getX()+dx, target:getY()+dy, target:getZ())
                 local freeOK, free = call(square, "isFree", false)
-                local _, fire = call(square, "haveFire")
+                local fireOK, fire = call(square, "haveFire")
                 local clear = ring > 1 or square == target
                 if ring == 1 and square ~= target then
-                    local clearOK, blocked = call(square, "isBlockedTo", target)
-                    clear = clearOK and blocked == false
+                    clear = edgeClear(square, target)
                 end
-                if square and freeOK and free == true and fire ~= true and clear
+                if square and freeOK and free == true and fireOK and fire == false and clear
                     and not squareOccupied(square, body) then
                     local point = World.point(square)
                     local key = targetKey(square)
@@ -111,12 +157,11 @@ local function candidateValid(body, target, candidate, now)
     local square=getCell():getGridSquare(candidate.square:getX(),candidate.square:getY(),candidate.square:getZ())
     if square~=candidate.square then return false end
     local freeOK,free=call(square,"isFree",false)
-    local _,fire=call(square,"haveFire")
-    if not freeOK or free~=true or fire==true or squareOccupied(square,body)
+    local fireOK,fire=call(square,"haveFire")
+    if not freeOK or free~=true or not fireOK or fire~=false or squareOccupied(square,body)
         or Motion.isBlacklisted(body,candidate.key,now,"approach") then return false end
     if candidate.ring==1 and square~=target then
-        local clearOK,blocked=call(square,"isBlockedTo",target)
-        if not clearOK or blocked~=false then return false end
+        if not edgeClear(square,target) then return false end
     end
     return true
 end
@@ -143,7 +188,7 @@ function World.approach(body, square, now)
         end
     end
     if state.chosen and not candidateValid(body,square,state.chosen,now) then
-        state.chosen,state.staging=nil,nil
+        state.chosen,state.staging,state.progressPoint,state.progressAt=nil,nil,nil,nil
     end
     -- Keep one accepted approach while it remains valid. Re-scoring from the
     -- actor's new position every tick makes the best radius-2 point orbit the
@@ -152,8 +197,24 @@ function World.approach(body, square, now)
     if not candidate then
         candidate,reason=World.approachCandidate(body,square,now,not state.staged)
         state.chosen=candidate
+        state.progressPoint,state.progressAt=Body.position(body),now
     end
     if not candidate then return false, reason end
+    -- On a dedicated server the nearby client often owns this IsoZombie's
+    -- native path. Motion.drive then reports "delegated", so only the server's
+    -- observed position can prove that the chosen work approach is advancing.
+    -- Blacklist a stalled square and let the next tick select an alternate.
+    if not Motion.controls(body) then
+        local current=Body.position(body)
+        if current and state.progressPoint and Motion.distance(current,state.progressPoint)>=0.25 then
+            state.progressPoint,state.progressAt=current,now
+        elseif state.progressAt and now-state.progressAt>=2*Config.stuckTimeoutSeconds*1000 then
+            Motion.blacklist(body,candidate.key,"delegated work approach made no progress",now,"approach")
+            state.chosen,state.staging,state.progressPoint,state.progressAt=nil,nil,nil,nil
+            Movement.clear(body)
+            return false,"retrying alternate work approach"
+        end
+    end
     if candidate.ring > 1 then state.staging = candidate.point else state.staging = nil; state.staged = false end
     local nearest = candidate.point
     nearest.radius = 0.45
@@ -163,37 +224,51 @@ function World.approach(body, square, now)
     nearest.blacklist_kind = "approach"
     local active = Movement.snapshot(body)
     local goal = active and active.goal
+    local ok, detail
     if not goal or goal.x ~= nearest.x or goal.y ~= nearest.y or goal.z ~= nearest.z then
-        Movement.command(body, "MOVE_TO", nearest)
+        ok, detail = Movement.command(body, "MOVE_TO", nearest)
     else
-        local ok, detail = Movement.update(body, now)
-        if not ok and detail and string.find(detail, "progress") then
+        ok, detail = Movement.update(body, now)
+    end
+    if not ok then
+        if detail == "native path rejected" or detail == "no progress after native repath"
+            or detail == "temporarily blacklisted route" then
             Motion.blacklist(body, candidate.key, detail, now, "approach")
-            state.chosen,state.staging=nil,nil
+            state.chosen, state.staging = nil, nil
+            return false, "retrying alternate work approach"
         end
+        return false, detail or "work approach unavailable"
     end
     return false, candidate.reason == "radius-2 staging approach"
         and "walking to alternate work approach" or "walking to supplies/work"
 end
 
-function World.sources(center, radius, accept)
+function World.sources(center, radius, accept, body)
     local found = {}
     for dx = -radius, radius do
         for dy = -radius, radius do
             local square = World.square({x=center.x+dx,y=center.y+dy,z=center.z})
             if square then
+                local allowed = not body or Policy.access(body,
+                    { getSquare = function() return square end })
+                if allowed then
                 for _, object in ipairs(World.values(select(2, call(square, "getWorldObjects")))) do
                     local _, item = call(object, "getItem")
-                    if item and accept(item) then found[#found+1]={square=square,world=object,item=item} end
+                    if item and accept(item) then
+                        found[#found+1]={square=square,world=object,item=item}
+                    end
                 end
                 for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
                     local _, locked = call(object, "isLocked")
                     local _, container = call(object, "getContainer")
                     if container and not locked then
                         for _, item in ipairs(World.items(container)) do
-                            if accept(item) then found[#found+1]={square=square,container=container,item=item} end
+                            if accept(item) then
+                                found[#found+1]={square=square,object=object,container=container,item=item}
+                            end
                         end
                     end
+                end
                 end
             end
         end
@@ -210,33 +285,76 @@ function World.has(container, item)
     return false
 end
 
+-- Unlike has(), this distinguishes an absent item from an unreadable list.
+-- Transfer decisions must never use a failed read as proof of absence.
+function World.containsExact(container, item)
+    local native, present = call(container, "contains", item)
+    if native and type(present) == "boolean" then return present end
+    local gotItems, items = call(container, "getItems")
+    local gotSize, size = call(items, "size")
+    if not gotItems or not items or not gotSize or type(size) ~= "number"
+        or size ~= math.floor(size) or size < 0 or size > 10000 then return nil end
+    local found = false
+    for index = 0, size-1 do
+        local gotItem, current = call(items, "get", index)
+        if not gotItem or not current then return nil end
+        if current == item then found = true end
+    end
+    return found
+end
+
 function World.take(body, source)
     if not World.reachable(body, source.square) then return false end
+    local target = source.container and source.object or source.world
+    if not target or not Policy.access(body,
+        { getSquare = function() return source.square end }) then return false end
+    local listMethod = source.container and "getObjects" or "getWorldObjects"
+    local present = false
+    for _, object in ipairs(World.values(select(2,call(source.square,listMethod)))) do
+        if object == target then present = true; break end
+    end
+    if not present then return false end
+    if source.container then
+        local _, locked = call(target, "isLocked")
+        if locked == true then return false end
+        local okContainer, liveContainer = call(target,"getContainer")
+        if not okContainer or liveContainer ~= source.container then return false end
+    end
     local inv, item = World.inventory(body), source.item
     local roomOK, room = call(inv, "hasRoomFor", body, item)
     if not roomOK or room ~= true then return false end
     if source.container then
-        if not World.has(source.container, item) then return false end
-        source.container:Remove(item)
-        if World.has(source.container,item) then return false end
+        if World.containsExact(source.container, item) ~= true then return false end
+        local removed = call(source.container, "Remove", item)
+        if not removed or World.containsExact(source.container,item) ~= false then return false end
     else
         local _, current = call(source.world, "getSquare")
         if current ~= source.square then return false end
     end
     local added, value = call(inv, "AddItem", item)
-    if not added or value == nil or value == false then
-        if source.container then source.container:AddItem(item) end
+    local arrived = World.containsExact(inv, item)
+    if not added or value == nil or value == false or arrived ~= true then
+        if source.container and arrived == false
+            and World.containsExact(source.container,item) == false then
+            call(source.container, "AddItem", item)
+        end
         return false
     end
+    local sourceSynced = true
     if source.container then
-        if type(sendRemoveItemFromContainer) == "function" then sendRemoveItemFromContainer(source.container,item) end
+        sourceSynced = type(sendRemoveItemFromContainer) == "function"
+            and pcall(sendRemoveItemFromContainer, source.container, item)
     else
         source.square:transmitRemoveItemFromSquare(source.world)
         source.world:removeFromWorld()
         source.world:removeFromSquare()
         item:setWorldItem(nil)
     end
-    return true
+    -- A managed IsoZombie inventory cannot be addressed by Build 42's
+    -- AddInventoryItemToContainer packet (ContainerID.set needs a world
+    -- object square). Keep custody server-side; only the world source packet
+    -- is sent here, and the eventual world destination is synchronized.
+    return sourceSynced
 end
 
 function World.materials(body, requirements)
@@ -255,19 +373,46 @@ end
 
 -- Reserve all materials first; the caller restores them if the world mutation fails.
 function World.reserve(body, selected)
+    local pending = World.pendingMaterials[body]
+    if pending and not World.refund(body,pending) then return false end
     local inv = World.inventory(body)
-    for _, item in ipairs(selected) do if not World.has(inv,item) then return false end end
-    local removed = {}
     for _, item in ipairs(selected) do
-        inv:Remove(item)
-        if World.has(inv,item) then World.refund(body,removed); return false end
-        removed[#removed+1]=item
+        if World.containsExact(inv,item) ~= true then return false end
+    end
+    for _, item in ipairs(selected) do
+        local removeOK = call(inv,"Remove",item)
+        local present = World.containsExact(inv,item)
+        if not removeOK or present ~= false then
+            World.refund(body,selected)
+            return false
+        end
     end
     return true
 end
 function World.refund(body, selected)
     local inv = World.inventory(body)
-    for _, item in ipairs(selected) do if not World.has(inv,item) then inv:AddItem(item) end end
+    local pending = World.pendingMaterials[body]
+    local all, seen = {}, {}
+    for _, group in ipairs({pending or {},selected}) do
+        for _, item in ipairs(group) do
+            if not seen[item] then seen[item] = true; all[#all+1] = item end
+        end
+    end
+    local restored = true
+    for _, item in ipairs(all) do
+        local present = World.containsExact(inv,item)
+        if present == false then
+            local added, value = call(inv,"AddItem",item)
+            if not added or value ~= item or World.containsExact(inv,item) ~= true then
+                restored = false
+            end
+        elseif present ~= true then
+            restored = false
+        end
+    end
+    if restored then World.pendingMaterials[body] = nil
+    else World.pendingMaterials[body] = all end
+    return restored
 end
 
 return World

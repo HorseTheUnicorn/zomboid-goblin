@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "scope": "native_simulation_ownership_handoff_only",
+  "date": "2026-09-23",
+  "topology": "disposable Build 42 server with server-side Storm and two ordinary no-Storm clients",
+  "actor_id": "goblin.primary.fencefang_73",
+  "telemetry_source_sha256": "cbd73e82b5a46756776531a78b19c9d7af682cc8bb42ef4b92fd8e234fd0eaf5",
+  "staging": "Only bramblefang_92 and fencefang_73 players were teleported by temporary localhost RCON; neither Goblin was teleported or position-written by the probe.",
+  "follow_rejoin_during_measurement": false,
+  "rcon_disabled_after_probe": true,
+  "actor_trace": [
+    [1790178754168, 10748.6767578125, 10574.6240234375, 1, "fencefang_73"],
+    [1790178755370, 10748.6767578125, 10574.6240234375, 1, "fencefang_73"],
+    [1790178756572, 10748.6767578125, 10574.6240234375, 1, "fencefang_73"],
+    [1790178757768, 10748.4384765625, 10574.5732421875, 1, "bramblefang_92"],
+    [1790178758972, 10750.5048828125, 10574.5, 1, "bramblefang_92"],
+    [1790178760177, 10752.0, 10574.0, 1, "fencefang_73"],
+    [1790178761368, 10752.0, 10574.0, 1, "fencefang_73"],
+    [1790178762570, 10754.5185546875, 10574.1591796875, 1, "bramblefang_92"],
+    [1790178763769, 10755.5, 10574.5, 0, "bramblefang_92"],
+    [1790178764972, 10755.0, 10573.0, 1, "fencefang_73"],
+    [1790178766174, 10755.0, 10573.0673828125, 1, "bramblefang_92"],
+    [1790178767371, 10755.51171875, 10577.0615234375, 0, "bramblefang_92"],
+    [1790178768572, 10757.0, 10577.0, 0, "fencefang_73"],
+    [1790178769768, 10757.0, 10577.0, 0, "fencefang_73"],
+    [1790178770972, 10760.037109375, 10576.3037109375, 0, "bramblefang_92"],
+    [1790178772170, 10760.4267578125, 10575.8232421875, 0, "bramblefang_92"],
+    [1790178773373, 10760.3271484375, 10575.6728515625, 0, "fencefang_73"]
+  ]
+}

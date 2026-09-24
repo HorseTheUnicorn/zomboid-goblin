@@ -56,6 +56,43 @@ class ExtendedJobTests(unittest.TestCase):
             assert(not Loot.hasCargo(a))
         ''')
 
+    def test_new_tool_fuel_must_be_removed_and_verified_before_reserving(self):
+        self.lua.execute('''
+            local add=a.inv.AddItem
+            for _,mode in ipairs({'throws','noop','works'}) do
+                function a.inv:AddItem(kind)
+                    local tool=add(self,kind);tool.uses=10
+                    function tool:IsDrainable() return true end
+                    function tool:getCurrentUsesFloat() return self.uses end
+                    function tool:setCurrentUses(value)
+                        if mode=='throws' then error('native failure') end
+                        if mode=='works' then self.uses=value end
+                    end
+                    return tool
+                end
+                local tool=Tools.ensure(a,'Base.BlowTorch')
+                if mode=='works' then
+                    assert(tool and tool.uses==0 and Tools.reserved(tool))
+                    tool.uses=3 -- Real fuel added later must not be erased/refilled.
+                    assert(Tools.ensure(a,'Base.BlowTorch')==tool and tool.uses==3)
+                    a.inv:Remove(tool)
+                else assert(tool==nil and #a.inv.items==0) end
+            end
+            for _,mode in ipairs({'noop','works'}) do
+                function a.inv:AddItem(kind)
+                    local tool=add(self,kind)
+                    local fluid={amount=2}
+                    function fluid:adjustAmount(value) if mode=='works' then self.amount=value end end
+                    function fluid:getAmount() return self.amount end
+                    function tool:getFluidContainer() return fluid end
+                    return tool
+                end
+                local tool=Tools.ensure(a,'Base.BlowTorch')
+                if mode=='works' then assert(tool and tool:getFluidContainer():getAmount()==0)
+                else assert(tool==nil and #a.inv.items==0) end
+            end
+        ''')
+
     def test_only_a_native_reusable_tool_slot_can_extend_kit(self):
         self.lua.execute('''
             assert(not Tools.ensure(a,'Base.ModTool'))
@@ -253,6 +290,8 @@ class ExtendedJobTests(unittest.TestCase):
             assert(Chat.directIntent('goblin, close the curtains')=='CLOSE_CURTAINS')
             assert(Chat.directIntent('goblin, shut the blinds')=='CLOSE_CURTAINS')
             assert(Chat.directIntent('goblin, draw the curtain')=='CLOSE_CURTAINS')
+            assert(Chat.directIntent('goblin, inspect the base')=='INSPECT_BASE')
+            assert(not Chat.directIntent('goblin, how do you inspect the base?'))
             assert(not Chat.directIntent('goblin, do not close the curtains'))
             assert(not Chat.directIntent('goblin, how do you close curtains?'))
             assert(not Chat.directIntent('goblin, open the window curtains'))

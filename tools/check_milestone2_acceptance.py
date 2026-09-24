@@ -1,6 +1,7 @@
 """Validate the narrow, structured local acceptance claim for Milestone 2."""
 import hashlib
 from pathlib import Path
+import re
 
 from tools.check_pz_catalog import CatalogError, read_catalog
 
@@ -17,8 +18,8 @@ SOURCES = {
 }
 
 
-def validate(data, root):
-    root = Path(root).resolve()
+def validate_historical_record(data):
+    """Check the captured result without claiming it applies to current sources."""
     if data.get("schema_version") != 1 or data.get("production_modified") is not False \
             or data.get("published") is not False:
         raise CatalogError("Milestone 2 acceptance has an invalid release boundary")
@@ -44,14 +45,10 @@ def validate(data, root):
             or set(registry.get("registered_capabilities", [])) != expected:
         raise CatalogError("Milestone 2 registry evidence is incomplete")
     source_hashes = data.get("source_sha256")
-    if not isinstance(source_hashes, dict) or set(source_hashes) != set(SOURCES):
+    if not isinstance(source_hashes, dict) or set(source_hashes) != set(SOURCES) \
+            or any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+                   for value in source_hashes.values()):
         raise CatalogError("Milestone 2 source manifest is incomplete")
-    for name, relative in SOURCES.items():
-        path = (root / relative).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
-            raise CatalogError(f"Milestone 2 source missing: {name}")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != source_hashes[name]:
-            raise CatalogError(f"Milestone 2 source changed since acceptance: {name}")
     craft = data.get("native_craft_through_registry")
     if not isinstance(craft, dict) or craft.get("result") != "pass" \
             or craft.get("capability") != "CRAFT" or craft.get("recipe") != "SawLogs" \
@@ -72,6 +69,18 @@ def validate(data, root):
                     "Base.Plank_before": 0, "Base.Plank_after": 3}:
         raise CatalogError("Milestone 2 material consumption/output evidence is invalid")
     return len(SOURCES), len(first_two), len(expected)
+
+
+def validate(data, root):
+    result = validate_historical_record(data)
+    root = Path(root).resolve()
+    for name, relative in SOURCES.items():
+        path = (root / relative).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise CatalogError(f"Milestone 2 source missing: {name}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != data["source_sha256"][name]:
+            raise CatalogError(f"Milestone 2 source changed since acceptance: {name}")
+    return result
 
 
 def main():

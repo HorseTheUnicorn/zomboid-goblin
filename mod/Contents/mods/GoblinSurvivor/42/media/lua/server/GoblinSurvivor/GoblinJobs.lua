@@ -16,6 +16,21 @@ local definitions={
             consumables={"Base.EngineParts or installed fixing inputs"}}},
     CLOSE_CURTAINS={handler=require("GoblinSurvivor/GoblinCurtains"),destructive=false,
         requirements={target="owner's bounded loaded house",consumables={}}},
+    INSPECT_BASE={handler=require("GoblinSurvivor/GoblinBaseInspect"),destructive=false,
+        requirements={target="saved base's bounded loaded BuildingDef",consumables={}}},
+    MAINTAIN_BASE={handler=require("GoblinSurvivor/GoblinBaseMaintain"),destructive=true,
+        requirements={target="saved base's bounded loaded BuildingDef",
+            consumables={"real Base.Plank and Base.Nails for supported window work"},
+            unsupported={"generic structure repair","missing-stock replenishment"}}},
+    DISMANTLE={handler=require("GoblinSurvivor/GoblinDismantle"),destructive=true,
+        requirements={target="one explicitly ordered empty, single-tile wooden furniture object in the owner's saved base",
+            reusable_tools={"Base.Hammer","Base.Saw"},
+            salvage="only items granted by the installed native moveables scrap rules",
+            unsupported={"autonomous teardown","IsoThumpable","multi-sprite objects","valuable or filled containers"}}},
+    STOCKPILE={handler=require("GoblinSurvivor/GoblinStockpileWork"),destructive=true,
+        requirements={target="exact persisted assigned base container and installed item full type",
+            material="only existing matching item instances within eight tiles",
+            limit="at most 20 delivered items per explicit run"}},
     GAIN_ACCESS={handler=require("GoblinSurvivor/GoblinGainAccess"),destructive=true,
         requirements={target_kinds={"BUILDING","ROOM","YARD","VEHICLE","CONTAINER"},
             reusable_tools={"Base.Crowbar"},
@@ -54,7 +69,7 @@ for task,item in pairs(definitions) do
     })
 end
 if type(print)=="function" then
-    print("[GoblinSurvivor] CAPABILITY_REGISTRY_READY count=5 tasks=CLOSE_CURTAINS,CRAFT,FARM,GAIN_ACCESS,REPAIR_VEHICLE")
+    print("[GoblinSurvivor] CAPABILITY_REGISTRY_READY count=9 tasks=CLOSE_CURTAINS,CRAFT,DISMANTLE,FARM,GAIN_ACCESS,INSPECT_BASE,MAINTAIN_BASE,REPAIR_VEHICLE,STOCKPILE")
 end
 
 function Jobs.handles(task) return Capabilities.handles(task) end

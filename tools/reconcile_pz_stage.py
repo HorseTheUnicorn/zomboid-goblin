@@ -80,12 +80,21 @@ def locate(directories, identifier, version):
     return matches[0]
 
 
-def reconcile(proof, snapshot, runtime_mods, candidate_helper):
+def reconcile(proof, snapshot, runtime_mods, candidate_helper, workshop_items):
     validate_content_manifest(proof)
     snapshot = filesystem_path(snapshot)
     runtime_mods = filesystem_path(runtime_mods)
     candidate_helper = filesystem_path(candidate_helper)
-    captured_dirs = list((snapshot / "steamapps/workshop/content/108600").glob("*/mods/*"))
+    workshop_root = snapshot / "steamapps/workshop/content/108600"
+    if (not workshop_items or len(workshop_items) != len(set(workshop_items))
+            or any(not item.isdecimal() for item in workshop_items)):
+        raise ValueError("Expected unique numeric WorkshopItems IDs from the target server configuration")
+    captured_dirs = []
+    for item in workshop_items:
+        item_root = workshop_root / item
+        if not item_root.is_dir():
+            raise ValueError(f"Configured Workshop item is missing from the snapshot: {item}")
+        captured_dirs.extend((item_root / "mods").glob("*"))
     runtime_dirs = list(runtime_mods.iterdir())
     captured_dirs = [path for path in captured_dirs if path.is_dir()]
     runtime_dirs = [path for path in runtime_dirs if path.is_dir()]
@@ -149,9 +158,12 @@ def main():
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--runtime-mods", type=Path, required=True)
     parser.add_argument("--candidate-helper", type=Path, required=True)
+    parser.add_argument("--workshop-items", required=True,
+                        help="Semicolon-separated WorkshopItems from the target server configuration")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    report = reconcile(read_catalog(args.fingerprint), args.snapshot, args.runtime_mods, args.candidate_helper)
+    report = reconcile(read_catalog(args.fingerprint), args.snapshot, args.runtime_mods,
+                       args.candidate_helper, args.workshop_items.split(";"))
     if args.output:
         if args.output.exists():
             parser.error("Output already exists; preserve prior evidence or explicitly choose another file")

@@ -4,6 +4,7 @@ local Brain=require("GoblinSurvivor/GoblinBrain")
 local World=require("GoblinSurvivor/GoblinWorld")
 local Work=require("GoblinSurvivor/GoblinWork")
 local Loot=require("GoblinSurvivor/GoblinLoot")
+local Motion=require("GoblinSurvivor/GoblinLocomotion")
 local Autonomy={owners={}}
 
 local function fortifySuppliesAvailable(body)
@@ -17,7 +18,7 @@ local function fortifySuppliesAvailable(body)
     -- Match Work's loaded, nearby material search; no fabricated supplies.
     for _,source in ipairs(World.sources(Body.position(body),8,function(item)
         return (missing[World.fullType(item)] or 0)>0
-    end)) do count(source.item) end
+    end,body)) do count(source.item) end
     for _,amount in pairs(missing) do if amount>0 then return false end end
     return true
 end
@@ -77,6 +78,22 @@ function Autonomy.update(body,now)
     -- WAIT is explicit: it must survive idle timers and reconnects.
     if not Config.autonomyEnabled then return false end
     if data.GoblinTask~="FOLLOW" then return false end
+    -- The owner's idle timer can expire while a client-owned actor is still
+    -- navigating back from a run. Finish the catch-up before taking an
+    -- independent chore; otherwise LOOT cancels the only route home. Follow
+    -- slots can sit beyond preferredDistance + 1 on diagonal/offset tiles,
+    -- so use the follow planner's arrival verdict instead of a second,
+    -- slightly narrower distance threshold that can strand Goblin forever.
+    if player then
+        local bodyPoint=Body.position(body)
+        if not bodyPoint or math.floor(bodyPoint.z)~=math.floor(point.z) then return false end
+        if Motion.distance(bodyPoint,point)>Config.followPreferredDistance then
+            local followGoal,_,navigation=Motion.followGoal(body,player,now)
+            local key=navigation and navigation.goal_key
+            if followGoal or (key~="arrived" and not (type(key)=="string"
+                and string.match(key,"^slot:%d+$"))) then return false end
+        end
+    end
     if now<record.nextAt then return false end
     record.nextAt=now+Config.autonomyDecisionSeconds*1000
     if data.GoblinBaseSet then
@@ -100,6 +117,7 @@ function Autonomy.update(body,now)
         end
         return Brain.setTask(body,"LOOT",{autonomous=true,deliver_only=true})
     end
+    if Loot.autonomousBlocked(body,now) then return false end
     data.GoblinLastAutonomyAction="LOOT"
     return Brain.setTask(body,"LOOT",{loot_focus="surprise",autonomous=true})
 end

@@ -23,7 +23,7 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.lua.execute('''
             local Jobs=require('GoblinSurvivor/GoblinJobs')
             local registry=Jobs.registry()
-            assert(#registry==5)
+            assert(#registry==9)
             local seen={}
             for _,entry in ipairs(registry) do
                 seen[entry.name]=entry
@@ -33,6 +33,9 @@ class CapabilityRegistryTests(unittest.TestCase):
             assert(seen.FARM.destructive and seen.CRAFT.destructive)
             assert(seen.REPAIR_VEHICLE.destructive and not seen.CLOSE_CURTAINS.destructive)
             assert(seen.GAIN_ACCESS.destructive and seen.GAIN_ACCESS.owner_required)
+            assert(not seen.INSPECT_BASE.destructive)
+            assert(seen.MAINTAIN_BASE.destructive and seen.DISMANTLE.destructive)
+            assert(seen.STOCKPILE.destructive and seen.STOCKPILE.owner_required)
             local farm=Jobs.requirements('FARM',{})
             assert(farm.reusable_tools[1]=='Base.HandShovel')
             assert(Jobs.requirements('NOT_REAL',{})==nil)
@@ -66,6 +69,33 @@ class CapabilityRegistryTests(unittest.TestCase):
             assert(result.progress==0 and #result.detail>0)
         ''')
 
+    def test_terminal_results_do_not_repeat_physical_handlers_until_cleared(self):
+        self.lua.execute('''
+            local Cap=require('GoblinSurvivor/GoblinCapabilities')
+            for _,mode in ipairs({'COMPLETE','ENGINE_ERROR','INVALID'}) do
+                local calls=0
+                local name='TERMINAL_'..mode
+                Cap.register(name,{destructive=true,offline_allowed=false,owner_required=false,
+                    prepare=function() return {},'ready' end,
+                    update=function()
+                        calls=calls+1 -- stands for the physical side effect
+                        if mode=='ENGINE_ERROR' then error('failed after consumption') end
+                        if mode=='INVALID' then return {} end
+                        return Cap.result(true,true,'COMPLETE','done',1)
+                    end})
+                local first=Cap.update(name,a,{},clock)
+                assert(first.done)
+                local expected=first.code
+                first.done=false;first.code='WORKING'
+                local second=Cap.update(name,a,{},clock+1)
+                assert(second.done and second.code==expected and calls==1)
+                Cap.cancel(a)
+                Cap.update(name,a,{},clock+2)
+                assert(calls==2) -- explicit new job may execute
+                Cap.cancel(a)
+            end
+        ''')
+
     def test_runtime_objects_stay_out_of_snapshot_and_cancel_is_scoped(self):
         self.lua.execute('''
             local Cap=require('GoblinSurvivor/GoblinCapabilities')
@@ -90,6 +120,63 @@ class CapabilityRegistryTests(unittest.TestCase):
             local second=Cap.update('TEST_JOB',a,payload,clock+1)
             assert(second.done and second.code=='COMPLETE')
             assert(Cap.cancel(a) and cancelled==1 and Cap.snapshot(a)==nil)
+        ''')
+
+    def test_handler_result_extras_and_caller_mutation_cannot_leak_into_snapshot(self):
+        self.lua.execute('''
+            local Cap=require('GoblinSurvivor/GoblinCapabilities')
+            Cap.register('RESULT_BOUNDARY',{destructive=false,offline_allowed=true,
+                owner_required=false,prepare=function() return {},'ready' end,
+                update=function()
+                    return {done=false,success=true,code='WORKING',detail='safe',
+                        progress=0,engine_object=function() end}
+                end})
+            local result=Cap.update('RESULT_BOUNDARY',a,{},clock)
+            assert(result.code=='WORKING' and result.engine_object==nil)
+            result.detail='caller changed it'
+            result.engine_object=function() end
+            local snapshot=Cap.snapshot(a)
+            assert(snapshot.result.detail=='safe')
+            assert(snapshot.result.engine_object==nil)
+            assert(Cap.serializable(snapshot))
+            snapshot.result.detail='snapshot changed it'
+            assert(Cap.snapshot(a).result.detail=='safe')
+        ''')
+
+    def test_handler_owned_metadata_payload_and_snapshot_are_copied(self):
+        self.lua.execute('''
+            local Cap=require('GoblinSurvivor/GoblinCapabilities')
+            local requirements={tools={'Base.Saw'}}
+            local prepared={anchor={x=3,y=4,z=0}}
+            local runtimeExtra={steps={1}}
+            Cap.register('COPY_BOUNDARY',{destructive=false,offline_allowed=true,
+                owner_required=false,requirements=requirements,
+                prepare=function() return prepared,'ready' end,
+                update=function() return Cap.result(false,true,'WORKING','moving',0) end,
+                snapshot=function() return runtimeExtra end})
+            local metadata=Cap.requirements('COPY_BOUNDARY',{})
+            metadata.tools[1]='Base.FakeSaw'
+            assert(requirements.tools[1]=='Base.Saw')
+            assert(Cap.requirements('COPY_BOUNDARY',{}).tools[1]=='Base.Saw')
+            local payload=Cap.prepare('COPY_BOUNDARY',a,nil,{})
+            payload.anchor.x=99
+            assert(prepared.anchor.x==3)
+            Cap.update('COPY_BOUNDARY',a,{anchor={x=3,y=4,z=0}},clock)
+            local snapshot=Cap.snapshot(a)
+            snapshot.runtime.steps[1]=99
+            assert(runtimeExtra.steps[1]==1)
+            assert(Cap.snapshot(a).runtime.steps[1]==1)
+        ''')
+
+    def test_dynamic_requirement_failure_does_not_escape_registry(self):
+        self.lua.execute('''
+            local Cap=require('GoblinSurvivor/GoblinCapabilities')
+            Cap.register('BAD_REQUIREMENTS',{destructive=false,offline_allowed=true,
+                owner_required=false,requirements=function() error('handler failed') end,
+                prepare=function() return {},'ready' end,
+                update=function() return Cap.result(true,true,'COMPLETE','done',1) end})
+            local ok,result=pcall(Cap.requirements,'BAD_REQUIREMENTS',{})
+            assert(ok and result==nil)
         ''')
 
     def test_jobs_persist_only_the_structured_result_for_external_reasoning(self):
