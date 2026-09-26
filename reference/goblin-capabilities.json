@@ -140,7 +140,7 @@
       "target_class": "zombie.iso.objects.IsoDoor; door-like IsoThumpable variants are detected and unit-tested but not live multiplayer-verified",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true, "movement": "Existing Movement.command/update and simulation-owner framework, unchanged"},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "7820bb446b26661c717ad466a2a7889f67759bd8792e119fb3ab8bb37e0d8397"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "23c69a2364b8c351085409c34e3cf3415e3bacbd2a8a43a4fd725be1181949f3"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseDoor.lua", "sha256": "7fc96ffa96f420640be769b0cc05c45281892aa994a453fc993733ee23fa2c21"},
         {"installed_path": "media/lua/shared/TimedActions/ISLockDoor.lua", "sha256": "cde2ce556fa6e8a1a5d02be033deea0f9825a9f6a6f9c760a86b74df48d4626d"},
         {"installed_path": "media/lua/client/ISUI/ISWorldObjectContextMenu.lua", "sha256": "5404e09a64817bfd753ff121c6454bca8de785166ca86f414dab693758dc60a0", "entrypoint": "onOpenCloseDoor"},
@@ -172,7 +172,7 @@
       "target_class": "zombie.iso.objects.IsoWindow, not VehicleWindow",
       "authority": {"side": "server", "route": ["authenticated OnClientCommand player", "ownBody", "Brain.setTask", "Access.prepare", "Access.perform", "Access.open"], "owner_required_at_prepare": true},
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "7820bb446b26661c717ad466a2a7889f67759bd8792e119fb3ab8bb37e0d8397"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "23c69a2364b8c351085409c34e3cf3415e3bacbd2a8a43a4fd725be1181949f3"},
         {"installed_path": "media/lua/shared/TimedActions/ISOpenCloseWindow.lua", "sha256": "8c1f81a01b79e1f95fa9793791f59f0ff4f1aeb6cec561f8366ae7f79ed1bfc7"}
       ],
       "native_api": {"signature": "void IsoWindow.ToggleWindow(IsoGameCharacter)", "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoWindow.html", "compatibility": "LOW_LEVEL_ACTOR_PATH_PRESENT_NOT_ENGINE_TESTED", "evidence": "Player music branch is null-guarded at offset167; native code explicitly branches on IsoZombie at94. Calls sync(I) at147 after changing open state. This is not the vanilla player animation lifecycle."},
@@ -211,10 +211,10 @@
         "model_may_choose_physical_method": false
       },
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "e8eb2b273e1a35660e9a1b0c00edc46d53bafa007ea0fff36304358f313da417"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "ad3deb2108af415e04239c10b77776e5dda862304c33e4b0b4ab388d161de865"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinPadlocks.lua", "sha256": "b56bc07373199d0737ed9455ea69729116c4205fd9db772c591e08c894fc13d1"},
         {"installed_path": "media/lua/shared/TimedActions/ISPadlockAction.lua"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "7820bb446b26661c717ad466a2a7889f67759bd8792e119fb3ab8bb37e0d8397"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "23c69a2364b8c351085409c34e3cf3415e3bacbd2a8a43a4fd725be1181949f3"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccessPolicy.lua", "sha256": "675d26b9cb5981d5b9335e8714324d44d86ec1770858992737bf0fe867a6750a"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransport.lua", "sha256": "cc94ea28400fef3e854f258d3434298196f6f9000e91440201e9cedeb8812b3a"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTools.lua", "sha256": "1f506f3da845a3a7de8395991aa008a536534b0a69dbf89ca0df863e209d2abf"},
@@ -277,6 +277,7 @@
       "rollback_reconciliation": "Persistent task data contains primitive target descriptors only. Every update re-resolves exact loaded objects and verifies post-state. Changed, unloaded, unauthorized or unsupported targets terminate with a structured failure rather than substituting another destructive target.",
       "limitations": [
         "Building and room resolution use bounded loaded perimeters; yard resolution remains a twelve-tile loaded-area search without a persistent yard identity",
+        "2026-09-26 scoped access now retains the room/building interior side for approach, completion and alternate routes; regression-tested only, with live multiplayer acceptance pending",
         "Ordinary gate handling inherits door-like discovery; no separate locked-gate or cuttable-barrier class has live proof",
         "Vehicle alternate broken-window and breach routes are not implemented",
         "Container access is intentionally unsupported",
@@ -287,6 +288,9 @@
       "unit_tests": [
         "test_goblin_access_v2.test_access_prefers_alternate_unlocked_door_over_nearer_locked_door",
         "test_goblin_access_v2.test_gain_access_is_registered_and_opens_real_selected_door",
+        "test_goblin_access_v2.test_building_access_does_not_send_inside_actor_back_outside",
+        "test_goblin_access_v2.test_scoped_access_persists_and_requires_the_interior_side",
+        "test_goblin_access_v2.test_alternate_access_route_preserves_its_own_destination_side",
         "test_goblin_access_v2.test_closed_door_approach_switches_to_opposite_side_after_no_progress",
         "test_goblin_access_v2.test_gain_access_uses_native_low_fence_climb_and_observed_crossing",
         "test_goblin_access_v2.test_unknown_hoppable_type_is_not_assumed_to_be_low_fence",
@@ -636,7 +640,7 @@
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "123d65cdb395cc599201d73610304e83bebd119aff32d05618e581566400c1d7"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "6aea2dbb023e7a2b9be7669c6c8245e7b297fcb10a150bd30fa737cee451a8e9"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "7820bb446b26661c717ad466a2a7889f67759bd8792e119fb3ab8bb37e0d8397"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "23c69a2364b8c351085409c34e3cf3415e3bacbd2a8a43a4fd725be1181949f3"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/client/GoblinSurvivor/GoblinClient.lua"},
         {"installed_path": "media/lua/client/Vehicles/TimedActions/ISPathFindAction.lua"}
       ],

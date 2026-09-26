@@ -293,6 +293,22 @@ local function validEdge(edge)
     return math.abs(edge.dx) + math.abs(edge.dy) == 1
 end
 
+-- Preserve the semantic destination when a room/building perimeter becomes
+-- a primitive route. Merely crossing either way can send an inside actor out.
+function Access.destinationSide(edge, scope)
+    if not validEdge(edge) or type(scope) ~= "table" then return nil end
+    local here, there = edgeSquares(edge)
+    if not here or not there then return nil end
+    local a, b
+    if scope.target_room then
+        a, b = roomOf(here) == scope.target_room, roomOf(there) == scope.target_room
+    elseif scope.target_building then
+        a, b = buildingOf(here) == scope.target_building, buildingOf(there) == scope.target_building
+    else return nil end
+    if a == b then return nil end
+    return a and 1 or 2
+end
+
 local function squareKey(square)
     local x, y, z = squarePoint(square)
     return x and table.concat({ x, y, z }, ":") or nil

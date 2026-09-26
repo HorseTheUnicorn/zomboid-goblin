@@ -9,7 +9,7 @@ local Movement=require("GoblinSurvivor/GoblinMovement")
 local GainAccess={}
 local kinds={BUILDING=true,ROOM=true,YARD=true,VEHICLE=true,CONTAINER=true}
 local kindAliases={NEARBY_BUILDING="BUILDING",BASE="BUILDING",CURRENT_POSITION="ROOM",AREA="YARD"}
-local routeFields={"access_method","edge","window","breach","started_at","priority","score"}
+local routeFields={"access_method","edge","window","breach","started_at","priority","score","destination_side"}
 
 local function nowMs()
     return type(getTimestampMs)=="function" and getTimestampMs() or 0
@@ -29,11 +29,12 @@ local function failureCode(detail)
     return "BLOCKED"
 end
 
-local function copyRoute(route,kind,method,request)
+local function copyRoute(route,kind,method,request,scope)
     return {
         anchor=request.anchor,target_kind=kind,access_method=method,
         edge=route.edge,window=route.window==true,breach=route.breach==true,
         started_at=route.started_at,priority=route.priority,score=route.score,
+        destination_side=Access.destinationSide(route.edge,scope),
         allow_breach=request.allow_breach==true,autonomous=request.autonomous==true,
         offline=request.offline==true
     }
@@ -53,6 +54,14 @@ local function crossOpenedEdge(body,payload,runtime,now)
     local point=Body.position(body)
     if not point then return true,false,"Goblin position is unavailable","TARGET_UNLOADED" end
     local side=edgeSide(point,edge)
+    local destination=payload.destination_side
+    if destination~=nil and destination~=1 and destination~=2 then
+        return true,false,"saved access destination is invalid","TARGET_CHANGED"
+    end
+    if destination and side==destination then
+        Movement.clear(body)
+        return true,true,"reached the "..string.lower(tostring(payload.target_kind)).." interior","COMPLETE"
+    end
     if not runtime.cross_from then
         -- A least-destructive selector may legitimately choose an already-open
         -- perimeter door some distance from the actor. Opening work therefore
@@ -71,7 +80,7 @@ local function crossOpenedEdge(body,payload,runtime,now)
                 approach_type=a.approach_type,goal_key=a.goal_key}
             local da=(point.x-a.x)^2+(point.y-a.y)^2
             local db=(point.x-b.x)^2+(point.y-b.y)^2
-            local target=da<=db and a or b
+            local target=destination==1 and a or destination==2 and b or (da<=db and a or b)
             local active=Movement.active[body]
             if not active or active.payload.x~=target.x or active.payload.y~=target.y then
                 Movement.command(body,"MOVE_TO",target)
@@ -80,7 +89,7 @@ local function crossOpenedEdge(body,payload,runtime,now)
         end
         runtime.cross_from=side
         runtime.cross_started_at=now
-    elseif side and side~=runtime.cross_from then
+    elseif not destination and side and side~=runtime.cross_from then
         Movement.clear(body)
         return true,true,"crossed the "..string.lower(tostring(payload.target_kind or "access target")),"COMPLETE"
     end
@@ -131,22 +140,22 @@ function GainAccess.prepare(body,owner,payload)
     local breachRoute
     local _,_,doors=Access.prepare(owner,false,preparedAt,scope)
     for _,door in ipairs(doors or {}) do
-        candidates[#candidates+1]=copyRoute(door,kind,"DOOR",request)
+        candidates[#candidates+1]=copyRoute(door,kind,"DOOR",request,scope)
     end
     if kind~="YARD" then
         local _,_,windows=Access.prepare(owner,true,preparedAt,scope)
         for _,window in ipairs(windows or {}) do
-            candidates[#candidates+1]=copyRoute(window,kind,"WINDOW",request)
+            candidates[#candidates+1]=copyRoute(window,kind,"WINDOW",request,scope)
         end
     end
     if kind=="YARD" then
         local fence=Access.prepareFence(owner,preparedAt,scope)
-        if fence then candidates[#candidates+1]=copyRoute(fence,kind,"FENCE",request) end
+        if fence then candidates[#candidates+1]=copyRoute(fence,kind,"FENCE",request,scope) end
     end
     if request.allow_breach and kind~="YARD" then
         local breach=Access.prepareBreachWindow(owner,preparedAt,scope)
         if breach then
-            breachRoute=copyRoute(breach,kind,"BREACH_WINDOW",request)
+            breachRoute=copyRoute(breach,kind,"BREACH_WINDOW",request,scope)
             candidates[#candidates+1]=breachRoute
         end
     end

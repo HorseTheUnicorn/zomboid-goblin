@@ -1,5 +1,29 @@
 # Abilities V2 evidence ledger
 
+## Current checkpoint — 2026-09-26
+
+- Reproduced an access-direction bug: a Goblin already on the inside edge of
+  a building was ordered outside, and that outward crossing counted as success.
+  Scoped room/building routes now persist the intended interior side, retain it
+  across alternate routes, approach that side and require it for completion.
+  Existing yard traversal remains bidirectional. This affects GAIN_ACCESS only;
+  accepted FOLLOW behavior is unchanged.
+- The regression failed before the fix. All 31 access tests now pass, including
+  already-inside, outside-to-inside, room orientation, alternate-route and invalid
+  destination cases. The full suite ran 530 tests successfully with two existing
+  expected failures. The 64-record catalog consistency check passes with refreshed
+  implementation hashes. These are automated checks, not new engine acceptance.
+- Before this source edit, disposable server PID33060 loaded nine capabilities
+  with server-side Storm. Ordinary clients m3path_61 and m3witness_54 entered
+  the world and each spawned one Goblin with Goblin_Community_Human appearance.
+  The second client process ended and disconnected at 10:35:49 before the access
+  command produced an observed result. No two-client access pass is claimed.
+- Milestone 2 remains closed for the framework scope described in
+  MILESTONE2_CLOSEOUT.md. Its older live acceptance manifest still correctly
+  fails the current-source hash check; do not relabel that historical evidence.
+  Milestone 3 and the wider V2 goal remain incomplete. See V2_STATUS.md for the
+  remaining implementation and verification work.
+
 ## Current checkpoint — 2026-09-24
 
 - M3 route retest: disposable server PID50848 and ordinary no-Storm client

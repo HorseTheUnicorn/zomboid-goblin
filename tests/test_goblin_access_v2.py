@@ -45,7 +45,7 @@ class AccessV2Tests(unittest.TestCase):
         self.lua.execute('''
             player.x=0;player.y=0
             local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
-            installBuilding(here)
+            installBuilding(there)
             local door={opened=false,locked=false,square=here,calls=0}
             function door:getSquare() return self.square end
             function door:isOpen() return self.opened end;door.IsOpen=door.isOpen
@@ -70,6 +70,22 @@ class AccessV2Tests(unittest.TestCase):
             a.x=1.5
             result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
             assert(result.done and result.success and result.code=='COMPLETE')
+        ''')
+
+    def test_building_access_does_not_send_inside_actor_back_outside(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=0.5;a.y=0.5
+            local inside=cell:getGridSquare(0,0,0);local outside=cell:getGridSquare(1,0,0)
+            installBuilding(inside)
+            local door={}
+            function door:isOpen() return true end;door.IsOpen=door.isOpen
+            function inside:getDoorTo(other) if other==outside then return door end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='BUILDING'}})
+            assert(payload,detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(result.done and result.success and result.code=='COMPLETE',
+                'an actor already inside must not be ordered outside')
+            assert(not a.destination, 'already accessible building must not start outward movement')
         ''')
 
     def test_real_brain_boundary_persists_gain_access_task(self):
@@ -97,6 +113,48 @@ class AccessV2Tests(unittest.TestCase):
             assert(a.data.GoblinTaskPayload.access_method=='DOOR')
         ''')
 
+    def test_scoped_access_persists_and_requires_the_interior_side(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=-2.5;a.y=0.5
+            local outside=cell:getGridSquare(0,0,0);local inside=cell:getGridSquare(1,0,0)
+            local building,room=installBuilding(inside)
+            local door={}
+            function door:isOpen() return true end;door.IsOpen=door.isOpen
+            function outside:getDoorTo(other) if other==inside then return door end end
+            local edge={x=0,y=0,z=0,dx=1,dy=0}
+            assert(Access.destinationSide(edge,{target_room=room})==2)
+            assert(Access.destinationSide({x=1,y=0,z=0,dx=-1,dy=0},{target_room=room})==1)
+            assert(Access.destinationSide(edge,{target_room={}})==nil)
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='ROOM'}})
+            assert(payload and payload.destination_side==2,detail)
+            assert(require('GoblinSurvivor/GoblinCapabilities').serializable(payload))
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not result.done and a.destination.x==1.5)
+            a.x=0.5
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(not result.done and a.destination.x==1.5)
+            a.x=1.5
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+200)
+            assert(result.done and result.success and result.code=='COMPLETE')
+        ''')
+
+    def test_alternate_access_route_preserves_its_own_destination_side(self):
+        self.lua.execute('''
+            a.x=5.5;a.y=5.5
+            local payload={target_kind='BUILDING',access_method='DOOR',destination_side=1,
+                edge={x=0,y=0,z=0,dx=1,dy=0},alternates={
+                    {access_method='DOOR',destination_side=2,edge={x=0,y=2,z=0,dx=1,dy=0}}
+                }}
+            local runtime={access_opened=true,cross_approach_started_at=clock-31000}
+            local done,success,detail,code=GainAccess.update(a,payload,runtime,clock)
+            assert(not done and success and code=='MOVING_TO_TARGET',detail)
+            assert(payload.destination_side==2 and payload.edge.y==2)
+            assert(runtime.access_opened==nil and runtime.cross_approach_started_at==nil)
+            runtime.access_opened=true;payload.destination_side=3
+            done,success,detail,code=GainAccess.update(a,payload,runtime,clock+100)
+            assert(done and not success and code=='TARGET_CHANGED',detail)
+        ''')
+
     def test_already_open_route_approaches_before_observed_crossing(self):
         self.lua.execute('''
             player.x=0;player.y=0;a.x=4.5;a.y=0.5
@@ -116,7 +174,7 @@ class AccessV2Tests(unittest.TestCase):
             assert(payload and payload.access_method=='DOOR',detail)
             local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
             assert(not result.done and result.success and result.code=='MOVING_TO_TARGET')
-            assert(a.destination and a.destination.x==1.5 and a.destination.y==0.5)
+            assert(a.destination and a.destination.x==0.5 and a.destination.y==0.5)
             a.x=1.5
             result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
             assert(not result.done and result.success and result.code=='MOVING_TO_TARGET')
@@ -539,7 +597,7 @@ class AccessV2Tests(unittest.TestCase):
         self.lua.execute('''
             player.x=0;player.y=0
             local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
-            installBuilding(here)
+            installBuilding(there)
             local window={opened=false,locked=true,smashed=false,square=here,calls=0}
             function window:getSquare() return self.square end
             function window:IsOpen() return self.opened end
