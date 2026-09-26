@@ -14,12 +14,15 @@
   `Food.updateAge` for the square-less managed IsoZombie inventory. Installed
   bytecode confirms `ItemContainer.DoRemoveItem` skips that callback. The
   current worktree uses that native detach path and removes held items from
-  their actor hands first; all 80 focused `test_goblin_work.py` checks pass,
-  including a regression for the old Remove path. Food age refresh, exact
-  client item identity, and save/reload remain live gates; no LOOT capability
-  is marked complete. The keyed-container multiplayer attempt never reached
-  in-world state, so its temporary local probes were removed and the
-  disposable pair stopped.
+  their actor hands first. All 80 focused `test_goblin_work.py` checks pass,
+  including a regression for the old Remove path. Installed bytecode also
+  confirms destination `ItemContainer.AddItem` sets the new container before
+  `Food.OnAddedToContainer -> Food.updateAge`; floor delivery binds an
+  `IsoWorldInventoryObject` square. This closes the callback-order audit, not
+  live perishable/packet behavior. Exact item identity on both clients and
+  save/reload remain live gates; no LOOT capability is marked complete. The
+  current auto-connect attempt reached the local server's login queue but did
+  not enter an in-world state, so no actor test was possible.
 - CONTAINER GAIN_ACCESS live one-client check passed on 08d18a3: normal task
   accepted, actual Goblin movement from outside into the house, reachable
   container completion, identical native content IDs before/after. Probe
@@ -2075,6 +2078,20 @@ prove the initialized mod creates/delivers/recreates pistols. See next checkpoin
   client-input-driven and online-ID keyed; catch pickup and fish-net paths depend
   on player inventory, XP and network behavior. No managed-IsoZombie gameplay or
   multiplayer claim was added, and production, GitHub and Workshop were untouched.
+
+## Fishing reference follow-up — 2026-09-26
+
+- Exact installed bytecode and Lua call sites separate the two historical raw
+  references: `Fish:getFish()` calls `instanceItem(String)` →
+  `InventoryItemFactory.CreateItem(String)`, whose `Empty` fallback resolves
+  `Base.WaterBottleEmpty` to `Base.WaterBottle`. By contrast,
+  `FishingRod:brokeLine()` uses `ItemContainer.AddItem(String)`, which first
+  rejects absent script IDs; `Base.WoodenStick` therefore remains unresolved.
+  `Base.WoodenStick2` is not substituted. The strict checker reports one native
+  alias and one unresolved raw reference. Managed-actor and multiplayer fishing
+  remain unverified.
+- The inspected installed `projectzomboid.jar` SHA-256 is
+  `80E405A4BFC42F6072E75B3735F458A6514143DA011D3226007DED305A442F44`.
 
 ## Effective moveable definitions verified — 2026-09-19
 

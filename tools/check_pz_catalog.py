@@ -608,7 +608,8 @@ def validate_survival_details(proof, items, required=False):
 
 def validate_fishing_details(proof, items, required=False):
     detail, digest = proof.get('fishing_details'), proof.get('fishing_details_sha256')
-    empty = {'fish': 0, 'lures': set(), 'references': set(), 'unresolved_items': set()}
+    empty = {'fish': 0, 'lures': set(), 'references': set(),
+             'alias_resolutions': {}, 'unresolved_items': set()}
     if detail is None and digest is None and not required:
         return empty
     if (not isinstance(detail, dict) or set(detail) != {'schema_version', 'npc_compatibility', 'fields'}
@@ -672,8 +673,19 @@ def validate_fishing_details(proof, items, required=False):
     actual = hashlib.sha256(json.dumps(canonical, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
     if actual != digest: raise CatalogError('Fishing details hash mismatch')
     item_ids = {r['full_type'] for r in items['records']}
+    unresolved = references - item_ids
+    # Fish:getFish() sends trash strings through instanceItem(), which calls
+    # InventoryItemFactory.CreateItem(). In the installed runtime that factory
+    # retries a missing *Empty identifier without its suffix. Keep this narrow
+    # native rule explicit; it does not make other similarly named items aliases.
+    native_aliases = {'Base.WaterBottleEmpty': 'Base.WaterBottle'}
+    alias_resolutions = {}
+    for raw, resolved in native_aliases.items():
+        if raw in unresolved and resolved in item_ids:
+            alias_resolutions[raw] = resolved
+            unresolved.remove(raw)
     return {'fish': fish_count, 'lures': indexed_lures, 'references': references,
-            'unresolved_items': references - item_ids}
+            'alias_resolutions': alias_resolutions, 'unresolved_items': unresolved}
 
 
 def validate_moveable_details(proof, items, required=False):
@@ -888,7 +900,8 @@ def main():
             print(f"Survival definitions: {result['traps']} traps, {result['animals']} animals, {len(result['forage'])} forage; unresolved items: {len(result['unresolved_items'])}.")
         if args.require_fishing_details:
             result = validate_fishing_details(proof, items, required=True)
-            print(f"Fishing definitions: {result['fish']} fish, {len(result['lures'])} lures; unresolved items: {len(result['unresolved_items'])}.")
+            aliases = ', '.join(f'{source}->{target}' for source, target in sorted(result['alias_resolutions'].items())) or 'none'
+            print(f"Fishing definitions: {result['fish']} fish, {len(result['lures'])} lures; native aliases: {aliases}; unresolved raw items: {len(result['unresolved_items'])}.")
         if args.require_moveable_details:
             result = validate_moveable_details(proof, items, required=True)
             print(f"Moveable definitions: {result['tools']} tools, {result['materials']} materials, {result['scrap']} scrap, {result['repairs']} repairs; unresolved items: {len(result['unresolved_items'])}.")

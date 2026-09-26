@@ -52,7 +52,8 @@ and nonempty transfers remain separate unverified gates. See
 MILESTONE3_CONTAINER_CHECK.md. Current local packages contain 171 source files;
 the 170-file provenance record below is historical.
 
-- Full automated suite: 537 tests run successfully, two existing expected failures.
+- Full automated suite: 551 tests pass, two existing expected failures (Python
+  unittest discovery).
 - Access suite: 36 tests pass, covering direction, restored crossings, reclosed
   doors, removed targets, revoked access and native unlock failures/group retries.
   Direction/restoration, permission and unlock regressions failed before their
@@ -63,14 +64,21 @@ the 170-file provenance record below is historical.
   That run exposed mismatched lock flags between clients; lock/window
   replication, multi-panel failures and other access paths remain open.
 - Catalog: 64 records pass consistency checks.
+- Fishing registry resolution now distinguishes the factory's verified
+  `Base.WaterBottleEmpty` → `Base.WaterBottle` fallback from the still-unresolved
+  `Base.WoodenStick` break-rod replacement. No fishing ability is inferred.
 - LOOT transfer follow-up reproduced the square-less `ItemStats` failure at
   `Food.updateAge` from managed IsoZombie inventory removal. A candidate now
-  uses installed `ItemContainer.DoRemoveItem` (which bypasses that callback);
-  80 focused work tests pass. Perishable age, two-client item identity and
-  save/reload remain unverified, so LOOT remains incomplete. The current
-  171-file direct local package passed exact SHA-256 preflight and loaded on a
-  server-only startup; that server had no actors (no connected client), so this
-  is a package/load smoke check, not transfer acceptance.
+  uses installed `ItemContainer.DoRemoveItem` (which bypasses that callback).
+  Installed bytecode confirms the destination `AddItem` assigns its container
+  before `Food.OnAddedToContainer -> Food.updateAge`; a floor drop assigns an
+  addressable world-item square. Callback ordering is confirmed, but the exact
+  managed-actor transfer, packet result, second-client item identity and
+  save/reload remain unverified, so LOOT remains incomplete. The 171-file direct
+  local package passed exact SHA-256 preflight and loaded; a no-Storm client
+  connected to the local login queue, but `runtime.state` remained at
+  `player_count=0` with no Goblin actor. This is package/load evidence only,
+  not transfer acceptance.
 - A subsequent one-client native check reached a real doorway's intended
   interior side. A follow-up closed-door test recorded reopening and crossing,
   and both no-Storm clients independently observed the live close/open state

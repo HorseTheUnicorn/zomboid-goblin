@@ -8,9 +8,10 @@ current-worktree capability marked complete. Historical live acceptance is kept
 separate from proof for the changed source now in this worktree.
 
 The disposable `.03` copy resolved 5,397 items and 1,118 craft recipes plus the
-effective crop, vehicle, survival, fishing and moveable registries. Strict
-validation preserves two known fishing raw-reference exceptions rather than
-inventing an alias. The current capability inventory contains 27 existing and
+effective crop, vehicle, survival, fishing and moveable registries. Fishing
+validation records the native `Base.WaterBottleEmpty` → `Base.WaterBottle`
+factory fallback explicitly and leaves `Base.WoodenStick` unresolved. The
+current capability inventory contains 27 existing and
 37 proposed records with zero unclassified names. The command inventory separately
 records `/goblin`, deterministic natural language, proposed commands, Qwen
 intents, native API references, loopback administration and the audited absence
@@ -59,6 +60,28 @@ The first two were retrieved 2026-09-19; the third is a reference to investigate
 - `Item.getTags(): Set<ItemTag>`; `CraftRecipe.getTags(): List<String>`.
 - `BaseScriptObject.getScriptObjectFullType()`, `isEnabled()`, `getObsolete()`.
 - `CraftRecipe.isRequiresPlayer()`, `getInputs()`, `getOutputs()`.
+
+## Fishing raw-item resolution — 2026-09-26
+
+Installed `projectzomboid.jar` SHA-256:
+`80E405A4BFC42F6072E75B3735F458A6514143DA011D3226007DED305A442F44`.
+
+The loaded fishing tables contain two raw strings that are not exact installed
+item IDs, but only one resolves through the specific vanilla call path:
+
+- `Fish:getFish()` routes trash results through `instanceItem(String)`, which
+  calls `InventoryItemFactory.CreateItem(String)`. The installed factory
+  retries a missing identifier ending in `Empty` without that suffix and
+  creates the empty-fluid-container variant, so
+  `Base.WaterBottleEmpty` resolves to the installed `Base.WaterBottle`.
+- `FishingRod:brokeLine()` passes its configured replacement to
+  `ItemContainer.AddItem(String)`. That overload first requires an exact
+  `ScriptManager.FindItem` match before creating the instance. The configured
+  `Base.WoodenStick` is missing, so this path cannot create a replacement.
+  `Base.WoodenStick2` is a distinct installed item and is not substituted.
+
+This narrows the catalog exception to one unresolved raw item. It does not
+establish managed-IsoZombie fishing or any gameplay compatibility.
 
 Java signatures do not establish Lua exposure. Item definitions and inventory
 instances use different identifiers/getters. No catalog export should create an
@@ -273,3 +296,35 @@ Do not treat the public ActionContext API as Lua-callable. The local Build
 the packaged animation now follows the native completion lifecycle instead.
 User accepted the resulting local fix. This does not prove all other public
 ActionContext methods are exposed or establish a multiplayer milestone pass.
+
+## Managed IsoZombie cargo and perishable-age callbacks — 2026-09-26
+
+Inspected the installed Build 42.20.4 `projectzomboid.jar` (`80e405a4bfc42f6072e75b3735f458a6514143da011d3226007ded305a442f44`)
+with `javap -c -p` for `ItemContainer`, `InventoryItem`, `Food`, `GameServer`,
+and `IsoGridSquare`:
+
+- `ItemContainer.Remove(InventoryItem)` invokes
+  `InventoryItem.OnBeforeRemoveFromContainer` before clearing the item's
+  container. `Food.OnBeforeRemoveFromContainer` calls `Food.updateAge()`, which
+  can call `GameServer.sendItemStats`; a managed IsoZombie's inventory is not
+  an addressable player or world container for this packet path.
+- `ItemContainer.DoRemoveItem(InventoryItem)` removes the item and nulls its
+  container without invoking `OnBeforeRemoveFromContainer`. For exact cargo
+  transfers, `GoblinLoot` uses this actor-inventory-only detach before calling
+  destination `AddItem`, preventing `AddItem` from internally calling the old
+  actor container's unsafe `Remove` path.
+- `ItemContainer.AddItem(InventoryItem)` assigns the destination container,
+  inserts the exact item, then invokes `InventoryItem.OnAddedToContainer`. On
+  the server, `Food.OnAddedToContainer` calls `Food.updateAge()`; it now reads
+  the addressable destination container for temperature/age calculations.
+- `IsoGridSquare.AddWorldInventoryItem(InventoryItem,...)` sets an
+  `IsoWorldInventoryObject` and its square and transmits the complete item.
+  `GameServer.sendItemStats` has an explicit world-item-square branch. This is
+  the native address for owner-feet delivery, rather than the old actor
+  inventory.
+
+The callback ordering provides a source-level safety rationale for the
+candidate detach/add sequence and closes the bytecode audit of age refresh at
+an addressable destination. It does **not** prove that Goblin's live task
+performs the exact-instance transfer, that either client sees matching item
+state, or that save/reload is correct. Those remain LOOT acceptance gates.

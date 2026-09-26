@@ -20,14 +20,16 @@ class FishingDetailTests(unittest.TestCase):
                            All=table(**{'Base.Worm': lure_data}))
         fish = table(itemType='Base.Fish', lure=table(**{'Base.Worm': '1'}))
         self.fields = {
-            'lure': categories, 'fishes': seq(fish), 'trashItems': seq('Base.Trash'),
+            'lure': categories, 'fishes': seq(fish),
+            'trashItems': seq('Base.Trash', 'Base.WaterBottleEmpty'),
             'line': table(**{'Base.Line': '0.1'}), 'hook': table(**{'Base.Hook': '1'}),
             'rods': table(**{'Base.Rod': '1'}),
             'breakRodReplacement': table(**{'Base.Rod': 'Base.BrokenRod'}),
             'fishNet': seq('Base.Fish'), 'fishNetWithBait': seq('Base.Fish')}
         self.fields = dict(sorted(self.fields.items()))
         self.detail = {'schema_version': 1, 'npc_compatibility': 'UNKNOWN', 'fields': self.fields}
-        ids = ('Base.Worm', 'Base.Fish', 'Base.Trash', 'Base.Line', 'Base.Hook', 'Base.Rod', 'Base.BrokenRod')
+        ids = ('Base.Worm', 'Base.Fish', 'Base.Trash', 'Base.WaterBottle', 'Base.Line',
+               'Base.Hook', 'Base.Rod', 'Base.BrokenRod', 'Base.CraftedFishingRod', 'Base.WoodenStick2')
         self.items = {'records': [{'full_type': item} for item in ids]}
 
     def validate(self):
@@ -39,9 +41,17 @@ class FishingDetailTests(unittest.TestCase):
         self.assertEqual(result['fish'], 1)
         self.assertEqual(result['lures'], {'Base.Worm'})
         self.assertEqual(result['unresolved_items'], set())
+        self.assertEqual(result['alias_resolutions'], {'Base.WaterBottleEmpty': 'Base.WaterBottle'})
+
+    def test_missing_break_rod_item_stays_unresolved_despite_similar_item(self):
+        self.fields['breakRodReplacement'] = table(**{'Base.CraftedFishingRod': 'Base.WoodenStick'})
+        result = self.validate()
+        self.assertEqual(result['unresolved_items'], {'Base.WoodenStick'})
+        self.assertNotIn('Base.WoodenStick', result['alias_resolutions'])
 
     def test_unresolved_reference_is_reported_not_guessed(self):
-        self.items['records'].pop()
+        self.items['records'] = [record for record in self.items['records']
+                                 if record['full_type'] != 'Base.BrokenRod']
         self.assertEqual(self.validate()['unresolved_items'], {'Base.BrokenRod'})
 
     def test_lure_index_must_match_categories(self):
@@ -59,6 +69,7 @@ class FishingDetailTests(unittest.TestCase):
             validate_fishing_details(proof, self.items)
 
     def test_missing_export_and_compatibility_claim_rejected(self):
+        self.assertEqual(validate_fishing_details({}, self.items)['alias_resolutions'], {})
         with self.assertRaises(CatalogError): validate_fishing_details({}, self.items, required=True)
         self.detail['npc_compatibility'] = 'SUPPORTED'
         with self.assertRaises(CatalogError): self.validate()
