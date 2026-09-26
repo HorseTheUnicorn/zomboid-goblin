@@ -2,6 +2,11 @@
 
 ## Current checkpoint — 2026-09-26
 
+- CONTAINER GAIN_ACCESS live one-client check passed on 08d18a3: normal task
+  accepted, actual Goblin movement from outside into the house, reachable
+  container completion, identical native content IDs before/after. Probe
+  restored FOLLOW and was removed. This is not locked-container, two-client
+  replication or save/reload proof. See MILESTONE3_CONTAINER_CHECK.md.
 - Added non-destructive CONTAINER GAIN_ACCESS adapter: nearest eligible loaded
   world container within five tiles, persistent object marker, normal shared
   approach, native actor-specific lock and safehouse recheck, bounded timeout.
