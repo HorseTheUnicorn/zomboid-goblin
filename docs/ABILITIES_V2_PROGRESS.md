@@ -759,10 +759,11 @@ RUNTIME_RESOLVED, ENGINE_TESTED, PROPOSED, UNSUPPORTED.
    7,992 parts, 6 traps, 6 animals, 1,679 forage definitions, 21 fish, 41 lures,
    and effective moveable repair/scrap/tool tables. The two fishing raw-string
    exceptions remain explicitly classified; no alias was invented.
-4. Inventoried 19 existing and 42 proposed capabilities. All 61 records contain
-   semantic arguments, targets, installed/native call sites, public-reference
-   links, authority, item/recipe resolution, permissions, completion criteria,
-   replication/save, reconciliation and verified-version scope.
+4. The current normalized inventory contains 64 capabilities (27 existing,
+   37 proposed), matching the current checker and `docs/PZ_REFERENCES.md`.
+   Its records carry native/item references and structured evidence gaps;
+   catalog consistency does not certify each field's correctness, ability
+   implementation, or engine compatibility.
 5. Kept `/goblin` commands, deterministic natural-language routes, proposed
    commands, Qwen intents, native APIs, loopback administration and RCON in
    separate inventories. Repository RCON integration is absent; proposed chat
