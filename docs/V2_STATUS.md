@@ -37,8 +37,9 @@ marked complete. Unsupported native operations must remain explicitly identified
 
 ## Latest validation
 
-- Full automated suite: 530 tests run successfully, two existing expected failures.
-- Access suite: 31 tests pass; the wrong-direction regression failed before the fix.
+- Full automated suite: 531 tests run successfully, two existing expected failures.
+- Access suite: 32 tests pass; wrong-direction and restored-crossing reversal
+  regressions both failed before their fixes. Actual server save/reload is pending.
 - Catalog: 64 records pass consistency checks.
 - No new physical access acceptance was obtained in the latest local run.
 - The current source changes have not been deployed to .03 or Steam Workshop.

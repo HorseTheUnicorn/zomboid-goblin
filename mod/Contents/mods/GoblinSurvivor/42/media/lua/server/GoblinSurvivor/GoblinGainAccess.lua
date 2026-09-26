@@ -9,7 +9,7 @@ local Movement=require("GoblinSurvivor/GoblinMovement")
 local GainAccess={}
 local kinds={BUILDING=true,ROOM=true,YARD=true,VEHICLE=true,CONTAINER=true}
 local kindAliases={NEARBY_BUILDING="BUILDING",BASE="BUILDING",CURRENT_POSITION="ROOM",AREA="YARD"}
-local routeFields={"access_method","edge","window","breach","started_at","priority","score","destination_side"}
+local routeFields={"access_method","edge","window","breach","started_at","priority","score","destination_side","cross_from"}
 
 local function nowMs()
     return type(getTimestampMs)=="function" and getTimestampMs() or 0
@@ -58,6 +58,13 @@ local function crossOpenedEdge(body,payload,runtime,now)
     if destination~=nil and destination~=1 and destination~=2 then
         return true,false,"saved access destination is invalid","TARGET_CHANGED"
     end
+    if payload.cross_from~=nil then
+        if payload.cross_from~=1 and payload.cross_from~=2 then
+            return true,false,"saved access origin is invalid","TARGET_CHANGED"
+        end
+        runtime.cross_from=runtime.cross_from or payload.cross_from
+        runtime.cross_started_at=runtime.cross_started_at or now
+    end
     if destination and side==destination then
         Movement.clear(body)
         return true,true,"reached the "..string.lower(tostring(payload.target_kind)).." interior","COMPLETE"
@@ -88,6 +95,9 @@ local function crossOpenedEdge(body,payload,runtime,now)
             return false,true,"walking to the open access edge","MOVING_TO_TARGET"
         end
         runtime.cross_from=side
+        -- The physical crossing can finish before another job update. Keep
+        -- its origin in the primitive task so restoration cannot reverse it.
+        payload.cross_from=side
         runtime.cross_started_at=now
     elseif not destination and side and side~=runtime.cross_from then
         Movement.clear(body)

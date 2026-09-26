@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Access restoration follow-up: reproduced a completed yard doorway crossing
+  being reversed after the capability's runtime table was lost. The original
+  side now persists in the primitive task payload; restoring before crossing
+  continues toward the same side, and restoring after crossing reports completion
+  without another movement or door toggle. Alternate routes clear this origin,
+  and invalid saved sides fail with TARGET_CHANGED. All 32 access tests pass.
+  This is simulated runtime restoration, not a claim of actual server save/reload
+  or multiplayer acceptance.
 - Reproduced an access-direction bug: a Goblin already on the inside edge of
   a building was ordered outside, and that outward crossing counted as success.
   Scoped room/building routes now persist the intended interior side, retain it

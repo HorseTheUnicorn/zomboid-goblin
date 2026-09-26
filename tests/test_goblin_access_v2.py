@@ -141,17 +141,20 @@ class AccessV2Tests(unittest.TestCase):
     def test_alternate_access_route_preserves_its_own_destination_side(self):
         self.lua.execute('''
             a.x=5.5;a.y=5.5
-            local payload={target_kind='BUILDING',access_method='DOOR',destination_side=1,
+            local payload={target_kind='BUILDING',access_method='DOOR',destination_side=1,cross_from=2,
                 edge={x=0,y=0,z=0,dx=1,dy=0},alternates={
                     {access_method='DOOR',destination_side=2,edge={x=0,y=2,z=0,dx=1,dy=0}}
                 }}
-            local runtime={access_opened=true,cross_approach_started_at=clock-31000}
+            local runtime={access_opened=true,cross_started_at=clock-31000}
             local done,success,detail,code=GainAccess.update(a,payload,runtime,clock)
             assert(not done and success and code=='MOVING_TO_TARGET',detail)
-            assert(payload.destination_side==2 and payload.edge.y==2)
+            assert(payload.destination_side==2 and payload.edge.y==2 and payload.cross_from==nil)
             assert(runtime.access_opened==nil and runtime.cross_approach_started_at==nil)
             runtime.access_opened=true;payload.destination_side=3
             done,success,detail,code=GainAccess.update(a,payload,runtime,clock+100)
+            assert(done and not success and code=='TARGET_CHANGED',detail)
+            payload.destination_side=2;payload.cross_from=3
+            done,success,detail,code=GainAccess.update(a,payload,runtime,clock+200)
             assert(done and not success and code=='TARGET_CHANGED',detail)
         ''')
 
@@ -181,6 +184,34 @@ class AccessV2Tests(unittest.TestCase):
             a.x=0.5
             result=Jobs.update(a,'GAIN_ACCESS',payload,clock+200)
             assert(result.done and result.success and result.code=='COMPLETE')
+        ''')
+
+    def test_yard_crossing_survives_runtime_loss_without_crossing_back(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=0.5;a.y=0.5
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local door={toggles=0}
+            function door:isOpen() return true end;door.IsOpen=door.isOpen
+            function door:ToggleDoor() self.toggles=self.toggles+1 end
+            function here:getDoorTo(other) if other==there then return door end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
+            assert(payload,detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not result.done and a.destination.x==1.5)
+            assert(payload.cross_from==1)
+            assert(require('GoblinSurvivor/GoblinCapabilities').serializable(payload))
+            Jobs.clear(a)
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+50)
+            assert(not result.done and a.destination.x==1.5)
+            -- Engine movement completed before the next job tick. Restore the
+            -- primitive job with no weak-table runtime, as after reattachment.
+            a.x=1.5
+            Jobs.clear(a)
+            a.destination=nil
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(result.done and result.success and result.code=='COMPLETE',
+                'restored access must recognize the completed crossing')
+            assert(not a.destination and door.toggles==0)
         ''')
 
     def test_closed_door_approach_switches_to_opposite_side_after_no_progress(self):
