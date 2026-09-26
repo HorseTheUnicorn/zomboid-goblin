@@ -200,9 +200,9 @@
       "semantic_arguments": {
         "target.kind": "BUILDING, ROOM, YARD, VEHICLE or CONTAINER; no model coordinates or physical method",
         "allow_breach": "trusted deterministic /goblin breach route only; excluded from Qwen model schema",
-        "current_resolution": "BUILDING scans the loaded same-floor perimeter of the owner's current or nearest building; ROOM scans the loaded same-floor room perimeter; YARD scans loaded door/low-fence edges within twelve tiles; vehicle delegates to passenger selection; container fails unsupported"
+        "current_resolution": "BUILDING scans the loaded same-floor perimeter of the owner's current or nearest building; ROOM scans the loaded same-floor room perimeter; YARD scans loaded door/low-fence edges within twelve tiles; vehicle delegates to passenger selection; CONTAINER selects the nearest natively accessible loaded world container within five tiles and approaches without changing contents or locks (unit-tested, not live-verified)"
       },
-      "target_class": "IsoDoor or door-like IsoThumpable; IsoWindow; low IsoObject returned by IsoGridSquare.getHoppableTo; BaseVehicle passenger door; container target intentionally unsupported",
+      "target_class": "IsoDoor or door-like IsoThumpable; IsoWindow; low IsoObject returned by IsoGridSquare.getHoppableTo; BaseVehicle passenger door; loaded world object with ItemContainer",
       "authority": {
         "side": "server",
         "route": ["authenticated OnClientCommand player or validated Qwen action", "ownBody", "Authority.check", "Jobs.prepare", "GoblinGainAccess.prepare/update", "GoblinAccessPolicy recheck immediately before mutation", "native target adapter"],
@@ -211,7 +211,9 @@
         "model_may_choose_physical_method": false
       },
       "sources": [
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "53ddaa6d54b370b5925f0f745a73c08b8fcd05479bc67bf8648f25cd699e5f71"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "c6f314e8451b99950ead40112fb8548f5fe9d10645563c8bc14debe1c113e83b"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinContainerAccess.lua", "sha256": "71090a88ad173c59f24107d8165ff3160f69806fafdacb246f3d9f67b5783bfc"},
+        {"installed_path": "media/lua/client/ISUI/ISInventoryPage.lua"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinPadlocks.lua", "sha256": "b56bc07373199d0737ed9455ea69729116c4205fd9db772c591e08c894fc13d1"},
         {"installed_path": "media/lua/shared/TimedActions/ISPadlockAction.lua"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua", "sha256": "6d301eb2b0717ea548883987f510efb0b2d5f2d387909c28eb5974771c8a38ae"},
@@ -231,7 +233,7 @@
           "IsoWindow.smashWindow()",
           "BaseVehicle.canOpenDoor(VehiclePart,IsoGameCharacter); BaseVehicle.canUnlockDoor(VehiclePart,IsoGameCharacter); BaseVehicle.toggleLockedDoor(VehiclePart,IsoGameCharacter,boolean)"
         ],
-        "compatibility": "MIXED: door player-free adapter previously multiplayer tested; low-fence climb and house-window smash accept the managed actor/no actor in inspected bindings but await live replication proof; vehicle key methods accept IsoGameCharacter and are unit-tested but await live proof; containers unsupported",
+        "compatibility": "MIXED: door player-free adapter previously multiplayer tested; low-fence climb and house-window smash accept the managed actor/no actor in inspected bindings but await live replication proof; vehicle key methods accept IsoGameCharacter and are unit-tested but await live proof; container native isLockedToCharacter server bytecode accepts IsoGameCharacter, adapter unit-tested but not live-verified",
         "installed_fence_jar_sha256": "80e405a4bfc42f6072e75b3735f458a6514143da011d3226007ded305a442f44",
         "installed_fence_preconditions": "Build 42.20.4 projectzomboid.jar bytecode: IsoGameCharacter.climbOverFence(IsoDirections) returns void; it exits before EventClimbFence when current square is absent, IsoWindow.canClimbThroughHelper(IsoGameCharacter,IsoGridSquare,IsoGridSquare,boolean) rejects the actor/edge, or IsoGridSquare.isPlayerAbleToHopWallTo(IsoDirections,IsoGridSquare) rejects the direction. The helper excludes IsoAnimal but not IsoZombie. The adapter requires all three exposed predicates to be callable and affirmative before invoking the void climb; unavailable or throwing checks fail closed rather than claiming WORKING. ClimbOverFenceState.setParams initializes run/sprint state for IsoGameCharacter, including IsoZombie. It still requires an observed side change; a managed IsoZombie climb and both-client replication remain untested.",
         "installed_fence_animation_finding": "ClimbOverFenceState has explicit IsoZombie branches, but its PlayTripSound listener contains an unguarded IsoPlayer cast. In the installed AnimSets, only player run/sprint-fail nodes emit PlayTripSound; Goblin's custom zombie start/end/obstacle nodes do not. The remaining zombie lunge/fall outcomes and actual managed-actor animation still require a live trial.",

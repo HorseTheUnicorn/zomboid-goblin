@@ -132,7 +132,7 @@ function GainAccess.prepare(body,owner,payload)
     local request={anchor={x=point.x,y=point.y,z=point.z},allow_breach=payload.allow_breach==true,
         autonomous=payload.autonomous==true,offline=payload.offline==true}
     if kind=="CONTAINER" then
-        return nil,"container access is unsupported until a native lock implementation is verified"
+        return require("GoblinSurvivor/GoblinContainerAccess").prepare(body,owner,preparedAt)
     end
     if kind=="VEHICLE" then
         local route,detail=Transport.prepare(body,owner,"ENTER_VEHICLE",preparedAt)
@@ -223,6 +223,9 @@ end
 
 function GainAccess.update(body,payload,runtime,now)
     local method=payload and payload.access_method
+    if method=="CONTAINER" then
+        return require("GoblinSurvivor/GoblinContainerAccess").update(body,payload,runtime,now)
+    end
     if method=="VEHICLE" then
         local done,success,detail=Transport.board(body,payload,now)
         if not done then

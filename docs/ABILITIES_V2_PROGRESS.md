@@ -2,6 +2,13 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Added non-destructive CONTAINER GAIN_ACCESS adapter: nearest eligible loaded
+  world container within five tiles, persistent object marker, normal shared
+  approach, native actor-specific lock and safehouse recheck, bounded timeout.
+  Completion requires reachable arrival; no loot roll, key consumption, lock
+  removal or container-content transfer. Four focused tests pass for movement,
+  relock/replacement, scope, revoked policy and timeout. Not yet staged or live
+  verified; combination guessing/destructive container breach is not provided.
 - Container access audit found supply/stockpile paths reading only isLocked,
   missing the installed IsoThumpable actor-specific padlock/combination check.
   A regression failed before the fix. Shared containerAccessible now uses the
