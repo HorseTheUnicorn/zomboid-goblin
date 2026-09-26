@@ -93,6 +93,27 @@ class ExtendedJobTests(unittest.TestCase):
             end
         ''')
 
+    def test_reserved_tool_repair_requires_native_condition_readback(self):
+        self.lua.execute('''
+            local tool=Tools.ensure(a,'Base.Hammer')
+            function tool:getConditionMax() return 10 end
+            function tool:getCondition() return self.condition end
+            for _,mode in ipairs({'noop','throws','works'}) do
+                tool.condition=1
+                function tool:setCondition(value)
+                    if mode=='throws' then error('repair failed') end
+                    if mode=='works' then self.condition=value end
+                end
+                local result=Tools.ensure(a,'Base.Hammer')
+                if mode=='works' then assert(result==tool and tool.condition==10)
+                else assert(result==nil,'failed native repair reported ready') end
+                assert(#a.inv.items==1 and a.inv.items[1]==tool)
+            end
+            tool.getCondition=function() error('unreadable condition') end
+            assert(Tools.ensure(a,'Base.Hammer')==nil)
+            assert(#a.inv.items==1)
+        ''')
+
     def test_only_a_native_reusable_tool_slot_can_extend_kit(self):
         self.lua.execute('''
             assert(not Tools.ensure(a,'Base.ModTool'))

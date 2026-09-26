@@ -96,7 +96,13 @@ function Tools.ensure(body,kind,recipeInput,copyNumber)
         metadata.GoblinToolKit=true
     end
     local _,maximum=call(tool,"getConditionMax")
-    if type(maximum)=="number" then call(tool,"setCondition",maximum) end
+    if type(maximum)=="number" then
+        local changed=call(tool,"setCondition",maximum)
+        local read,condition=call(tool,"getCondition")
+        -- Keep the reserved item on failure so retries neither duplicate it
+        -- nor discard fuel acquired later. A failed repair is not readiness.
+        if not changed or not read or condition~=maximum then return nil end
+    end
     return tool
 end
 

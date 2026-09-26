@@ -2,6 +2,13 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Toolkit repair readiness now verifies native getCondition after setCondition.
+  A failing regression first demonstrated a no-op setter incorrectly reporting
+  readiness; coverage also checks throwing setters and unreadable readback.
+  Failed repair retains the exact reserved item rather than duplicating it or
+  discarding contents. All 540 automated tests pass with two existing expected
+  failures. This source change is not yet staged or live-tested; the earlier
+  29-tool inventory observation remains bound to its recorded source hash.
 - Native toolkit sample: all 29 configured reusable types had one reserved
   inventory copy, with unchanged native item identities after 30044 ms.
   Read-only probe did not provision or mutate anything. See
