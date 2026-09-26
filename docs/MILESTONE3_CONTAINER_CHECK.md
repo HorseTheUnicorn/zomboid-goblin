@@ -33,3 +33,40 @@ with `server.log` and `client10.log` suffixes. Staged probes and flags were
 removed after completion. The ordinary container identity marker created by
 the adapter remains, as intended for task persistence. Local server/client
 remain running; production, main and Workshop were not changed.
+
+## Actual save/restart/resume check on 72d102e
+
+The disposable profile originally had SaveWorldEveryMinutes=0. It was
+temporarily set to 1 for the save phase, then restored to 0 before the resume
+server started. This was not a simulated Lua-table reconstruction.
+
+Save phase: server PID 54932, no-Storm client PID 42764.
+
+- Tick 377: normal GAIN_ACCESS accepted.
+- Tick 379, st 745399842: probe held the task before physical execution and
+  saved a primitive content-ID baseline into its payload. Target ID was
+  `m3path_61:1790457019269:1`. The hold was bounded to 180 seconds.
+- Tick 577, st 745419883–745419927: native SaveAll, Saving GlobalModData,
+  Saving finish. global_mod_data.bin was updated on disk.
+- Only after that save did the test stop the processes and restart.
+
+Resume phase: server PID 36872, no-Storm client PID 37088.
+
+- The probe in resume mode did not dispatch a task.
+- Tick 374: restored_payload=true with the exact same target ID; managed actor
+  generation 2 resumed GAIN_ACCESS at `(10779.905,9767.997,0)`.
+- Tick 416: COMPLETE at `(10778.627,9765.227,0)`;
+  terminal_contents_unchanged=true against the pre-restart payload baseline.
+- Normal FOLLOW restored in the running session; probes/flags removed.
+
+This proves task payload, object marker and unchanged container contents
+survived a real server restart, followed by actual resumed arrival. It does not
+prove other abilities' persistence, a locked-container route, or two-client
+replication. With autosave restored to zero, the on-disk disposable checkpoint
+still contains the held access task; a later restart can resume that harmless
+task again. Terminal-result persistence across a later save is a separate gate.
+
+Probe SHA-256: `bf82f99a66f44b34eff52b937a083172fc3bac24685658b907ff101a7c4c7bc1`.
+Logs retained under `C:\Users\tomgr\Zomboid\goblin-test-backups\` as
+`m3-container-save-20260926.server.log` and
+`m3-container-resume-20260926.server.log`.

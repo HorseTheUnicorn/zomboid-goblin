@@ -2,6 +2,12 @@
 
 ## Current checkpoint — 2026-09-26
 
+- CONTAINER GAIN_ACCESS real save/restart passed on 72d102e. Native SaveAll
+  and GlobalModData save occurred while the task was held; a fresh server
+  restored the exact target ID and content baseline without redispatch, then
+  reached COMPLETE with unchanged contents. Temporary one-minute autosave
+  restored to zero and probes removed. This does not certify other abilities,
+  two-client replication or terminal-result persistence after a later save.
 - CONTAINER GAIN_ACCESS live one-client check passed on 08d18a3: normal task
   accepted, actual Goblin movement from outside into the house, reachable
   container completion, identical native content IDs before/after. Probe

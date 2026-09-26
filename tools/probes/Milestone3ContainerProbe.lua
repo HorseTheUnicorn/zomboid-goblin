@@ -3,7 +3,8 @@
 if not isServer() or getServerName()~="goblin-local" then return end
 local reader=getFileReader("goblin-m3-container.flag",false)
 if not reader then return end
-local owner=reader:readLine();reader:close()
+local owner=reader:readLine()
+local mode=reader:readLine();reader:close()
 if owner~="m3path_61" then return end
 local Body=require("GoblinSurvivor/GoblinBody")
 local World=require("GoblinSurvivor/GoblinWorld")
@@ -26,11 +27,25 @@ local function contents(payload)
     error("selected container missing")
 end
 Jobs.update=function(body,task,payload,now)
+    if mode=="resume" and not fired and task=="GAIN_ACCESS" and Body.owner(body)==owner
+        and payload.access_method=="CONTAINER" then
+        fired=true;active={body=body,started=getTimestampMs(),before=payload.m3_probe_contents}
+        log("restored_payload="..tostring(type(payload.m3_probe_contents)=="string")
+            .." target="..tostring(payload.container_id))
+    end
     local t=active
     if t and body==t.body and task=="GAIN_ACCESS" and not t.before then
         local ok,value=pcall(contents,payload)
         t.before=ok and value or nil;t.readFailed=not ok
         log("target="..tostring(payload.container_id).." contents_read="..tostring(ok))
+    end
+    if t and mode=="hold-for-save" and body==t.body and task=="GAIN_ACCESS"
+        and getTimestampMs()-t.started<180000 then
+        if not t.held then
+            t.held=true;payload.m3_probe_contents=t.before
+            log("holding_for_save=true target="..tostring(payload.container_id))
+        end
+        return {done=false,success=true,code="WORKING",detail="local persistence fixture hold",progress=0}
     end
     local result=original(body,task,payload,now)
     if t and body==t.body and task=="GAIN_ACCESS" then
@@ -49,13 +64,14 @@ Jobs.update=function(body,task,payload,now)
 end
 Events.OnTick.Add(function()
     if active then
-        if active.finished or getTimestampMs()-active.started>65000 then
+        local timeout=mode=="hold-for-save" and 185000 or 65000
+        if active.finished or getTimestampMs()-active.started>timeout then
             local body=active.body;active=nil;Jobs.update=original
             log("cleanup=true");Brain.setTask(body,"FOLLOW",{manual=true})
         end
         return
     end
-    if fired or not getCell() then return end
+    if fired or mode=="resume" or not getCell() then return end
     for _,player in ipairs(World.values(getOnlinePlayers())) do
         if player:getUsername()==owner and math.abs(player:getX()-10779.5)<2
             and math.abs(player:getY()-9765.5)<2 then
