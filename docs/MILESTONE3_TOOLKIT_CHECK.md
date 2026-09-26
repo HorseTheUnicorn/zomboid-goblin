@@ -27,3 +27,29 @@ Raw log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-20260926.server.
 The staged server probe and enabling flag were removed after completion. The
 source probe remains in tools/probes, outside the released mod. The local
 server and client remain running. Production and published files are unchanged.
+
+## Native repair follow-up on e4a9fb9
+
+Disposable server PID 39184, no-Storm client PID 10032 (m3path_61).
+All five local package copies received the repair-readback fix before restart.
+This run used explicit `repair-hammer` mode, not the earlier read-only mode.
+
+- Tick 230: all 29 tool types had one reserved copy.
+- Same tick: actual hammer ID 278240023 was temporarily set to condition 9;
+  Tools.ensure returned that exact item with native condition 10. The probe
+  asserted the inventory size was unchanged.
+- Same tick: original condition restored successfully, including native readback.
+- Tick 531: complete=true, reserved_identity_stable=true after 30035 ms.
+
+This validates the native repair success path and reserved-item stability for
+the current implementation. Fuel conservation, delivery/recipe exclusion and
+save/reload tests remain separate. No two-client inventory claim is made.
+
+SHA-256 of GoblinTools.lua:
+`261b68bd755d0542ad6e2f9045d526f4d63bd68e969daba7867de46f32732f39`.
+Probe SHA-256:
+`0ed4942d3fc122070d73696ca7987a35e71a1f5b7eacfe91c1a780f6de08d24d`.
+Raw log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-repair-20260926.server.log`.
+The staged probe and enabling flag were removed after the terminal sample.
+Three probe-control tests pass, including condition restoration after a failed
+repair. These mocks test cleanup logic, not native repair behavior.

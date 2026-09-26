@@ -7,7 +7,7 @@ PROBE = Path(__file__).resolve().parents[1] / 'tools/probes/Milestone3ToolkitPro
 
 
 class ToolkitProbeTests(unittest.TestCase):
-    def runtime(self):
+    def runtime(self, repair=False, fail=False):
         lua = LuaRuntime(unpack_returned_tuples=True)
         lua.execute('''
             logs={};function print(s) logs[#logs+1]=s end
@@ -28,6 +28,25 @@ class ToolkitProbeTests(unittest.TestCase):
                 types={'Base.Hammer'},reserved=function() return true end} end
             Events={OnTick={Add=function(f) tick=f end}}
         ''')
+        if repair:
+            lua.globals().failRepair = fail
+            lua.execute('''
+                function getFileReader()
+                    local n=0
+                    return {readLine=function() n=n+1
+                        return n==1 and 'm3path_61' or 'repair-hammer' end,
+                        close=function() end}
+                end
+                item.condition=8
+                function item:getCondition() return self.condition end
+                function item:getConditionMax() return 10 end
+                function item:setCondition(value) self.condition=value end
+                local tools=require('GoblinSurvivor/GoblinTools')
+                tools.ensure=function()
+                    if failRepair then return nil end
+                    item.condition=10;return item
+                end
+            ''')
         lua.execute(PROBE.read_text())
         return lua
 
@@ -46,3 +65,12 @@ class ToolkitProbeTests(unittest.TestCase):
             tick();item.getID=function() return 43 end;clock=31000;tick()
             assert(logs[4]:find('reserved_identity_stable=false',1,true))
         ''')
+
+    def test_repair_fixture_restores_original_condition_on_success_and_failure(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                lua = self.runtime(repair=True, fail=fail)
+                lua.execute('tick();assert(item.condition==8)')
+                logs = '\n'.join(lua.globals().logs.values())
+                self.assertIn('repair_fixture_restored=true', logs)
+                self.assertEqual('repair_error=' in logs, fail)

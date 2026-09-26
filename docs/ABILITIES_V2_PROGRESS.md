@@ -2,6 +2,11 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Native repair follow-up on e4a9fb9 passed: real reserved hammer 278240023
+  repaired 9 -> 10 through Tools.ensure, preserving item identity and inventory
+  count. Temporary condition change restored; all 29 reserved identities stayed
+  stable for 30035 ms. All five local packages updated; probe removed after
+  terminal sample. Fuel/consumption/persistence acceptance remains separate.
 - Toolkit repair readiness now verifies native getCondition after setCondition.
   A failing regression first demonstrated a no-op setter incorrectly reporting
   readiness; coverage also checks throwing setters and unreadable readback.
