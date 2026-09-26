@@ -2,6 +2,17 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Keyed-door fault injection reproduced a no-op native unlock setter reaching
+  the silent toggle while still locked. Native lock/key flags now require
+  successful false readback for every grouped panel before opening. A second
+  failing case reproduced retry skipping a locked sibling after the selected
+  panel partially unlocked; retries now inspect the group. Coverage includes
+  no-op/throwing setters, unreadable post-state, normal success and grouped
+  retries. All 125 focused access/work/house checks pass; full suite 537 tests
+  succeeds with two existing expected failures; catalog consistency passes.
+  This is automated failure-path hardening only, not live keyed-door proof.
+  The running local packages were not replaced/restarted for this edit; the
+  preceding ordinary-door replication evidence retains its original hashes.
 - Closed-door follow-up: the local normal GAIN_ACCESS path reopened a selected
   ordinary door and reached its interior side. A subsequent two-client test
   recorded real door:isOpen transitions true -> false -> true independently

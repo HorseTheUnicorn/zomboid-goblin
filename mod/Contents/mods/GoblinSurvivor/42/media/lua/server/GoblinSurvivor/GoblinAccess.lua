@@ -418,14 +418,17 @@ local function unlockDoor(object, body)
     -- key ID. A crowbar or permanent toolkit never becomes an invented
     -- lock-pick mechanic. Keep the player-free state/sync adapter because the
     -- installed actor-taking door toggle has an unsafe IsoPlayer tail cast.
-    if not doorLocked(object) then return true end
-    if not matchingDoorKey(body, object) and not canUnlockFromInside(body, object) then return false end
     local group=doorGroup(object)
+    local needsUnlock=false
+    for _,member in ipairs(group) do if doorLocked(member) then needsUnlock=true end end
+    if not needsUnlock then return true end
+    if not matchingDoorKey(body, object) and not canUnlockFromInside(body, object) then return false end
     -- Preflight all panels before the first mutation, not halfway through a
     -- double/garage door after one panel has already been unlocked.
     for _,member in ipairs(group) do if specialLockReason(member,body) then return false end end
     if select(2,result(object,"isLockedByPadlock"))==true
         and not require("GoblinSurvivor/GoblinPadlocks").remove(body,object) then return false end
+    local verifiedUnlocked = true
     for _, member in ipairs(group) do
         local changed = false
         local ok, value = result(member, "isLocked")
@@ -437,8 +440,18 @@ local function unlockDoor(object, body)
         ok, value = result(member, "isLockedByKey")
         if ok and value == true then changed = call(member, "setLockedByKey", false) or changed end
         if changed then call(member, "syncIsoObject", false, 0, nil, nil) end
+        -- Silent/group toggles are player-free but do not establish that an
+        -- earlier setter actually unlocked the native object. A throwing or
+        -- ineffective setter must never open a still-locked panel. Read every
+        -- panel back before permitting any group toggle; partial changes have
+        -- already been synchronized, but they are not reported as success.
+        local lockRead, locked = result(member, "isLocked")
+        local keyRead, keyed = result(member, "isLockedByKey")
+        if not lockRead or locked ~= false or not keyRead or keyed ~= false then
+            verifiedUnlocked = false
+        end
     end
-    return true
+    return verifiedUnlocked
 end
 
 local function safehouseAllows(body, object)

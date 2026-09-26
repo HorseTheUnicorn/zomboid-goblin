@@ -655,6 +655,61 @@ class AccessV2Tests(unittest.TestCase):
             assert(result.done and result.success and result.code=='COMPLETE')
         ''')
 
+    def test_keyed_door_never_opens_when_native_unlock_did_not_clear_lock(self):
+        self.lua.execute('''
+            function a.inv:haveThisKeyId() return {} end
+            local function makeDoor()
+                local d={opened=false,locked=true,keyLocked=true,toggles=0}
+                function d:getSquare() return target.square end
+                function d:isOpen() return self.opened end
+                function d:isLocked() return self.locked end
+                function d:isLockedByKey() return self.keyLocked end
+                function d:isLockedByPadlock() return false end
+                function d:getLockedByCode() return 0 end
+                function d:getKeyId() return 42 end
+                function d:isBarricaded() return false end
+                function d:isDestroyed() return false end
+                function d:setLocked(v) self.locked=v end
+                function d:setLockedByKey(v) self.keyLocked=v end
+                function d:syncIsoObject() end
+                function d:ToggleDoorSilent() self.opened=true;self.toggles=self.toggles+1 end
+                return d
+            end
+            for _,failure in ipairs({'noop','throw','unreadable'}) do
+                for _,field in ipairs({'locked','keyLocked'}) do
+                    local door=makeDoor()
+                    local setter=field=='locked' and 'setLocked' or 'setLockedByKey'
+                    local getter=field=='locked' and 'isLocked' or 'isLockedByKey'
+                    door[setter]=function(self,value)
+                        if failure=='throw' then error('native mutation failed') end
+                        if failure=='unreadable' then
+                            self[field]=value
+                            self[getter]=function() error('native read failed') end
+                        end
+                    end
+                    local opened,detail=Access.open(a,door,false)
+                    assert(not opened and door.toggles==0 and not door.opened,
+                        failure..' '..field..' must not reach silent toggle: '..tostring(detail))
+                end
+            end
+            local valid=makeDoor()
+            assert(Access.open(a,valid,false) and valid.toggles==1)
+            assert(not valid.locked and not valid.keyLocked)
+            -- A failed sibling panel must also prevent the native group toggle.
+            local first,second=makeDoor(),makeDoor()
+            function second:setLocked(v) end
+            local groupToggles=0
+            IsoDoor={getDoubleDoorIndex=function() return 1 end,
+                getDoubleDoorObject=function(_,i) return i==1 and first or second end,
+                toggleDoubleDoor=function() groupToggles=groupToggles+1 end}
+            assert(not Access.open(a,first,false))
+            assert(not first.opened and not second.opened and second.locked and groupToggles==0)
+            -- Retrying after partial unlock must not bypass the sibling merely
+            -- because the selected panel is already unlocked.
+            assert(not first.locked and not first.keyLocked)
+            assert(not Access.open(a,first,false) and groupToggles==0)
+        ''')
+
     def test_ordinary_key_does_not_erase_padlock_or_combination_lock(self):
         self.lua.execute('''
             local door={opened=false,locked=true,keyLocked=true,padlocked=false,code=0,mutations=0}

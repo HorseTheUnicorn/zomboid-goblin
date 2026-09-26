@@ -37,10 +37,12 @@ marked complete. Unsupported native operations must remain explicitly identified
 
 ## Latest validation
 
-- Full automated suite: 534 tests run successfully, two existing expected failures.
-- Access suite: 35 tests pass, covering direction, restored crossings, reclosed
-  doors, removed targets and revoked access. Direction/restoration and permission
-  regressions failed before their fixes. Actual server save/reload is pending.
+- Full automated suite: 537 tests run successfully, two existing expected failures.
+- Access suite: 36 tests pass, covering direction, restored crossings, reclosed
+  doors, removed targets, revoked access and native unlock failures/group retries.
+  Direction/restoration, permission and unlock regressions failed before their
+  fixes. Actual server save/reload is pending. The latest unlock hardening has
+  not been staged into the running local pair or live-keyed-door tested.
 - Catalog: 64 records pass consistency checks.
 - A subsequent one-client native check reached a real doorway's intended
   interior side. A follow-up closed-door test recorded reopening and crossing,
