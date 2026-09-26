@@ -41,13 +41,16 @@ marked complete. Unsupported native operations must remain explicitly identified
 - Access suite: 36 tests pass, covering direction, restored crossings, reclosed
   doors, removed targets, revoked access and native unlock failures/group retries.
   Direction/restoration, permission and unlock regressions failed before their
-  fixes. Actual server save/reload is pending. The latest unlock hardening has
-  not been staged into the running local pair or live-keyed-door tested.
+  fixes. Actual server save/reload is pending. The unlock hardening is now
+  loaded locally; one real matching-key door test passed with key retention
+  and both clients observing the lock/open transition. Missing-key rejection,
+  multi-panel failures and other access paths still need live evidence.
 - Catalog: 64 records pass consistency checks.
 - A subsequent one-client native check reached a real doorway's intended
   interior side. A follow-up closed-door test recorded reopening and crossing,
   and both no-Storm clients independently observed the live close/open state
-  changes. See MILESTONE3_EXISTING_BUILDING_CHECK.md; locked/breach/gate,
+  changes. The later matching-key test also replicated both lock flags. See
+  MILESTONE3_EXISTING_BUILDING_CHECK.md; missing-key/breach/gate,
   continuous client movement and save/reload acceptance remain open.
 - The current source changes have not been deployed to .03 or Steam Workshop.
 

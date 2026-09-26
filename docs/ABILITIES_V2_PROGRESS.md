@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Live keyed-door follow-up on fe712ab: Goblin approached a selected real door
+  with one matching Base.Key1, cleared both native lock flags, opened it and
+  reached the interior. Both no-Storm clients observed locked/closed ->
+  unlocked/open. The real key remained in inventory, then exact fixture-key
+  removal and original door-state restoration succeeded. All five gameplay
+  packages matched. Probe files/flags were removed. This extends ordinary-door
+  evidence, not missing-key denial, route ranking, padlock/breach or save/reload
+  proof; see MILESTONE3_EXISTING_BUILDING_CHECK.md for source-bound results.
 - Keyed-door fault injection reproduced a no-op native unlock setter reaching
   the silent toggle while still locked. Native lock/key flags now require
   successful false readback for every grouped panel before opening. A second

@@ -4,7 +4,8 @@
 if not isClient() or isServer() then return end
 local reader=getFileReader("goblin-m3-door-witness.flag",false)
 if not reader then return end
-local account=reader:readLine();reader:close()
+local account=reader:readLine()
+local placeOwner=reader:readLine()=="place-owner-outside";reader:close()
 if account~="m3path_61" and account~="m3witness_54" then return end
 local started,placed,lastLog,lastState=nil,false,0,nil
 Events.OnTick.Add(function()
@@ -14,9 +15,9 @@ Events.OnTick.Add(function()
     started=started or now
     if not placed then
         placed=true
-        if account=="m3path_61" then
+        if account=="m3path_61" or placeOwner then
             -- Installed vanilla DebugContextMenu/ISAdminMessage uses this API.
-            player:teleportTo(10782.5,9774.5,0)
+            player:teleportTo(account=="m3path_61" and 10782.5 or 10784.5,9774.5,0)
             print("[GoblinSurvivor] M3_DOOR_WITNESS placed_test_player="..account)
         end
     end
@@ -25,7 +26,8 @@ Events.OnTick.Add(function()
     local a=getCell():getGridSquare(10779,9767,0)
     local b=getCell():getGridSquare(10779,9768,0)
     local door=a and b and a:getDoorTo(b)
-    local state=door and tostring(door:isOpen()) or "unloaded"
+    local state=door and (tostring(door:isOpen()).." locked="..tostring(door:isLocked())
+        .." key_locked="..tostring(door:isLockedByKey())) or "unloaded"
     if state~=lastState then
         lastState=state
         print("[GoblinSurvivor] M3_DOOR_WITNESS account="..account.." timestamp="..now

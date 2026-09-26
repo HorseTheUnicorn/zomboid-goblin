@@ -1,6 +1,7 @@
 -- Disposable local test only; never include in a released package.
 -- Uses the real selector and normal Brain/Jobs path against existing buildings.
--- Does not spawn obstructions, change locks, grant keys or force positions.
+-- Never forces Goblin positions. Optional keyed fixture grants one temporary
+-- native key and changes only the selected disposable door; cleanup restores it.
 if not isServer() or getServerName()~="goblin-local" then return end
 local reader=getFileReader("goblin-m3-existing-building.flag",false)
 if not reader then return end
@@ -8,7 +9,7 @@ local owner=reader:readLine()
 local mode=reader:readLine()
 local witness=reader:readLine();reader:close()
 if owner~="m3witness_54" then return end
-if mode~=nil and mode~="" and mode~="close-selected-door" then return end
+if mode~=nil and mode~="" and mode~="close-selected-door" and mode~="keyed-selected-door" then return end
 if witness~=nil and witness~="" and witness~="m3path_61" then return end
 local Body=require("GoblinSurvivor/GoblinBody")
 local World=require("GoblinSurvivor/GoblinWorld")
@@ -25,13 +26,30 @@ local function cleanup(reason)
         if t.door and t.wasOpen~=nil then
             local restored,err=pcall(function()
                 assert(t.door:getObjectIndex()>=0,"fixture door was removed")
+                if t.wasLocked~=nil then
+                    t.door:setLocked(t.wasLocked)
+                    t.door:setLockedByKey(t.wasKeyLocked)
+                    t.door:setKeyId(t.wasKeyId)
+                end
                 if t.door:isOpen()~=t.wasOpen then
                     t.door:ToggleDoorSilent()
-                    t.door:syncIsoObject(false,0,nil,nil)
                 end
+                t.door:syncIsoObject(false,0,nil,nil)
                 assert(t.door:isOpen()==t.wasOpen,"original door state not restored")
+                if t.wasLocked~=nil then
+                    assert(t.door:isLocked()==t.wasLocked and t.door:isLockedByKey()==t.wasKeyLocked
+                        and t.door:getKeyId()==t.wasKeyId,"original lock state not restored")
+                end
             end)
             log("fixture_restored="..tostring(restored).." detail="..tostring(err))
+        end
+        if t.key then
+            local removed,err=pcall(function()
+                log("key_retained_before_cleanup="..tostring(World.containsExact(t.body:getInventory(),t.key)))
+                t.body:getInventory():Remove(t.key)
+                assert(not World.containsExact(t.body:getInventory(),t.key),"fixture key remained")
+            end)
+            log("fixture_key_removed="..tostring(removed).." detail="..tostring(err))
         end
         local ok,detail=pcall(Brain.setTask,t.body,"FOLLOW",{manual=true})
         log("cleanup="..tostring(ok).." reason="..reason.." detail="..tostring(detail))
@@ -52,6 +70,8 @@ Jobs.update=function(body,task,payload,now)
                     .." dx="..tostring(edge.dx).." dy="..tostring(edge.dy)
                     .." destination="..tostring(payload.destination_side)
                     .." door_open="..tostring(t.door and t.door:isOpen())
+                    .." door_locked="..tostring(t.door and t.door:isLocked())
+                    .." door_key_locked="..tostring(t.door and t.door:isLockedByKey())
                     .." method="..tostring(payload.access_method)
                     .." done="..tostring(result.done).." success="..tostring(result.success)
                     .." detail="..tostring(result.detail))
@@ -85,6 +105,7 @@ Events.OnTick.Add(function()
     for _,body in ipairs(World.values(getCell():getZombieList())) do
         if Body.isGoblin(body) and Body.owner(body)==owner and body:getCurrentSquare()
             and not body:getVehicle() then
+            if mode=="keyed-selected-door" and (body:getY()<9769 or body:getY()>9780) then return end
             fired=true
             active={body=body,started=getTimestampMs()}
             local ok,accepted,detail=pcall(Brain.setTask,body,"GAIN_ACCESS",{
@@ -92,7 +113,7 @@ Events.OnTick.Add(function()
             log("dispatch_ok="..tostring(ok).." accepted="..tostring(accepted)
                 .." detail="..tostring(detail).." owner="..owner)
             if not ok or not accepted then cleanup("refused")
-            elseif mode=="close-selected-door" then
+            elseif mode=="close-selected-door" or mode=="keyed-selected-door" then
                 -- Close only the selected ordinary doorway before its first job
                 -- update. This measures revalidation/opening, not closed-route
                 -- selection preference. Restore the original state afterward.
@@ -111,6 +132,20 @@ Events.OnTick.Add(function()
                     active.door=door;active.wasOpen=door:isOpen()
                     if active.wasOpen then door:ToggleDoorSilent();door:syncIsoObject(false,0,nil,nil) end
                     assert(not door:isOpen(),"door fixture did not close")
+                    if mode=="keyed-selected-door" then
+                        active.wasLocked=door:isLocked();active.wasKeyLocked=door:isLockedByKey()
+                        active.wasKeyId=door:getKeyId()
+                        local id=door:checkKeyId()
+                        assert(type(id)=="number" and id>=0,"no native door key ID")
+                        active.key=assert(body:getInventory():AddItem("Base.Key1"),"native key creation failed")
+                        active.key:setKeyId(id)
+                        assert(World.containsExact(body:getInventory(),active.key),"fixture key absent")
+                        door:setLocked(true);door:setLockedByKey(true)
+                        door:syncIsoObject(false,0,nil,nil)
+                        assert(door:isLocked() and door:isLockedByKey(),"fixture did not lock")
+                        log("fixture=keyed_selected_door key_id="..id.." key_type="..active.key:getFullType()
+                            .." body_x="..body:getX().." body_y="..body:getY())
+                    end
                     log("fixture=closed_selected_door original_open="..tostring(active.wasOpen)
                         .." x="..edge.x.." y="..edge.y.." z="..edge.z)
                 end)

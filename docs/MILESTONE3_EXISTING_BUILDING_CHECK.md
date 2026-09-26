@@ -114,3 +114,49 @@ Ordinary selected-door reopening and live door-state replication now have
 current-build evidence. This still does not certify locked/keyed entrances,
 alternate-route preference, breach, gates, material/key conservation or
 in-progress save/reload. Milestone 3 is not yet complete.
+
+## Subsequent keyed-door check on fe712ab
+
+Server PID 18464, clients PID 7388 (`m3path_61`) and 32680 (`m3witness_54`),
+both no-Storm. All 170 gameplay files matched fe712ab in the five local
+package locations. GoblinAccess.lua hash for this newer run:
+`6d301eb2b0717ea548883987f510efb0b2d5f2d387909c28eb5974771c8a38ae`.
+Other gameplay hashes above remain unchanged.
+
+The explicitly selected `keyed-selected-door` fixture closed/locked only the
+ordinary selected door and supplied one actual `Base.Key1` with native key ID
+15871650. Both test players were initially placed outside; no Goblin position
+was forced. The route was selected before locking, so this remains a mutation/
+revalidation test, not a route-ranking test among initially locked entrances.
+
+- Tick 704: fixture locked; Goblin at `(10779.433,9773.523,0)` with matching key.
+- Ticks 705–735: real approach with open=false, locked=true, key_locked=true.
+- Tick 738: OPEN_ORDER_DONE.
+- Tick 741: exterior side `(10779.413,9768.581,0)`, open=true and both locks=false.
+- Tick 744: COMPLETE at `(10779.454,9767.798,0)`, intended interior side.
+- Cleanup: original open/lock/key-ID state restored; matching key retained
+  before cleanup=true; exact fixture key removed=true; task wrapper restored.
+
+Independent client observations (timestamps in ms):
+
+| Client | Closed and both locks true | Open and both locks false |
+| --- | --- | --- |
+| m3path_61 | 1790453742910 | 1790453745927 |
+| m3witness_54 | 1790453742485 | 1790453746002 |
+
+This verifies actual native key presence/retention, lock mutation, interior
+arrival and live lock/open replication with the readback fix loaded. A normal
+door key is reusable, so retention is the expected conservation result. No
+consumable-material operation is involved. This is not a live missing-key
+denial, grouped-panel failure, padlock removal, alternate-route or save/reload
+test. Those gates remain separate.
+
+Probe SHA-256:
+
+- Server: `81129463dff1bbf80aa119ae6193ebca00df337420793f27e86f9d26d81f470c`
+- Client: `09b27908cf3a8b2c68bd4881c98ee49c590092d2fa3ff61cbffa1b66bbf7f013`
+
+Raw logs are retained at
+`C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-door-20260926.`
+with suffixes `server.log`, `client10.log`, and `client11.log`.
+All staged probe files and enabling flags were removed after the run.
