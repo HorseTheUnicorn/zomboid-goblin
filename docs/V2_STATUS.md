@@ -3,6 +3,12 @@
 The full V2 specification is not complete. This checkpoint preserves the accepted
 companion foundation and distinguishes implemented code from live acceptance.
 
+User clarification (September 26): Goblin opening locked doors is intended
+behavior. Do not treat a keyless opening alone as a defect or add restrictions
+to prevent the accepted behavior. Consistent world state and replication still
+require verification; earlier missing-key fixture results are historical tests,
+not a new user requirement to deny access.
+
 ## Completed scope
 
 - Section 31: installed runtime catalog and compatibility inventory cover 64

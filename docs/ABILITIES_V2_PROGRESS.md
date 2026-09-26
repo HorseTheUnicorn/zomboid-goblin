@@ -2,6 +2,11 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Native toolkit sample: all 29 configured reusable types had one reserved
+  inventory copy, with unchanged native item identities after 30044 ms.
+  Read-only probe did not provision or mutate anything. See
+  MILESTONE3_TOOLKIT_CHECK.md for hashes and remaining conservation/repair/
+  persistence gates. Two probe tests and 30 job/runtime-identifier tests pass.
 - Missing-key CustomLock test on 4bb2e8a: front door stayed locked with no
   matching key; back-door approach timed out, then alternate window opening
   and physical interior arrival completed. Fixture restoration succeeded.
