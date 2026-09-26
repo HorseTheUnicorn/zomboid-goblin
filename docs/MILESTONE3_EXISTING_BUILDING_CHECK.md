@@ -160,3 +160,43 @@ Raw logs are retained at
 `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-door-20260926.`
 with suffixes `server.log`, `client10.log`, and `client11.log`.
 All staged probe files and enabling flags were removed after the run.
+
+## Missing-key CustomLock and alternate-window check on 4bb2e8a
+
+Server PID 3156; no-Storm clients 42664 (`m3path_61`) and 36804
+(`m3witness_54`). Gameplay files are unchanged from the keyed-door run.
+The selected ordinary front door was locked after preparation, with its native
+CustomLock modData set true and no matching key supplied. This tests execution
+revalidation, not selection among initially locked entrances.
+
+- Tick 1286: fixture applied; Goblin at `(10788.432,9773.358,0)`.
+- Tick 1288: locked front door rejected; alternate back-door route selected.
+- Back-door approach did not reach its target within the approach budget.
+- Tick 1744: bounded fallback selected the window at `(10782,9762,0)`.
+- Tick 1801: native window opening recorded.
+- Tick 1810: COMPLETE at `(10782.979,9762.5,0)`, intended interior side.
+  Original front door remained closed with both locks true; matching_key=false.
+- Cleanup logged fixture_restored=true and returned Goblin to FOLLOW. The
+  probe restored CustomLock, original lock/key ID and open state. No key or
+  consumable was created. No Goblin position was forced.
+
+Both clients observed the original door closing and reopening during cleanup.
+Client10 recorded both lock flags true at timestamp 1790454591538; client11
+recorded both false at 1790454591584. Thus server-side lock preservation and
+successful alternate entry are proven, but this run does **not** pass two-client
+lock replication. The observer did not monitor the alternate window, so its
+replication also remains unverified. Back-door path efficiency remains a gap.
+
+Earlier no-key fixtures without CustomLock were not valid denial tests:
+the opening trace showed square `(10779,9768)` had exterior=false. Installed
+`media/lua/shared/TimedActions/ISLockDoor.lua` permits keyless unlocking from
+such a square, but explicitly denies it for CustomLock without the key.
+No gameplay behavior was changed to satisfy that incorrect test expectation.
+
+Server probe SHA-256:
+`440ad08111db7077920bde91a7beada6442bb6472c58dd25b2548b80b82eb66d`.
+Client observer hash remains `09b27908cf3a8b2c68bd4881c98ee49c590092d2fa3ff61cbffa1b66bbf7f013`.
+Raw logs: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-customlock-20260926.`
+with suffixes `server.log`, `client10.log`, and `client11.log`.
+Staged probes and flags were removed after terminal cleanup; source probes
+remain under tools/probes, outside the released package.

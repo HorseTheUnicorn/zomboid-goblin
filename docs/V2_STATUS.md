@@ -43,8 +43,10 @@ marked complete. Unsupported native operations must remain explicitly identified
   Direction/restoration, permission and unlock regressions failed before their
   fixes. Actual server save/reload is pending. The unlock hardening is now
   loaded locally; one real matching-key door test passed with key retention
-  and both clients observing the lock/open transition. Missing-key rejection,
-  multi-panel failures and other access paths still need live evidence.
+  and both clients observing the lock/open transition. A later CustomLock
+  no-key test preserved the locked door and completed via an alternate window.
+  That run exposed mismatched lock flags between clients; lock/window
+  replication, multi-panel failures and other access paths remain open.
 - Catalog: 64 records pass consistency checks.
 - A subsequent one-client native check reached a real doorway's intended
   interior side. A follow-up closed-door test recorded reopening and crossing,

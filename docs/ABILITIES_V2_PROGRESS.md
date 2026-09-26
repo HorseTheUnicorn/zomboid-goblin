@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Missing-key CustomLock test on 4bb2e8a: front door stayed locked with no
+  matching key; back-door approach timed out, then alternate window opening
+  and physical interior arrival completed. Fixture restoration succeeded.
+  Two clients disagreed on temporary lock flags, and window replication was
+  not observed, so this is server-side access/fallback evidence only. Earlier
+  no-key porch opening was permitted by installed vanilla ISLockDoor, not a
+  proven lock bypass. No gameplay changes made. See the existing-building
+  evidence note for exact source hashes, positions and remaining gaps.
 - Live keyed-door follow-up on fe712ab: Goblin approached a selected real door
   with one matching Base.Key1, cleared both native lock flags, opened it and
   reached the interior. Both no-Storm clients observed locked/closed ->
