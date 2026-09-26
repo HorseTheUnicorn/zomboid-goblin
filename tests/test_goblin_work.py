@@ -15,6 +15,30 @@ class CompanionWorkTests(unittest.TestCase):
         for filename in ('goblin_fixture.lua','work_fixture.lua'):
             self.lua.execute((ROOT/'tests/lua'/filename).read_text())
 
+    def test_container_native_character_lock_is_checked_at_scan_and_transfer(self):
+        self.lua.execute('''
+            local sq=cell:getGridSquare(0,0,0)
+            local supply=item('Base.Plank');local inv=container({supply})
+            local target={getContainer=function() return inv end,
+                isLocked=function() return false end}
+            local locked=true
+            function target:isLockedToCharacter(actor) assert(actor==a);return locked end
+            sq.objects={target}
+            local function accept() return true end
+            assert(#World.sources({x=0,y=0,z=0},0,accept,a)==0,
+                'character-locked container was offered as supplies')
+            locked=false
+            local sources=World.sources({x=0,y=0,z=0},0,accept,a)
+            assert(#sources==1)
+            locked=true
+            assert(not World.take(a,sources[1]) and #inv.items==1)
+            target.isLockedToCharacter=function() error('native read failed') end
+            assert(#World.sources({x=0,y=0,z=0},0,accept,a)==0)
+            assert(not World.take(a,sources[1]) and #inv.items==1)
+            target.isLockedToCharacter=function() return false end
+            assert(World.take(a,sources[1]) and #inv.items==0)
+        ''')
+
     def test_looting_walks_before_transfer_and_honors_action_time(self):
         self.lua.execute('''
             sq=cell:getGridSquare(4,0,0); inv=container({item('Base.Plank')})

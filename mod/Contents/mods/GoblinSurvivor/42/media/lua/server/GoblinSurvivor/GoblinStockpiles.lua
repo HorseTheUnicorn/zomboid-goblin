@@ -42,8 +42,7 @@ local function candidates(body, point, scope)
         if square and Curtains.belongsToScope(scope, square) then
             for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
                 local _, container = call(object, "getContainer")
-                local _, locked = call(object, "isLocked")
-                if container and locked ~= true and identity(object) and Policy.access(body, object) then
+                if container and World.containerAccessible(body,object) and identity(object) and Policy.access(body, object) then
                     local p = World.point(square)
                     found[#found+1] = { object=object, square=square, container=container,
                         distance=(p.x-point.x)^2+(p.y-point.y)^2 }
@@ -128,9 +127,8 @@ local function resolve(scope, body, rule)
         local _, metadata = call(object, "getModData")
         if type(metadata) == "table" and metadata.GoblinStorageID == target.id
             and metadata.GoblinStorageOwner == Body.owner(body) then
-            local _, locked = call(object, "isLocked")
             local _, container = call(object, "getContainer")
-            if locked == true or not container or not Policy.access(body, object) then
+            if not World.containerAccessible(body,object) or not container or not Policy.access(body, object) then
                 return nil, "BLOCKED"
             end
             return container, nil, square, object

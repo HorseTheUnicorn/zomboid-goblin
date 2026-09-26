@@ -35,6 +35,10 @@ class StockpileTests(unittest.TestCase):
             end
             function World.point(square) return {x=square.x+0.5,y=square.y+0.5,z=square.z} end
             function World.items(container) return World.values(container:getItems()) end
+            function World.containerAccessible(body,object)
+                if object.isLockedToCharacter then return object:isLockedToCharacter(body)==false end
+                return not object.isLocked or object:isLocked()==false
+            end
             function World.fullType(item) return item:getFullType() end
             package.loaded['GoblinSurvivor/GoblinWorld']=World
             body={owner='horse'}
@@ -93,6 +97,19 @@ class StockpileTests(unittest.TestCase):
             report=Stockpiles.scan(scope,body)
             assert(report.status=='OK' and report.items[1].current==50)
             assert(report.items[1].shortage==0)
+        ''')
+
+    def test_character_locked_destination_is_refused_and_rechecked(self):
+        self.lua.execute('''
+            local locked=true
+            function object:isLocked() return false end
+            function object:isLockedToCharacter(actor) assert(actor==body);return locked end
+            assert(not Stockpiles.assign(body,owner,'Base.Nails',5))
+            locked=false
+            assert(Stockpiles.assign(body,owner,'Base.Nails',5))
+            locked=true
+            local report=Stockpiles.scan(scope,body)
+            assert(report.status=='UNKNOWN' and report.items[1].status=='BLOCKED')
         ''')
 
     def test_base_inspection_reports_configured_shortage(self):

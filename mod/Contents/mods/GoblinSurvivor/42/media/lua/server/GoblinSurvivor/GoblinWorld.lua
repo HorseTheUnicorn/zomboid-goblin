@@ -243,6 +243,28 @@ function World.approach(body, square, now)
         and "walking to alternate work approach" or "walking to supplies/work"
 end
 
+function World.containerAccessible(body, object)
+    if not object then return false end
+    -- Installed ISInventoryPage uses this native check for IsoThumpable
+    -- containers. It respects combination locks and actual carried padlock
+    -- keys without consuming a key or removing the lock. Its server path
+    -- accepts IsoGameCharacter (including our managed IsoZombie).
+    local inspected, method=pcall(function() return object.isLockedToCharacter end)
+    if not inspected then return false end
+    if type(method)=="function" then
+        if not body then return false end
+        local ok,locked=pcall(method,object,body)
+        return ok and locked==false
+    end
+    inspected,method=pcall(function() return object.isLocked end)
+    if not inspected then return false end
+    if type(method)=="function" then
+        local ok,locked=pcall(method,object)
+        return ok and locked==false
+    end
+    return true -- Ordinary world containers have no native lock interface.
+end
+
 function World.sources(center, radius, accept, body)
     local found = {}
     for dx = -radius, radius do
@@ -259,9 +281,8 @@ function World.sources(center, radius, accept, body)
                     end
                 end
                 for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                    local _, locked = call(object, "isLocked")
                     local _, container = call(object, "getContainer")
-                    if container and not locked then
+                    if container and World.containerAccessible(body,object) then
                         for _, item in ipairs(World.items(container)) do
                             if accept(item) then
                                 found[#found+1]={square=square,object=object,container=container,item=item}
@@ -315,8 +336,7 @@ function World.take(body, source)
     end
     if not present then return false end
     if source.container then
-        local _, locked = call(target, "isLocked")
-        if locked == true then return false end
+        if not World.containerAccessible(body,target) then return false end
         local okContainer, liveContainer = call(target,"getContainer")
         if not okContainer or liveContainer ~= source.container then return false end
     end

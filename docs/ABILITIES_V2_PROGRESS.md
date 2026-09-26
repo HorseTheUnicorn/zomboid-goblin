@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Container access audit found supply/stockpile paths reading only isLocked,
+  missing the installed IsoThumpable actor-specific padlock/combination check.
+  A regression failed before the fix. Shared containerAccessible now uses the
+  native isLockedToCharacter result at scan/assignment and transfer/target
+  revalidation, preserving native matching-key access without removing locks.
+  Bytecode confirms a server-safe IsoGameCharacter path; 544 tests pass with
+  two existing expected failures. Not staged/live-tested; CONTAINER GAIN_ACCESS
+  remains a separate implementation gap. Accepted door behavior is unchanged.
 - Native toolkit fuel preservation passed on 3496342: same reserved torch
   650595693 retained 0.5 contents through Tools.ensure, with unchanged inventory
   count. Test-only fuel and condition restored; all 29 reserved identities

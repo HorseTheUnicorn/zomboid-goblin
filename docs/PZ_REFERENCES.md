@@ -175,6 +175,25 @@ ENGINE_TESTED until the two-client local acceptance run succeeds.
 
 ## Access compatibility findings
 
+### Container lock checks (September 26 follow-up)
+
+Installed `media/lua/client/ISUI/ISInventoryPage.lua` uses
+`IsoThumpable.isLockedToCharacter(playerObj)` to disable locked container access;
+the adjacent matching-key display does not remove the padlock or consume a key.
+Inspection of `IsoThumpable.isLockedToCharacter(IsoGameCharacter)` in the installed
+JAR shows the IsoPlayer cast is guarded by both GameClient.client and instanceof.
+The server path returns locked for a positive combination code, or for a
+padlocked object when the actor inventory lacks haveThisKeyId(getKeyId()).
+It otherwise returns false. This establishes static managed-actor compatibility,
+not live execution or permission to invent a combination code.
+
+The shared supply scanner/transfer and stockpile assignment/re-resolution now
+use this native actor-aware result where available. Failed reads deny the
+operation; ordinary containers without a lock interface retain normal access.
+Unit regressions cover relocking after selection and native-read failure.
+This change is not yet staged or multiplayer-verified. High-level CONTAINER
+GAIN_ACCESS still remains unimplemented; do not infer completion from this fix.
+
 Verified against the captured game JAR hash recorded above, and Goblin Lua files
 that match the captured server byte-for-byte:
 

@@ -467,7 +467,7 @@
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransport.lua", "sha256": "cc94ea28400fef3e854f258d3434298196f6f9000e91440201e9cedeb8812b3a"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinPassenger.lua", "sha256": "98352b6bb7582973acdb64627976f3484b6c430eb6a9d80638c690806de602f7"},
-        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "c93a15dea8c009db185a4170dd73a073077e5348f170204fdf3ee452ae41662f"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "f9366c65e54de2153fe5b2e40fab0da5afb6ed953d3402a5b6d723be9a955a13"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccessPolicy.lua"},
         {"installed_path": "media/lua/shared/Vehicles/TimedActions/ISLockDoors.lua"}
       ],
@@ -675,7 +675,7 @@
       "semantic_arguments": {"internal_payload": "x,y,z and optional radius supplied by server work/navigation code; not an advertised raw-coordinate chat command"},
       "target_class": "Managed IsoZombie moving to a server-selected location",
       "authority": {"side": "Server goal selection, native simulation owner movement", "route": ["server work adapter", "Movement.command", "Movement.update", "Access.update", "Motion.drive"]},
-      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "123d65cdb395cc599201d73610304e83bebd119aff32d05618e581566400c1d7"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "6aea2dbb023e7a2b9be7669c6c8245e7b297fcb10a150bd30fa737cee451a8e9"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "c93a15dea8c009db185a4170dd73a073077e5348f170204fdf3ee452ae41662f"}],
+      "sources": [{"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinMovement.lua", "sha256": "123d65cdb395cc599201d73610304e83bebd119aff32d05618e581566400c1d7"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua", "sha256": "6aea2dbb023e7a2b9be7669c6c8245e7b297fcb10a150bd30fa737cee451a8e9"}, {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "f9366c65e54de2153fe5b2e40fab0da5afb6ed953d3402a5b6d723be9a955a13"}],
       "native_api": {"signature": "void IsoZombie.pathToLocationF(float,float,float)", "compatibility": "NATIVE_ZOMBIE_ENTRYPOINT_NOT_ARRIVAL_PROOF"},
       "public_documentation_urls": ["https://projectzomboid.com/modding/zombie/characters/IsoZombie.html", "https://projectzomboid.com/modding/zombie/pathfind/PathFindBehavior2.html"],
       "required_items": [],
