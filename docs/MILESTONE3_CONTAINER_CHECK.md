@@ -70,3 +70,36 @@ Probe SHA-256: `bf82f99a66f44b34eff52b937a083172fc3bac24685658b907ff101a7c4c7bc1
 Logs retained under `C:\Users\tomgr\Zomboid\goblin-test-backups\` as
 `m3-container-save-20260926.server.log` and
 `m3-container-resume-20260926.server.log`.
+
+## Two-client ordinary-container observation, 2026-09-26
+
+Gameplay source remains ff27620. Server PID 1956; no-Storm clients 43156
+(m3path_61) and 43996 (m3witness_54). A failed first-client connection exited;
+only that client was relaunched. The witness was subsequently restarted to
+load a probe timing correction: its bounded observation starts on the test
+message rather than player login. Five focused observer/adapter checks pass.
+
+- Tick 5815: normal GAIN_ACCESS accepted; no direct actor placement.
+- Tick 5816: target `m3path_61:1790457019269:1`, initial contents empty.
+- Server movement: `(10775.674,9763.854,0)` to
+  `(10778.229,9765.230,0)`; COMPLETE at tick 5843.
+- Server terminal_contents_unchanged=true; normal FOLLOW restored.
+- Both clients independently resolved the same native container marker and
+  read empty contents in initial and terminal phases.
+- Both independently observed native actor online ID 19009 moving toward
+  the destination. At st 746455565/567 their positions were respectively
+  `(10778.311,9765.327,0)` and `(10778.563,9765.563,0)`; small interpolation
+  differences are retained rather than claimed as identical coordinates.
+- Both reported actual outfit 14155840 matching the roster outfit.
+
+This establishes ordinary-container approach and identity/empty-content
+observation on two clients. It does NOT establish locked-container handling,
+nonempty inventory transfer, or an exhaustive multiplayer access matrix.
+Goblin opening locked doors is explicitly intended user behavior; do not
+reinterpret this container gate as a requirement to restrict that ability.
+
+Raw logs: `C:\Users\tomgr\Zomboid\goblin-test-backups\` with prefix
+`m3-container-two-client-20260926` and suffixes `.server.log`, `.client10.log`,
+`.client11.log`. Removed all nine staged probe/flag files after the test;
+bounded observers may finish in already-running clients. Source probes stay
+outside the shipped mod. No production, main or Workshop changes.
