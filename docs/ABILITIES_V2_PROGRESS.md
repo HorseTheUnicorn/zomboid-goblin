@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Closed-door follow-up: the local normal GAIN_ACCESS path reopened a selected
+  ordinary door and reached its interior side. A subsequent two-client test
+  recorded real door:isOpen transitions true -> false -> true independently
+  in both no-Storm clients, with server opening/crossing and successful fixture
+  restoration. All 170 gameplay files matched; probes/flags were removed.
+  This verifies ordinary-door state replication, not locked/breach/gate or
+  save/reload acceptance. Full timestamps, hashes and limits are recorded in
+  MILESTONE3_EXISTING_BUILDING_CHECK.md.
 - Existing-building native check: a disposable, non-breach probe submitted
   GAIN_ACCESS through Brain/Jobs with no geometry or position overrides. The
   selector chose a real open doorway; server positions moved from outside to

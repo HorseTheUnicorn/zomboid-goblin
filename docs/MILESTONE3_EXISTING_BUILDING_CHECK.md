@@ -54,3 +54,63 @@ spawned one Goblin per account, but its second client exited before the order.
 No second-client replication, material consumption, locked entrance, breach,
 fence/gate traversal or save/reload acceptance is claimed. Milestone 3 stays
 open. No production, main-branch or Workshop deployment occurred.
+
+## Subsequent closed-door and two-client replication check
+
+These later results extend, rather than replace, the original run above.
+Gameplay source hashes remain unchanged. The updated probe has an explicit
+`close-selected-door` fixture mode and an optional second-player readiness
+gate. It refuses locked/barricaded or multi-panel fixtures, closes the selected
+ordinary door before the first job tick, and restores the original state after
+completion. It does not establish *selection preference* among closed routes.
+
+First, server PID 19180 / no-Storm client PID 41832 recorded door_open=false
+during approach, OPEN_ORDER_DONE at tick 528, door_open=true on the exterior
+edge, and COMPLETE at `(10779.5,9767.5,0)` at tick 567. Fixture restoration
+and observer cleanup both succeeded. Raw log:
+`C:\Users\tomgr\Zomboid\goblin-test-backups\m3-closed-building-20260926.stdout.log`.
+That intermediate probe hash was
+`8f90e54240dc7bd1302400cc36ee439d4f553ab54fba60a414776fca7eb28480`.
+
+The following run used server PID 8860 and no-Storm clients PID 11896
+(`m3path_61`) and PID 42572 (`m3witness_54`). A temporary client observer
+placed the second TEST PLAYER beside the house using vanilla `teleportTo`;
+no Goblin position was set by either probe. All 170 gameplay source files
+matched in all five installed package copies; only named test probes were
+additional. The server waited until both players were nearby for 20 seconds.
+
+- Server tick 553: accepted normal GAIN_ACCESS; fixture confirmed closed.
+- Tick 748: OPEN_ORDER_DONE; Goblin at `(10779.468,9768.442,0)`, door open.
+- Tick 754: COMPLETE at `(10779.492,9767.671,0)` on the intended interior side.
+- Both fixture restoration and observer cleanup returned true.
+
+Independent native client `door:isOpen()` observations (timestamps in ms):
+
+| Client | Initial open | Fixture closed | Goblin reopened |
+| --- | --- | --- | --- |
+| m3path_61 | 1790453050358 | 1790453069492 | 1790453089161 |
+| m3witness_54 | 1790453049386 | 1790453069877 | 1790453088960 |
+
+Both clients were loaded at the door **before** the close/open transitions;
+this is live door-state replication evidence, not just reconnect visibility.
+Post-test screenshots showed both players and named Goblins in the same house.
+The client observer did not resolve Goblin identity from modData, so it produced
+no usable client-side Goblin coordinate trace. Server movement remains the
+positional evidence. Players moved during the run beyond the explicit fixture
+placement; this is not an isolated, input-free motion benchmark.
+
+Probe hashes for this run:
+
+- Server probe: `14cbb10ef3f5a13ed8244096c4866b40fa073a9b6ae2b5f43ed49fdd16e5f069`
+- Client observer: `80459ae7caf2d49f9aff8c0ff2c94038370a7dc857e7acb25b9df9a0e2c99e0e`
+
+Full logs are retained under
+`C:\Users\tomgr\Zomboid\goblin-test-backups\m3-door-replication-20260926.`
+with suffixes `server.log`, `client10.log`, and `client11.log`.
+All staged probe files and flags were removed afterward. The bounded client
+observer stops sampling after 180 seconds; the server job wrapper was restored.
+
+Ordinary selected-door reopening and live door-state replication now have
+current-build evidence. This still does not certify locked/keyed entrances,
+alternate-route preference, breach, gates, material/key conservation or
+in-progress save/reload. Milestone 3 is not yet complete.
