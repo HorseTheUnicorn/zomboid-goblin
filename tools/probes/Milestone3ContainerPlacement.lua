@@ -34,6 +34,12 @@ Events.OnTick.Add(function()
                     table.sort(ids)
                     print("[GoblinSurvivor] M3_CONTAINER_CLIENT account="..owner.." phase="..observed.phase
                         .." target="..observed.id.." items="..table.concat(ids,","))
+                    local lockOK,locked=pcall(function() return object:isLockedByPadlock() end)
+                    if lockOK then
+                        print("[GoblinSurvivor] M3_CONTAINER_CLIENT account="..owner
+                            .." phase="..observed.phase.." target="..observed.id
+                            .." padlocked="..tostring(locked))
+                    end
                 end
             end
         end

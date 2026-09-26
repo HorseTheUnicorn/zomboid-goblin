@@ -63,6 +63,14 @@ the 170-file provenance record below is historical.
   That run exposed mismatched lock flags between clients; lock/window
   replication, multi-panel failures and other access paths remain open.
 - Catalog: 64 records pass consistency checks.
+- LOOT transfer follow-up reproduced the square-less `ItemStats` failure at
+  `Food.updateAge` from managed IsoZombie inventory removal. A candidate now
+  uses installed `ItemContainer.DoRemoveItem` (which bypasses that callback);
+  80 focused work tests pass. Perishable age, two-client item identity and
+  save/reload remain unverified, so LOOT remains incomplete. The current
+  171-file direct local package passed exact SHA-256 preflight and loaded on a
+  server-only startup; that server had no actors (no connected client), so this
+  is a package/load smoke check, not transfer acceptance.
 - A subsequent one-client native check reached a real doorway's intended
   interior side. A follow-up closed-door test recorded reopening and crossing,
   and both no-Storm clients independently observed the live close/open state

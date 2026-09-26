@@ -17,6 +17,10 @@ function container(items)
     function inv:Remove(value)
         for i,v in ipairs(self.items) do if v==value then table.remove(self.items,i);break end end
     end
+    function inv:DoRemoveItem(value)
+        for i,v in ipairs(self.items) do if v==value then table.remove(self.items,i);break end end
+    end
+    function inv:getCharacter() return self.character end
     function inv:AddItem(value)
         if self.reject then return nil end
         if type(value)=='string' then value=item(value) end
@@ -62,6 +66,11 @@ Body.faceTarget=function() end
 a=actor(0.5,0.5,0)
 a.data={GoblinNPC=true,GoblinOwner='horse',GoblinID='goblin.primary.horse',GoblinBaseSet=true,GoblinBaseX=0,GoblinBaseY=0,GoblinBaseZ=0}
 a.inv=container()
+a.inv.character=a
+function a:removeFromHands(value)
+    self.removedFromHands=value
+    return true
+end
 function a:getInventory() return self.inv end
 function a:setPrimaryHandItem(value) self.hand=value end
 function a:setSecondaryHandItem(value) end

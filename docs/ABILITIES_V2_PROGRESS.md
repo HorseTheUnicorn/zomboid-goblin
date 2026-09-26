@@ -8,6 +8,18 @@
   reached COMPLETE with unchanged contents. Temporary one-minute autosave
   restored to zero and probes removed. This does not certify other abilities,
   two-client replication or terminal-result persistence after a later save.
+- LOOT transfer follow-up: retained local server stderr reproduced the exact
+  `ContainerID.set` ItemStats NPE at `GoblinLoot.deposit` while Build 42's
+  `ItemContainer.Remove` invoked `Food.OnBeforeRemoveFromContainer` and
+  `Food.updateAge` for the square-less managed IsoZombie inventory. Installed
+  bytecode confirms `ItemContainer.DoRemoveItem` skips that callback. The
+  current worktree uses that native detach path and removes held items from
+  their actor hands first; all 80 focused `test_goblin_work.py` checks pass,
+  including a regression for the old Remove path. Food age refresh, exact
+  client item identity, and save/reload remain live gates; no LOOT capability
+  is marked complete. The keyed-container multiplayer attempt never reached
+  in-world state, so its temporary local probes were removed and the
+  disposable pair stopped.
 - CONTAINER GAIN_ACCESS live one-client check passed on 08d18a3: normal task
   accepted, actual Goblin movement from outside into the house, reachable
   container completion, identical native content IDs before/after. Probe

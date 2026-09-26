@@ -17,6 +17,23 @@ local function protected(item)
     for _, uniform in ipairs(Config.npcOutfitItems) do if kind == uniform then return true end end
     return false
 end
+
+local function removeActorItem(body, inventory, item)
+    if World.containsExact(inventory,item) ~= true then return false end
+    local characterOK, character = call(inventory,"getCharacter")
+    if characterOK and character then
+        local handsOK = call(character,"removeFromHands",item)
+        if not handsOK then return false end
+    end
+    -- ItemContainer.Remove invokes InventoryItem.OnBeforeRemoveFromContainer.
+    -- For Food, Build 42 updates age there and sends ItemStats; ContainerID.set
+    -- cannot address this IsoZombie inventory because it has no world square.
+    -- DoRemoveItem performs the native detach without that invalid callback;
+    -- the destination's normal container/world packet is sent below.
+    local removed = call(inventory,"DoRemoveItem",item)
+    return removed and World.containsExact(inventory,item) == false
+end
+
 local function matches(item, focus, autonomous)
     if protected(item) then return false end
     -- Do not continuously pick up and redeliver a previous delivery pile.
@@ -198,8 +215,7 @@ function Loot.deposit(body)
     local moved, uncertain=0, false
     for _, item in ipairs(World.items(inv)) do
         if not protected(item) and World.fullType(item) ~= "Base.Hammer" then
-            inv:Remove(item)
-            if not World.has(inv,item) then
+            if removeActorItem(body,inv,item) then
                 local _,metadata=call(item,"getModData")
                 local wasDelivered=metadata and metadata.GoblinDelivered
                 if metadata then metadata.GoblinDelivered=true end
@@ -222,6 +238,8 @@ function Loot.deposit(body)
                     local restored,returned=call(inv,"AddItem",item)
                     if not restored or returned~=item or not World.has(inv,item) then uncertain=true end
                 end
+            else
+                uncertain=true
             end
         end
     end

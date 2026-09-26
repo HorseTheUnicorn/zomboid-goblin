@@ -766,6 +766,28 @@ class CompanionWorkTests(unittest.TestCase):
             assert(not done and count==0 and #chest.items==1 and a.pathCalls>0)
         ''')
 
+    def test_delivery_bypasses_unaddressable_actor_container_remove_callback(self):
+        self.lua.execute('''
+            local food=item('Base.CannedFood')
+            a.inv:AddItem(food)
+            local ordinaryRemove=a.inv.Remove
+            function a.inv:Remove(value)
+                error('Food.OnBeforeRemoveFromContainer sends ItemStats with no IsoZombie square')
+            end
+            local doRemove=a.inv.DoRemoveItem
+            function a.inv:DoRemoveItem(value)
+                self.doRemoveCalls=(self.doRemoveCalls or 0)+1
+                return doRemove(self,value)
+            end
+            sq=cell:getGridSquare(0,0,0);chest=container()
+            sq.objects={{getContainer=function() return chest end}}
+            assert(Loot.deposit(a))
+            assert(a.inv.doRemoveCalls==1 and not a.inv:contains(food))
+            assert(chest.items[1]==food and food:getModData().GoblinDelivered)
+            assert(a.removedFromHands==food)
+            a.inv.Remove=ordinaryRemove
+        ''')
+
     def test_base_delivery_does_not_count_duplicate_id_as_a_transfer(self):
         self.lua.execute('''
             cargo=item('Base.Plank');a.inv:AddItem(cargo)
