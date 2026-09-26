@@ -44,3 +44,25 @@ marked complete. Unsupported native operations must remain explicitly identified
 - Catalog: 64 records pass consistency checks.
 - No new physical access acceptance was obtained in the latest local run.
 - The current source changes have not been deployed to .03 or Steam Workshop.
+
+## Local test provenance correction
+
+The September 26 restart exposed stale `0.5.0-dev` packages in both isolated
+client caches while the server used the current `0.6.0` package. That run cannot
+certify current-source behavior. Both direct and Workshop copies in client
+caches 10 and 11, plus the server direct copy, now match all 170 source files
+by SHA-256 and exact file set. The 44 obsolete files in each old client package
+were moved to `C:\Users\tomgr\Zomboid\goblin-test-backups\stale-test-package-20260926`
+for recovery. Production and the published Workshop package were not changed.
+
+The restarted server and both clients subsequently ended; no new in-world
+acceptance is claimed. Before the next live test, run the read-only preflight
+against the server package and both package locations in each client cache:
+
+```powershell
+python -m tools.check_pz_test_package --package-dir '<installed package directory>'
+```
+
+Repeat `--package-dir` for each copy. Missing, changed, extra, empty or absent
+packages fail the check. Its two focused tests pass. Package identity is a
+prerequisite for a live test, not evidence of working gameplay.
