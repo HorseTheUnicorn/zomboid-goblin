@@ -232,26 +232,22 @@ function GainAccess.update(body,payload,runtime,now)
         return true,success,detail,success and "COMPLETE" or failureCode(detail)
     end
     if method=="DOOR" or method=="WINDOW" then
-        if runtime.access_opened==true then
-            return tryAlternate(body,payload,runtime,now,crossOpenedEdge(body,payload,runtime,now))
-        end
+        -- Re-resolve even after opening: a target may close, unload or change
+        -- access policy while the actor is still approaching/crossing it.
         local done,success,detail=Access.perform(body,payload,now,runtime)
         if not done then return false,success,detail,"MOVING_TO_TARGET" end
         if not success then
             return tryAlternate(body,payload,runtime,now,true,false,detail,failureCode(detail))
         end
-        runtime.access_opened=true
         return tryAlternate(body,payload,runtime,now,crossOpenedEdge(body,payload,runtime,now))
     end
     if method=="FENCE" then
         return tryAlternate(body,payload,runtime,now,Access.performFence(body,payload,runtime,now))
     end
     if method=="BREACH_WINDOW" then
-        if runtime.access_opened==true then return crossOpenedEdge(body,payload,runtime,now) end
         local done,success,detail,code=Access.performBreachWindow(body,payload,runtime,now)
         if not done then return done,success,detail,code end
         if not success then return done,success,detail,code end
-        runtime.access_opened=true
         return crossOpenedEdge(body,payload,runtime,now)
     end
     return true,false,"saved access method is unsupported","UNSUPPORTED"

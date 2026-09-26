@@ -141,6 +141,12 @@ class AccessV2Tests(unittest.TestCase):
     def test_alternate_access_route_preserves_its_own_destination_side(self):
         self.lua.execute('''
             a.x=5.5;a.y=5.5
+            for _,y in ipairs({0,2}) do
+                local here=cell:getGridSquare(0,y,0);local there=cell:getGridSquare(1,y,0)
+                local door={}
+                function door:isOpen() return true end;door.IsOpen=door.isOpen
+                function here:getDoorTo(other) if other==there then return door end end
+            end
             local payload={target_kind='BUILDING',access_method='DOOR',destination_side=1,cross_from=2,
                 edge={x=0,y=0,z=0,dx=1,dy=0},alternates={
                     {access_method='DOOR',destination_side=2,edge={x=0,y=2,z=0,dx=1,dy=0}}
@@ -212,6 +218,68 @@ class AccessV2Tests(unittest.TestCase):
             assert(result.done and result.success and result.code=='COMPLETE',
                 'restored access must recognize the completed crossing')
             assert(not a.destination and door.toggles==0)
+        ''')
+
+    def test_open_access_rechecks_safehouse_after_approach_starts(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=-2.5;a.y=0.5
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            installBuilding(there)
+            local door={}
+            function door:getSquare() return here end
+            function door:isOpen() return true end;door.IsOpen=door.isOpen
+            function here:getDoorTo(other) if other==there then return door end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='BUILDING'}})
+            assert(payload,detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not result.done)
+            SafeHouse={getSafeHouse=function() return {playerAllowed=function() return false end} end}
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(result.done and not result.success and result.code=='PERMISSION_DENIED',
+                'an open route must not retain revoked access')
+        ''')
+
+    def test_already_smashed_window_still_checks_breach_policy(self):
+        self.lua.execute('''
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            local window={}
+            function window:getSquare() return here end
+            function window:isSmashed() return true end
+            function here:getWindowTo(other) if other==there then return window end end
+            SafeHouse={getSafeHouse=function() return {playerAllowed=function() return false end} end}
+            local done,success,detail,code=Access.performBreachWindow(a,
+                {edge={x=0,y=0,z=0,dx=1,dy=0},target_kind='BUILDING',allow_breach=true},{},clock)
+            assert(done and not success and code=='PERMISSION_DENIED',detail)
+        ''')
+
+    def test_reclosed_access_reopens_once_and_missing_target_stops(self):
+        self.lua.execute('''
+            player.x=0;player.y=0;a.x=0.5;a.y=0.5
+            local here=cell:getGridSquare(0,0,0);local there=cell:getGridSquare(1,0,0)
+            installBuilding(there)
+            local door={opened=false,toggles=0}
+            function door:getSquare() return here end
+            function door:isOpen() return self.opened end;door.IsOpen=door.isOpen
+            function door:isLocked() return false end
+            function door:isLockedByKey() return false end
+            function door:isLockedByPadlock() return false end
+            function door:getLockedByCode() return 0 end
+            function door:isBarricaded() return false end
+            function door:isDestroyed() return false end
+            function door:ToggleDoor() self.opened=not self.opened;self.toggles=self.toggles+1 end
+            function here:getDoorTo(other) if other==there then return door end end
+            local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='BUILDING'}})
+            assert(payload,detail)
+            local result=Jobs.update(a,'GAIN_ACCESS',payload,clock)
+            assert(not result.done and door.opened and door.toggles==1)
+            door.opened=false
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+100)
+            assert(not result.done and door.opened and door.toggles==2)
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+200)
+            assert(not result.done and door.opened and door.toggles==2)
+            function here:getDoorTo() return nil end
+            result=Jobs.update(a,'GAIN_ACCESS',payload,clock+300)
+            assert(result.done and not result.success and door.toggles==2)
         ''')
 
     def test_closed_door_approach_switches_to_opposite_side_after_no_progress(self):

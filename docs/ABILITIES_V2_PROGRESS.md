@@ -2,6 +2,15 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Access target revalidation: two failing regressions demonstrated that a cached
+  open-route state bypassed later safehouse denial and an already-smashed window
+  returned success before breach policy. Door/window routes now re-resolve the
+  target on every update, including while crossing. Safehouse checks precede
+  already-open success, and breach policy precedes already-smashed success.
+  A permitted reclosed door reopens once; subsequent ticks do not toggle it,
+  and removal of the selected target terminates the job. All 35 access tests
+  and the full 534-test suite pass (two existing expected failures). Catalog
+  consistency passes. These are regression tests; live replication is pending.
 - Access restoration follow-up: reproduced a completed yard doorway crossing
   being reversed after the capability's runtime table was lost. The original
   side now persists in the primitive task payload; restoring before crossing

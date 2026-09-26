@@ -846,10 +846,10 @@ function Access.performBreachWindow(body,payload,runtime,now)
     if not validEdge(edge) then return true,false,"window target changed","TARGET_CHANGED" end
     local object=edgeObject(edge,true)
     if not object then return true,false,"window is no longer loaded","TARGET_UNLOADED" end
-    if select(2,result(object,"isSmashed"))==true then return true,true,"window is breached","COMPLETE" end
     local Policy=require("GoblinSurvivor/GoblinAccessPolicy")
     local allowed,code,detail=Policy.breach(body,object,payload.target_kind,payload)
     if not allowed then return true,false,detail,code end
+    if select(2,result(object,"isSmashed"))==true then return true,true,"window is breached","COMPLETE" end
     local adjacent,status,terminal=approachEdge(body,edge,now)
     if not adjacent then
         if terminal then return true,false,status,"NO_PATH" end
@@ -897,6 +897,10 @@ function Access.perform(body, payload, now, runtime)
     local kind = payload and payload.window and "window" or "door"
     if not validEdge(edge) then return true, false, "opening target is invalid; please order me again" end
     local object = edgeObject(edge, payload.window)
+    if object and not safehouseAllows(body, object) then
+        clearApproach(body, runtime)
+        return true, false, "safehouse access denied"
+    end
     local reason = Access.blockReason(object, payload.window, not payload.window, body)
     if reason == "already open" then clearApproach(body, runtime); return true, true, kind .. " is open" end
     if reason then clearApproach(body, runtime); return true, false, kind .. " is " .. reason end
