@@ -22,7 +22,7 @@ record is not a substitute for fresh per-ability multiplayer/reload testing.
 
 | Milestone | What remains |
 | --- | --- |
-| 3 — Tools and access | Finish native compatibility gaps and current-build live tests for alternate entrances, window breach, fences/gates and vehicle access. Verify both clients, material/key transfers and save/reload. The new interior-side correction has automated tests only. |
+| 3 — Tools and access | Finish native compatibility gaps and current-build live tests for alternate entrances, window breach, fences/gates and vehicle access. Verify both clients, material/key transfers and save/reload. The interior-side correction has automated tests and one-client native positional evidence at an existing open doorway, with direct visual crossing still pending. |
 | 4 — Base and logistics | Complete structure repair, storage categories/sorting and fetch/deliver workflows. Inspection, window boarding and stockpiles have partial implementation and earlier user-observed tests; finish current-build conservation, interruption and replication checks. |
 | 5 — Survival | Complete supported construction, farming improvements, cooking, medical, tailoring, woodcutting and feasible foraging/fishing/trapping adapters against installed native behavior. Item existence alone does not establish support. |
 | 6 — Vehicle service | Complete inspect/service, fuel, battery, tires and part removal/installation with real materials and replication. Existing transport, unlock/start and repair paths are a foundation, not completion of this milestone. |
@@ -42,7 +42,9 @@ marked complete. Unsupported native operations must remain explicitly identified
   doors, removed targets and revoked access. Direction/restoration and permission
   regressions failed before their fixes. Actual server save/reload is pending.
 - Catalog: 64 records pass consistency checks.
-- No new physical access acceptance was obtained in the latest local run.
+- A subsequent one-client native check reached a real doorway's intended
+  interior side. See MILESTONE3_EXISTING_BUILDING_CHECK.md; locked-door,
+  direct visual crossing, second-client and save/reload acceptance remain open.
 - The current source changes have not been deployed to .03 or Steam Workshop.
 
 ## Local test provenance correction

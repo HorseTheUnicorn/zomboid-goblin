@@ -2,6 +2,14 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Existing-building native check: a disposable, non-breach probe submitted
+  GAIN_ACCESS through Brain/Jobs with no geometry or position overrides. The
+  selector chose a real open doorway; server positions moved from outside to
+  its intended interior side and returned COMPLETE, with the reply visible in
+  the normal client. The observer cleaned up and its staged file/flag were
+  removed. This is one-client backend evidence, not chat, locked-door, smooth
+  animation, replication or save/reload acceptance. See
+  MILESTONE3_EXISTING_BUILDING_CHECK.md for hashes, trace and limits.
 - Access target revalidation: two failing regressions demonstrated that a cached
   open-route state bypassed later safehouse denial and an already-smashed window
   returned success before breach policy. Door/window routes now re-resolve the
