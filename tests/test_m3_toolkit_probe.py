@@ -7,7 +7,7 @@ PROBE = Path(__file__).resolve().parents[1] / 'tools/probes/Milestone3ToolkitPro
 
 
 class ToolkitProbeTests(unittest.TestCase):
-    def runtime(self, repair=False, fail=False):
+    def runtime(self, repair=False, fail=False, fuel=False):
         lua = LuaRuntime(unpack_returned_tuples=True)
         lua.execute('''
             logs={};function print(s) logs[#logs+1]=s end
@@ -47,6 +47,30 @@ class ToolkitProbeTests(unittest.TestCase):
                     item.condition=10;return item
                 end
             ''')
+        if fuel:
+            lua.globals().failFuel = fail
+            lua.execute('''
+                function getFileReader()
+                    local n=0
+                    return {readLine=function() n=n+1
+                        return n==1 and 'm3path_61' or 'fuel-conservation' end,
+                        close=function() end}
+                end
+                item.condition=8;item.fuel=0.2
+                function item:getFullType() return 'Base.BlowTorch' end
+                function item:IsDrainable() return true end
+                function item:getCurrentUsesFloat() return self.fuel end
+                function item:setUsedDelta(value) self.fuel=value end
+                function item:getCondition() return self.condition end
+                function item:setCondition(value) self.condition=value end
+                local tools=require('GoblinSurvivor/GoblinTools')
+                tools.types={'Base.BlowTorch'}
+                tools.ensure=function()
+                    item.condition=10
+                    if failFuel then item.fuel=1 end
+                    return item
+                end
+            ''')
         lua.execute(PROBE.read_text())
         return lua
 
@@ -74,3 +98,12 @@ class ToolkitProbeTests(unittest.TestCase):
                 logs = '\n'.join(lua.globals().logs.values())
                 self.assertIn('repair_fixture_restored=true', logs)
                 self.assertEqual('repair_error=' in logs, fail)
+
+    def test_fuel_fixture_restores_contents_even_when_maintenance_refills(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                lua = self.runtime(fuel=True, fail=fail)
+                lua.execute('tick();assert(item.condition==8 and item.fuel==0.2)')
+                logs = '\n'.join(lua.globals().logs.values())
+                self.assertIn('fuel_fixture_restored=true', logs)
+                self.assertEqual('fuel_error=' in logs, fail)

@@ -53,3 +53,32 @@ Raw log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-repair-20260926.
 The staged probe and enabling flag were removed after the terminal sample.
 Three probe-control tests pass, including condition restoration after a failed
 repair. These mocks test cleanup logic, not native repair behavior.
+
+## Native acquired-fuel preservation on 3496342
+
+Disposable server PID 54604, no-Storm client PID 4516 (m3path_61).
+Gameplay GoblinTools.lua is unchanged from e4a9fb9. The explicit
+`fuel-conservation` fixture temporarily seeded partial contents in the existing
+reserved Base.BlowTorch, ran Tools.ensure, then restored its previous fuel and
+condition with readback. No additional tool was created.
+
+- Tick 274: native torch ID 650595693 retained fuel 0.5 -> 0.5; same object
+  returned and inventory count unchanged. fuel_fixture_restored=true.
+- Tick 574: all 29 configured reserved copies present and native identities
+  stable over 30000 ms.
+
+This proves maintenance preserves existing drainable contents. It does not
+prove real propane transfer, initial empty-tool creation, fuel consumption in
+welding, fluid-container behavior, client inventory replication or save/reload.
+The fixture is test-only, not an unlimited-fuel gameplay feature.
+
+Installed references: `media/scripts/generated/items/drainable.txt` defines
+Base.BlowTorch as base:drainable with KeepOnDeplete=true; installed
+`media/lua/server/ClientCommands.lua` uses getCurrentUsesFloat/setUsedDelta
+to read and change drainable contents.
+
+Probe SHA-256:
+`da17d6cace2329ae275772fb5b19324ed12affa2e9c6201265154ede1a222cc9`.
+Raw log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-fuel-20260926.server.log`.
+Four probe-control tests pass, including restoration after simulated unwanted
+refilling. Staged probe and flag removed after final sample.

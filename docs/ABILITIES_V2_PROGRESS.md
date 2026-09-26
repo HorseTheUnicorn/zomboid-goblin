@@ -2,6 +2,11 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Native toolkit fuel preservation passed on 3496342: same reserved torch
+  650595693 retained 0.5 contents through Tools.ensure, with unchanged inventory
+  count. Test-only fuel and condition restored; all 29 reserved identities
+  stable after 30 seconds. No fresh-tool emptying, welding consumption, fluid
+  container or persistence claim. See MILESTONE3_TOOLKIT_CHECK.md.
 - Native repair follow-up on e4a9fb9 passed: real reserved hammer 278240023
   repaired 9 -> 10 through Tools.ensure, preserving item identity and inventory
   count. Temporary condition change restored; all 29 reserved identities stayed

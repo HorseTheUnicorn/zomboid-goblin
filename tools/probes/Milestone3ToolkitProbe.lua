@@ -1,6 +1,6 @@
 -- Disposable server probe. Never include in the released package.
--- Read-only by default; explicit repair-hammer mode exercises one reserved
--- tool and restores its original condition even when the test fails.
+-- Read-only by default; explicit repair-hammer/fuel-conservation modes exercise
+-- one reserved tool and restore its original state even when the test fails.
 if not isServer() or getServerName()~="goblin-local" then return end
 local reader=getFileReader("goblin-m3-toolkit.flag",false)
 if not reader then return end
@@ -10,6 +10,38 @@ if owner~="m3witness_54" and owner~="m3path_61" then return end
 local Body=require("GoblinSurvivor/GoblinBody")
 local Tools=require("GoblinSurvivor/GoblinTools")
 local started,last,first,finished=nil,0,nil,false
+local function fuelCheck(body)
+    local items=body:getInventory():getItems()
+    local torch
+    for i=0,items:size()-1 do
+        local item=items:get(i)
+        if item:getFullType()=="Base.BlowTorch" and Tools.reserved(item) then
+            assert(not torch,"duplicate reserved torch")
+            torch=item
+        end
+    end
+    assert(torch and torch:IsDrainable(),"no reserved drainable torch")
+    local fuel,condition=torch:getCurrentUsesFloat(),torch:getCondition()
+    local count=items:size()
+    local ok,err=pcall(function()
+        torch:setUsedDelta(0.5)
+        local seeded=torch:getCurrentUsesFloat()
+        assert(seeded>0 and seeded<1,"partial-fuel fixture did not apply")
+        assert(Tools.ensure(body,"Base.BlowTorch")==torch,"maintenance replaced or refused torch")
+        assert(torch:getCurrentUsesFloat()==seeded,"maintenance changed acquired fuel")
+        assert(items:size()==count,"maintenance changed inventory count")
+        print("[GoblinSurvivor] M3_TOOLKIT fuel_preserved=true item_id="..torch:getID()
+            .." before="..seeded.." after="..torch:getCurrentUsesFloat())
+    end)
+    local restored,restoreError=pcall(function()
+        torch:setUsedDelta(fuel);torch:setCondition(condition)
+        assert(torch:getCurrentUsesFloat()==fuel and torch:getCondition()==condition,
+            "original fuel/condition not restored")
+    end)
+    print("[GoblinSurvivor] M3_TOOLKIT fuel_fixture_restored="..tostring(restored)
+        .." detail="..tostring(restoreError))
+    assert(ok,err);assert(restored,restoreError)
+end
 local function repairCheck(body)
     local items=body:getInventory():getItems()
     local hammer
@@ -87,6 +119,13 @@ Events.OnTick.Add(function()
                     if not repaired then
                         finished=true
                         print("[GoblinSurvivor] M3_TOOLKIT repair_error="..tostring(err))
+                    end
+                end
+                if mode=="fuel-conservation" then
+                    local conserved,err=pcall(fuelCheck,body)
+                    if not conserved then
+                        finished=true
+                        print("[GoblinSurvivor] M3_TOOLKIT fuel_error="..tostring(err))
                     end
                 end
             else
