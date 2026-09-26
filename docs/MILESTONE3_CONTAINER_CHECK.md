@@ -103,3 +103,27 @@ Raw logs: `C:\Users\tomgr\Zomboid\goblin-test-backups\` with prefix
 `.client11.log`. Removed all nine staged probe/flag files after the test;
 bounded observers may finish in already-running clients. Source probes stay
 outside the shipped mod. No production, main or Workshop changes.
+
+## Native managed-actor keyed-container compatibility
+
+On gameplay source 09ebd5d, disposable server 38648 and no-Storm client
+21876 loaded m3path_61. At tick 962, st 746776459, the flag-gated
+Milestone3ContainerKeyProbe reported native_result=PASS and cleanup=true.
+It used a real unregistered IsoThumpable with a real ItemContainer, following
+the installed ISWoodenContainer constructor and native setIsContainer method.
+It never registered or replaced world furniture.
+
+The actual managed IsoZombie and real Base.KeyPadlock yielded:
+
+- Padlocked container without matching key: native and adapter deny access.
+- Matching key in Goblin inventory: native and adapter allow access.
+- Key retained and padlock still set after access checks.
+- Nonzero combination code: native and adapter deny access even with key.
+
+The temporary key was removed and the crate remained unregistered. Probe and
+flag were removed from the server package afterward. Raw evidence is
+`C:\Users\tomgr\Zomboid\goblin-test-backups\m3-container-key-20260926.server.log`.
+Lua 5.1 syntax validation passed. This narrows the managed-actor compatibility
+gap, but does not establish movement to a keyed crate, content transfers,
+replication of keyed access, or saved keyed-job recovery. No door behavior was
+changed and no combination-guessing or destructive container method is claimed.

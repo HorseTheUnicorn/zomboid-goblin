@@ -43,6 +43,15 @@ marked complete. Unsupported native operations must remain explicitly identified
 
 ## Latest validation
 
+September 26 container checkpoint: ordinary-container approach was observed
+on two no-Storm clients with matching actor/outfit and unchanged empty contents;
+an actual server save/restart resumed the same ordinary-container target.
+Native keyed-container compatibility also passed on the managed IsoZombie
+(matching real key retained, padlock retained). Keyed-job movement/replication
+and nonempty transfers remain separate unverified gates. See
+MILESTONE3_CONTAINER_CHECK.md. Current local packages contain 171 source files;
+the 170-file provenance record below is historical.
+
 - Full automated suite: 537 tests run successfully, two existing expected failures.
 - Access suite: 36 tests pass, covering direction, restored crossings, reclosed
   doors, removed targets, revoked access and native unlock failures/group retries.
