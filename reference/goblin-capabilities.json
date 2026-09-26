@@ -195,12 +195,12 @@
     {
       "id": "GAIN_ACCESS",
       "origin": "existing",
-      "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "RUNTIME_ITEM_RESOLVED", "UNIT_TESTED"],
+      "evidence": ["REPO_EXISTING", "STATIC_INSTALLED", "RUNTIME_ITEM_RESOLVED", "UNIT_TESTED", "MANAGED_ACTOR_NATIVE_CHECKED", "ENGINE_TESTED"],
       "commands": ["access", "breach"],
       "semantic_arguments": {
         "target.kind": "BUILDING, ROOM, YARD, VEHICLE or CONTAINER; no model coordinates or physical method",
         "allow_breach": "trusted deterministic /goblin breach route only; excluded from Qwen model schema",
-        "current_resolution": "BUILDING scans the loaded same-floor perimeter of the owner's current or nearest building; ROOM scans the loaded same-floor room perimeter; YARD scans loaded door/low-fence edges within twelve tiles; vehicle delegates to passenger selection; CONTAINER selects the nearest natively accessible loaded world container within five tiles and approaches without changing contents or locks (unit-tested, not live-verified)"
+        "current_resolution": "BUILDING scans the loaded same-floor perimeter of the owner's current or nearest building; ROOM scans the loaded same-floor room perimeter; YARD scans loaded door/low-fence edges within twelve tiles; vehicle delegates to passenger selection; CONTAINER selects the nearest natively accessible loaded world container within five tiles and approaches without changing contents or locks. Ordinary open-container movement and two-client observation plus save/reload are recorded; matching-key native compatibility is checked on the managed actor; keyed-container movement remains unverified."
       },
       "target_class": "IsoDoor or door-like IsoThumpable; IsoWindow; low IsoObject returned by IsoGridSquare.getHoppableTo; BaseVehicle passenger door; loaded world object with ItemContainer",
       "authority": {
@@ -213,6 +213,7 @@
       "sources": [
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinGainAccess.lua", "sha256": "c6f314e8451b99950ead40112fb8548f5fe9d10645563c8bc14debe1c113e83b"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinContainerAccess.lua", "sha256": "71090a88ad173c59f24107d8165ff3160f69806fafdacb246f3d9f67b5783bfc"},
+        {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua", "sha256": "f9366c65e54de2153fe5b2e40fab0da5afb6ed953d3402a5b6d723be9a955a13"},
         {"installed_path": "media/lua/client/ISUI/ISInventoryPage.lua"},
         {"path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinPadlocks.lua", "sha256": "b56bc07373199d0737ed9455ea69729116c4205fd9db772c591e08c894fc13d1"},
         {"installed_path": "media/lua/shared/TimedActions/ISPadlockAction.lua"},
@@ -231,16 +232,17 @@
           "IsoDoor.ToggleDoorSilent(); IsoDoor.toggleDoubleDoor(IsoObject,boolean); IsoDoor.toggleGarageDoor(IsoObject,boolean)",
           "IsoGridSquare.getHoppableTo(IsoGridSquare); IsoGameCharacter.climbOverFence(IsoDirections)",
           "IsoWindow.smashWindow()",
+          "IsoThumpable.isLockedToCharacter(IsoGameCharacter)",
           "BaseVehicle.canOpenDoor(VehiclePart,IsoGameCharacter); BaseVehicle.canUnlockDoor(VehiclePart,IsoGameCharacter); BaseVehicle.toggleLockedDoor(VehiclePart,IsoGameCharacter,boolean)"
         ],
-        "compatibility": "MIXED: door player-free adapter previously multiplayer tested; low-fence climb and house-window smash accept the managed actor/no actor in inspected bindings but await live replication proof; vehicle key methods accept IsoGameCharacter and are unit-tested but await live proof; container native isLockedToCharacter server bytecode accepts IsoGameCharacter, adapter unit-tested but not live-verified",
+        "compatibility": "MIXED: ordinary/keyed building-door paths have partial two-client proof; ordinary container GAIN_ACCESS physically moved on the server, both no-Storm clients observed the same actor/outfit and unchanged container contents, and native save/restart resumed the same container target. Installed isLockedToCharacter was exercised with the managed IsoZombie: no matching key and nonzero code deny; a matching Base.KeyPadlock allows access without consuming the key or removing the padlock. A full keyed-container movement/replication scenario remains unverified. Low-fence climb, house-window smash, vehicle access, gate and breach acceptance remain incomplete.",
         "installed_fence_jar_sha256": "80e405a4bfc42f6072e75b3735f458a6514143da011d3226007ded305a442f44",
         "installed_fence_preconditions": "Build 42.20.4 projectzomboid.jar bytecode: IsoGameCharacter.climbOverFence(IsoDirections) returns void; it exits before EventClimbFence when current square is absent, IsoWindow.canClimbThroughHelper(IsoGameCharacter,IsoGridSquare,IsoGridSquare,boolean) rejects the actor/edge, or IsoGridSquare.isPlayerAbleToHopWallTo(IsoDirections,IsoGridSquare) rejects the direction. The helper excludes IsoAnimal but not IsoZombie. The adapter requires all three exposed predicates to be callable and affirmative before invoking the void climb; unavailable or throwing checks fail closed rather than claiming WORKING. ClimbOverFenceState.setParams initializes run/sprint state for IsoGameCharacter, including IsoZombie. It still requires an observed side change; a managed IsoZombie climb and both-client replication remain untested.",
         "installed_fence_animation_finding": "ClimbOverFenceState has explicit IsoZombie branches, but its PlayTripSound listener contains an unguarded IsoPlayer cast. In the installed AnimSets, only player run/sprint-fail nodes emit PlayTripSound; Goblin's custom zombie start/end/obstacle nodes do not. The remaining zombie lunge/fall outcomes and actual managed-actor animation still require a live trial.",
         "installed_gate_finding": "Build 42.20.4 IsoThumpable.ToggleDoorActual accepts IsoGameCharacter, but key-lock checks are guarded by instanceof IsoPlayer. Calling it directly for a managed IsoZombie could bypass those player-only checks. The current adapter checks matching key/policy itself and uses the player-free silent toggle plus sync; constructed gate movement and replica state still need a live trial.",
         "installed_padlock_finding": "Installed ISPadlockAction removal consumes the matching key and returns Base.Padlock with that key ID and one key count. Managed-actor adapter native smoke passed on goblin-local at st=514940500..514940510: key consumed, exactly one matching padlock, locked=false/keyId=-1, duplicate refused, fixture cleanup=true. Log: C:/Users/tomgr/Zomboid/Logs/m3-padlock-native-20260924.stdout.log (SHA256 9a4837ad1cf978a68d2ae5d323de50948316ebb7120810888eb065ed63e0a001). Movement, second-client replication and reload are NOT certified by that smoke.",
         "method_selection": "Lua ranks observed loaded alternatives; Qwen supplies only semantic target kind",
-        "unsupported": ["bolt-cutter barrier mutation", "locked-container mutation", "vehicle-window breach", "hotwire", "driving"]
+        "unsupported": ["bolt-cutter barrier mutation", "container lock bypass/destructive mutation", "vehicle-window breach", "hotwire", "driving"]
       },
       "public_documentation_urls": [
         "https://projectzomboid.com/modding/zombie/iso/objects/IsoDoor.html",
@@ -250,8 +252,8 @@
         "https://projectzomboid.com/modding/zombie/vehicles/BaseVehicle.html"
       ],
       "required_items": ["Base.Crowbar"],
-      "reusable_inputs": "A reserved Base.Crowbar is required only for the currently implemented explicit house-window breach. Other resolved toolkit items are not treated as mechanics without their own verified adapter.",
-      "item_recipe_resolution": "Base.Crowbar and every permanent-toolkit type resolve enabled/nonobsolete in the captured Build 42.20.4 registry. Base.BoltCutters resolves, but no installed native barrier-cut workflow was verified and it is therefore not routed. No recipe is invoked.",
+      "reusable_inputs": "A reserved Base.Crowbar is required only for the currently implemented explicit house-window breach. A matching native Base.KeyPadlock is used only when already present on Goblin to authorize a keyed container; the live compatibility fixture created and removed one actual key. Other toolkit items are not treated as mechanics without their own verified adapter.",
+      "item_recipe_resolution": "Base.Crowbar and every permanent-toolkit type resolve enabled/nonobsolete in the captured Build 42.20.4 registry. Base.BoltCutters resolves, but no installed native barrier-cut workflow was verified and it is therefore not routed. Base.KeyPadlock resolves enabled/nonobsolete in the captured runtime catalog as Padlock Key (pz-vanilla); an actual instance was accepted by native IsoThumpable.isLockedToCharacter for the matching key ID in the 2026-09-26 managed-actor compatibility fixture. No recipe is invoked.",
       "material_consumption": "Single-gate padlock adapter consumes one actual matching key and returns Base.Padlock with the same key ID and key count one, following installed ISPadlockAction. Native managed-actor transfer smoke passed; movement/replication/reload remain unverified. Other routes retain reserved tools. Window glass changes only after explicit authorization.",
       "permission_checks": [
         "server-only managed Goblin actor",
@@ -268,6 +270,7 @@
       "completion_evidence": "Unit tests prove semantic routing, bounded building-wide candidate ranking, real-key authorization for building doors, constructed-gate discovery/key check/opening/crossing in a fixture, rejection without a key, server policy denial, native low-fence call and observed side change in a fixture, rejection when installed native fence preconditions deny the actor or edge, a bounded fence approach that switches side after six seconds and reports NO_PATH after thirty seconds, primitive already-authorized retries from an unreachable door to a fence or second open door, explicit window smash and observed post-state, native matching-key vehicle unlock, and honest unsupported outcomes. A disposable two-client run additionally proved the matching-key BUILDING route physically and on both replicas. The 2026-09-22 one-client YARD retry proved the door-to-fence fallback executes in-game, but the selected chain-link fence failed the native hop check; no climb occurred. Source now rejects a fence candidate unless the installed native hop predicate accepts at least one direction, ranks up to twelve door/window alternatives per type, and persists at most sixteen compact routes within the task serializer budget while retaining an explicitly authorized breach last. These later corrections have only unit-test proof. Fence, gate, breach, vehicle and save/reload scenarios remain unverified.",
       "completion_evidence_required": [
         "Two ordinary no-Storm clients each retain one Goblin while server-side Storm owns authority",
+        "For CONTAINER, Goblin reaches an exact matching-key locked container through the normal task and both clients observe actor/container state; key, padlock and contents remain unchanged; missing-key and code-locked cases refuse",
         "Actor physically chooses and traverses an alternate unlocked building route instead of a nearer locked route",
         "Actor physically climbs a loaded low fence and both clients observe the side change",
         "Explicit breach changes exactly the permitted window and both clients observe it; automatic/offline and other-safehouse breach are denied",
@@ -275,7 +278,7 @@
         "Door/gate reversal cannot deadlock after Goblin closes the exterior door",
         "Save/reload reconciles changed door/window state without a duplicate toggle"
       ],
-      "replication_save_strategy": "Door and window adapters use native object synchronization and observed post-state; access revision forces the simulation owner to repath. Fence completion is observed from actor side change. Vehicle unlock transmits the VehiclePart door. No M3 save/reload acceptance exists yet.",
+      "replication_save_strategy": "Door and window adapters use native object synchronization and observed post-state; access revision forces the simulation owner to repath. Fence completion is observed from actor side change. Vehicle unlock transmits the VehiclePart door. Container identity markers call transmitModData; ordinary-container movement and save/restart each have separate evidence, but a keyed-container two-client/reload route remains unverified.",
       "rollback_reconciliation": "Persistent task data contains primitive target descriptors only. Every update re-resolves exact loaded objects and verifies post-state. Changed, unloaded, unauthorized or unsupported targets terminate with a structured failure rather than substituting another destructive target.",
       "limitations": [
         "Building and room resolution use bounded loaded perimeters; yard resolution remains a twelve-tile loaded-area search without a persistent yard identity",
@@ -284,11 +287,11 @@
         "2026-09-26 access revalidates loaded targets and safehouse policy on each crossing update; reclosed doors reopen once, missing targets stop, and smashed windows still require policy checks. Regression-tested only.",
         "Ordinary gate handling inherits door-like discovery; no separate locked-gate or cuttable-barrier class has live proof",
         "Vehicle alternate broken-window and breach routes are not implemented",
-        "Container access is intentionally unsupported",
+        "Container access only approaches the nearest currently accessible loaded container and does not transfer contents or mutate its lock. Ordinary open-container approach is live-tested on two clients and across server save/reload; native matching-key compatibility is checked, but selecting and physically reaching a keyed container and observing that scenario on a second client remain unverified",
         "M3 has partial two-client physical proof for one matching-key ordinary building door and one-client proof that door NO_PATH triggers a fence retry; low-fence crossing, successful alternate-route completion, breach, vehicle, gate and save/reload acceptance remain outstanding"
       ],
-      "verified_game": "42.20.4 b0bbce05d5 installed registry/source/bytecode plus Lua unit tests; matching-key building access physically accepted locally, remaining M3 scenarios pending",
-      "verified_storm": "42.20.4_2.10.11-SNAPSHOT server-side only; matching-key building mutation and replication accepted with two ordinary no-Storm clients",
+      "verified_game": "42.20.4 b0bbce05d5 installed registry/source/bytecode plus Lua unit tests; ordinary-container movement, two-client observation, native save/restart, and managed-IsoZombie matching-key access compatibility have separate current-worktree evidence; remaining M3 scenarios pending",
+      "verified_storm": "42.20.4_2.10.11-SNAPSHOT server-side only; matching-key building door mutation and replication, ordinary-container approach/observation, and ordinary-container save/restart have separate evidence; keyed-container movement/replication and other M3 scenarios pending",
       "unit_tests": [
         "test_goblin_access_v2.test_access_prefers_alternate_unlocked_door_over_nearer_locked_door",
         "test_goblin_access_v2.test_gain_access_is_registered_and_opens_real_selected_door",
@@ -325,6 +328,9 @@
         "test_goblin_house.test_route_reopens_just_closed_door_when_new_goal_reverses_across_it"
       ],
       "multiplayer_evidence": [
+        "2026-09-26 current source 09ebd5d, disposable goblin-local server PID 1956 and two no-Storm clients m3path_61/m3witness_54: normal CONTAINER GAIN_ACCESS accepted and selected marker m3path_61:1790457019269:1 with empty initial contents; the managed actor moved from (10775.674,9763.854,0) to the container approach at (10778.229,9765.230,0), completed, and server terminal_contents_unchanged=true. Both clients independently resolved the same container marker, read empty contents at initial and terminal phases, and observed the same actor online ID 19009 moving with actual outfit 14155840 matching roster. Client positions differed slightly due interpolation. This proves ordinary accessible-container approach/observation only; it does not prove nonempty transfer or keyed-container movement. Raw logs are m3-container-two-client-20260926.server.log/client10.log/client11.log.",
+        "2026-09-26 actual native server save/restart check on ff27620 restored the same ordinary-container target ID and saved content baseline without redispatch; the managed actor resumed and reached COMPLETE with unchanged contents. This is ordinary-container task persistence only; keyed-container save/reload remains untested. See docs/MILESTONE3_CONTAINER_CHECK.md.",
+        "2026-09-26 actual managed-IsoZombie native compatibility fixture on source 09ebd5d: real unregistered IsoThumpable ItemContainer with Base.KeyPadlock. Native and Goblin adapter denied access without matching key, allowed it with matching key, retained key and padlock, then denied access when a combination code was set. Probe cleanup succeeded. This establishes native compatibility, not physical keyed-container movement or replication. See docs/MILESTONE3_CONTAINER_CHECK.md.",
         "2026-09-20 partial Milestone 3 disposable acceptance: exactly two connected players retained exactly two managed Goblins. With server-side Storm and two ordinary no-Storm clients, Horse's real Base.Key1 matched key ID 731903, GAIN_ACCESS selected the exact ordinary-door edge 10995,9700,0|10995,9701,0, moved the actor 2.261 tiles, opened/unlocked and crossed it, and both replicas observed access revision 1 plus open=true/locked=false/lockedByKey=false. No Goblin position write occurred after measurement began. This does not certify the remaining M3 routes.",
         "2026-09-22 first disposable one-client YARD regression: fencefang_73 issued deterministic !goblin access yard. The loaded build selected a non-destructive door and returned CAPABILITY_RESULT NO_PATH after 30 seconds; it did not climb the visible fence. This exposed the missing alternate-route retry and is negative evidence, not fence acceptance.",
         "2026-09-22 second disposable one-client YARD run: server-side Storm with ordinary no-Storm fencefang_73 client loaded the fallback build. The server logged ACCESS_ROUTE_FALLBACK from=DOOR to=FENCE reason=NO_PATH, then CAPABILITY_RESULT done=true success=false code=BLOCKED detail=native low-fence climb is blocked from this side. The player-visible Goblin returned that failure beside a chain-link fence; no side change or climb was observed. This proves fallback execution, not fence compatibility.",

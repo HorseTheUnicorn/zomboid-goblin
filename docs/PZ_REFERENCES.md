@@ -28,6 +28,7 @@ discovery evidence, not proof of compatibility with the installed build.
 | REPO_EXISTING | Current Goblin code implements or references it. |
 | STATIC_INSTALLED | Hash-matched installed files/classes contain it. |
 | RUNTIME_RESOLVED | Actual loaded registry/binding resolves it. |
+| MANAGED_ACTOR_NATIVE_CHECKED | Installed native operation was invoked against the real managed IsoZombie in a disposable fixture; this proves that specific native actor path, not gameplay movement, replication or full ability support. |
 | ENGINE_TESTED | Dated real-game scenario verifies physical results and replication. |
 | PROPOSED | Not an available ability. |
 | UNSUPPORTED | Known incompatibility; do not expose to the planner. |
