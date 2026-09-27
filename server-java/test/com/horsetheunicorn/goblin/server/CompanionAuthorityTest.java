@@ -10,6 +10,33 @@ import zombie.popman.NetworkZombieManager;
 
 /** Apply the owner-authority advice to the installed B42 NetworkZombieManager. */
 public final class CompanionAuthorityTest {
+    /**
+     * Storm transforms NetworkZombieManager while defining it, so the target
+     * cannot be loaded during the transform. Reproduce that: load the mod
+     * classes in a child-first loader that refuses the target with the same
+     * ClassCircularityError the live server raised.
+     */
+    static byte[] transformWhileTargetIsBeingDefined(byte[] source) throws Exception {
+        java.net.URL mod = CompanionAuthority.class.getProtectionDomain().getCodeSource().getLocation();
+        ClassLoader parent = CompanionAuthorityTest.class.getClassLoader();
+        ClassLoader loader = new java.net.URLClassLoader(new java.net.URL[]{mod}, parent) {
+            @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (name.equals(CompanionAuthority.TARGET)) throw new ClassCircularityError(name.replace('.', '/'));
+                if (name.startsWith("com.horsetheunicorn.")) {
+                    synchronized (getClassLoadingLock(name)) {
+                        Class<?> c = findLoadedClass(name);
+                        if (c == null) c = findClass(name);
+                        return c;
+                    }
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+        Class<?> type = loader.loadClass(CompanionAuthority.class.getName());
+        Object transformer = type.getConstructor().newInstance();
+        return (byte[]) type.getMethod("transform", byte[].class).invoke(transformer, (Object) source);
+    }
+
     public static void main(String[] args) throws Exception {
         int checks = 0;
         String binary = CompanionAuthority.TARGET;
@@ -19,7 +46,7 @@ public final class CompanionAuthorityTest {
             if (stream == null) throw new AssertionError("missing native " + binary);
             source = stream.readAllBytes();
         }
-        byte[] patched = new CompanionAuthority().transform(source);
+        byte[] patched = transformWhileTargetIsBeingDefined(source);
         if (patched == null || Arrays.equals(source, patched)) throw new AssertionError("authority pin was not applied");
         String text = new String(patched, StandardCharsets.ISO_8859_1);
         if (!text.contains("GoblinOwner") || !text.contains("GoblinNPC"))

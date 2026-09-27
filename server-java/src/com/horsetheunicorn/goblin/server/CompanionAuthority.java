@@ -48,7 +48,10 @@ public final class CompanionAuthority extends StormClassTransformer {
     public static class OwnerAuthority {
         /** Returns true (skipping the native choice) only when the owner keeps authority. */
         @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
-        public static boolean pin(@Advice.This NetworkZombieManager manager,
+        // The receiver is typed Object on purpose: naming NetworkZombieManager
+        // in this signature made ByteBuddy resolve that class while Storm was
+        // still defining it (ClassCircularityError on the live server).
+        public static boolean pin(@Advice.This Object manager,
                 @Advice.Argument(0) IsoZombie zombie) {
             if (!GameServer.server || zombie == null || zombie.isDead()) return false;
             if (!zombie.getVariableBoolean("GoblinNPC")) return false;
@@ -63,7 +66,7 @@ public final class CompanionAuthority extends StormClassTransformer {
             float range = (connection.getRelevantRange() - 2) * 10;
             if (!connection.RelevantTo(zombie.getX(), zombie.getY(), range)) return false;
             if (zombie.getOwner() != connection || zombie.getOwnerPlayer() != player) {
-                manager.moveZombie(zombie, connection, player);
+                ((NetworkZombieManager) manager).moveZombie(zombie, connection, player);
             }
             return true;
         }
