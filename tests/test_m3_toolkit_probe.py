@@ -7,7 +7,7 @@ PROBE = Path(__file__).resolve().parents[1] / 'tools/probes/Milestone3ToolkitPro
 
 
 class ToolkitProbeTests(unittest.TestCase):
-    def runtime(self, repair=False, fail=False, fuel=False):
+    def runtime(self, repair=False, fail=False, fuel=False, persistence=False):
         lua = LuaRuntime(unpack_returned_tuples=True)
         lua.execute('''
             logs={};function print(s) logs[#logs+1]=s end
@@ -71,6 +71,26 @@ class ToolkitProbeTests(unittest.TestCase):
                     return item
                 end
             ''')
+        if persistence:
+            lua.execute('''
+                function getFileReader()
+                    local n=0
+                    return {readLine=function() n=n+1
+                        return n==1 and 'm3toolkit_27' or 'fresh-persistence' end,
+                        close=function() end}
+                end
+                item.fuel=0
+                function item:IsDrainable() return true end
+                function item:getCurrentUsesFloat() return self.fuel end
+                function item:getFluidContainer() return nil end
+                local tools=require('GoblinSurvivor/GoblinTools')
+                tools.ensureKit=function()
+                    if failFuel then item.fuel=1 end
+                    return true,1
+                end
+                local bodyModule=require('GoblinSurvivor/GoblinBody')
+                bodyModule.owner=function() return 'm3toolkit_27' end
+            ''')
         lua.execute(PROBE.read_text())
         return lua
 
@@ -107,3 +127,11 @@ class ToolkitProbeTests(unittest.TestCase):
                 logs = '\n'.join(lua.globals().logs.values())
                 self.assertIn('fuel_fixture_restored=true', logs)
                 self.assertEqual('fuel_error=' in logs, fail)
+
+    def test_fresh_persistence_mode_requires_empty_idempotent_kit(self):
+        lua = self.runtime(persistence=True)
+        lua.execute('tick()')
+        logs = '\n'.join(lua.globals().logs.values())
+        self.assertIn('fresh_persistence=true', logs)
+        self.assertIn('empty_contents=true', logs)
+        self.assertIn('inventory_identity_unchanged=true', logs)

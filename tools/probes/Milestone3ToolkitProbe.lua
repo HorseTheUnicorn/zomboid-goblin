@@ -6,10 +6,54 @@ local reader=getFileReader("goblin-m3-toolkit.flag",false)
 if not reader then return end
 local owner=reader:readLine()
 local mode=reader:readLine();reader:close()
-if owner~="m3witness_54" and owner~="m3path_61" then return end
+if owner~="m3witness_54" and owner~="m3path_61" and owner~="m3toolkit_27" then return end
 local Body=require("GoblinSurvivor/GoblinBody")
 local Tools=require("GoblinSurvivor/GoblinTools")
 local started,last,first,finished=nil,0,nil,false
+local function inventoryIdentity(body)
+    local result={}
+    local items=body:getInventory():getItems()
+    for i=0,items:size()-1 do
+        local item=items:get(i)
+        result[item:getID()]=item:getFullType()
+    end
+    return result,items:size()
+end
+local function sameIdentity(a,b)
+    for id,kind in pairs(a) do if b[id]~=kind then return false end end
+    for id,kind in pairs(b) do if a[id]~=kind then return false end end
+    return true
+end
+local function freshPersistenceCheck(body)
+    local before,beforeSize=inventoryIdentity(body)
+    local items=body:getInventory():getItems()
+    local empty=true
+    for i=0,items:size()-1 do
+        local item=items:get(i)
+        if Tools.reserved(item) then
+            local drainableOK,drainable=pcall(function() return item:IsDrainable() end)
+            if drainableOK and drainable then
+                local readOK,uses=pcall(function() return item:getCurrentUsesFloat() end)
+                empty=empty and readOK and uses==0
+            end
+            local fluidOK,fluid=pcall(function() return item:getFluidContainer() end)
+            if fluidOK and fluid then
+                local readOK,amount=pcall(function() return fluid:getAmount() end)
+                empty=empty and readOK and amount==0
+            end
+        end
+    end
+    local complete,count=Tools.ensureKit(body)
+    local after,afterSize=inventoryIdentity(body)
+    local unchanged=beforeSize==afterSize and sameIdentity(before,after)
+    print("[GoblinSurvivor] M3_TOOLKIT fresh_persistence=true complete="..tostring(complete)
+        .." count="..tostring(count).." empty_contents="..tostring(empty)
+        .." inventory_identity_unchanged="..tostring(unchanged)
+        .." inventory_size="..tostring(afterSize))
+    assert(complete and count==#Tools.types,"toolkit ensure failed")
+    assert(empty,"fresh reserved tool contained generated fuel or fluid")
+    assert(unchanged,"toolkit ensure created, removed or replaced an inventory item")
+end
 local function fuelCheck(body)
     local items=body:getInventory():getItems()
     local torch
@@ -126,6 +170,13 @@ Events.OnTick.Add(function()
                     if not conserved then
                         finished=true
                         print("[GoblinSurvivor] M3_TOOLKIT fuel_error="..tostring(err))
+                    end
+                end
+                if mode=="fresh-persistence" then
+                    local checked,err=pcall(freshPersistenceCheck,body)
+                    if not checked then
+                        finished=true
+                        print("[GoblinSurvivor] M3_TOOLKIT fresh_persistence_error="..tostring(err))
                     end
                 end
             else
