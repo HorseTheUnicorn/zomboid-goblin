@@ -60,7 +60,7 @@ class DeterministicActionGate:
             label = action.target_label or ""
             if not label or len(label) > 96 or _COORDINATE_RE.search(label):
                 return DriverResult(False, "rejected", "unsafe target label")
-        if action.item_count is not None and not 1 <= action.item_count <= 10:
+        if action.item_count is not None and not 1 <= action.item_count <= 20:
             return DriverResult(False, "rejected", "unsafe item count")
         if action.loot_focus is not None and action.loot_focus not in {
             "food", "medical", "tools", "ammo", "surprise"

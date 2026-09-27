@@ -41,3 +41,31 @@ class LeninDialogueTests(unittest.TestCase):
             intent, speech = QwenClient().propose_chat({"mode": "PARTY", "controlled_owner": "horse"})
         self.assertEqual(intent.intent, "CLOSE_CURTAINS")
         self.assertEqual(speech, response["text"])
+
+
+class QuoteTests(unittest.TestCase):
+    def test_quotes_are_sourced_short_and_exclude_known_misattributions(self):
+        from goblin_zomboid.quotes import QUOTES, EXCLUDED_MISATTRIBUTIONS, pick, quote_prompt
+        speakers = {q.speaker for q in QUOTES}
+        self.assertEqual(speakers, {"Lenin", "Stalin"})
+        for q in QUOTES:
+            self.assertTrue(q.source and q.text and len(q.text) <= 90, q)
+            self.assertNotIn(q.text, EXCLUDED_MISATTRIBUTIONS)
+            self.assertIn(q.kind, {"quote", "title", "slogan"})
+        import random
+        prompt = quote_prompt(pick(random.Random(1)))
+        self.assertIn("Never invent a quotation", prompt)
+        self.assertIn("a million deaths is a statistic", prompt)  # listed as forbidden
+        self.assertIn("purges", prompt)
+
+    def test_chat_and_speech_prompts_ask_for_real_conversation_and_quotes(self):
+        captured = []
+        def fake(self, prompt, payload, **kwargs):
+            captured.append(prompt)
+            return json.dumps({"intent": "SAY", "mode": "PARTY", "text": "Better fewer, but better, comrade."})
+        with patch.object(QwenClient, "_request_json", fake):
+            QwenClient().propose_chat({"mode": "PARTY", "controlled_owner": "horse"})
+        self.assertIn("real conversation", captured[0])
+        self.assertIn("Stalin", captured[0])
+        self.assertIn("conversation", captured[0])
+        self.assertIn("Stalin", QwenClient._speech_system_prompt())

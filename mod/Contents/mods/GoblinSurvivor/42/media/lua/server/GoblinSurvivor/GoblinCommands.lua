@@ -4,6 +4,8 @@ local Constants = require("GoblinSurvivor/Constants")
 local Body = require("GoblinSurvivor/GoblinBody")
 local Spawner = require("GoblinSurvivor/GoblinSpawner")
 local Stockpiles = require("GoblinSurvivor/GoblinStockpiles")
+local Storage = require("GoblinSurvivor/GoblinStorage")
+local Goals = require("GoblinSurvivor/GoblinGoals")
 local Brain = require("GoblinSurvivor/GoblinBrain")
 local EventHooks = require("GoblinSurvivor/EventHooks")
 
@@ -42,7 +44,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | dismantle furniture | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
+    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | storage CATEGORY/clear | sort [all] | fetch Item/category [count] | deliver [item/category] [floor] | repair base | vehicle inspect/service/refuel | install/remove/replace Part [Item] | change tire [Part] | chop [1-5] | bandage me | goal secure/organize/repair/vehicle/nails [every N] | goal list | cancel [goal] | dismantle furniture | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -98,6 +100,114 @@ local function handle(player, rawText)
         end
         Body.say(body,"Comrade, "..tostring(result)..".")
         return
+    end
+    if command=="storage" then
+        local arg=parts[2]
+        if not arg or parts[3] then
+            reply(player,"use storage FOOD|WATER|MEDICAL|TOOLS|WEAPONS|AMMO|MATERIALS|CLOTHING|BOOKS|ELECTRONICS|FARMING|COOKING|SURVIVAL|VEHICLE|MISC|INBOX|OVERFLOW, or storage clear, beside one base container")
+            return
+        end
+        local ok,result
+        if string.lower(arg)=="clear" then ok,result=Storage.unassign(body,player)
+        else ok,result=Storage.assign(body,player,arg) end
+        if type(print)=="function" then
+            print("[GoblinSurvivor] STORAGE_ASSIGN owner="..playerName(player)
+                .." category="..tostring(arg).." accepted="..tostring(ok).." detail="..tostring(result))
+        end
+        reply(player,result)
+        return
+    end
+    if command=="sort" or command=="organize" or command=="organise" then
+        local all=string.lower(parts[2] or "")=="all"
+        local ok,result=Brain.setTask(body,Constants.TASK.SORT_STORAGE,{explicit_owner_order=true,all=all})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="fetch" or command=="bring" then
+        local item=parts[2]
+        if not item or (parts[3] and not tonumber(parts[3])) or parts[4] then
+            reply(player,"use fetch Base.Nails 5, or fetch food 3")
+            return
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.FETCH_ITEM,
+            {explicit_owner_order=true,item=item,count=tonumber(parts[3]) or 1})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="deliver" or command=="unload" or command=="putaway" then
+        local item,floor
+        for index=2,#parts do
+            if string.lower(parts[index])=="floor" then floor=true else item=item or parts[index] end
+        end
+        local ok,result=Brain.setTask(body,Constants.TASK.DELIVER,
+            {explicit_owner_order=true,item=item,allow_floor=floor==true})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="goal" or command=="goals" then
+        local arg=string.lower(parts[2] or "list")
+        local now=type(getTimestampMs)=="function" and getTimestampMs() or 0
+        if arg=="list" then reply(player,Goals.describe(playerName(player)));return end
+        if arg=="cancel" then
+            local ok,result=Goals.cancel(playerName(player),parts[3] or "all")
+            reply(player,result);return
+        end
+        local interval=0
+        if string.lower(parts[3] or "")=="every" then interval=tonumber(parts[4]) or -1 end
+        local ok,result=Goals.add(playerName(player),arg,interval,now)
+        reply(player,result)
+        return
+    end
+    if command=="cancel" then
+        -- Cancels standing goals only; "follow" stops the current job.
+        local ok,result=Goals.cancel(playerName(player),parts[2] or "all")
+        reply(player,result)
+        return
+    end
+    if command=="chop" then
+        local count=tonumber(parts[2]) or tonumber(parts[3]) or 1
+        local ok,result=Brain.setTask(body,Constants.TASK.CHOP_WOOD,{explicit_owner_order=true,count=count})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="bandage" or command=="treat" or command=="medical" or command=="heal" then
+        local ok,result=Brain.setTask(body,Constants.TASK.TREAT_PLAYER,{explicit_owner_order=true})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="vehicle" or command=="car" then
+        local what=string.lower(parts[2] or "")
+        local tasks={inspect=Constants.TASK.VEHICLE_INSPECT,check=Constants.TASK.VEHICLE_INSPECT,
+            service=Constants.TASK.VEHICLE_SERVICE,refuel=Constants.TASK.REFUEL_VEHICLE,
+            fuel=Constants.TASK.REFUEL_VEHICLE}
+        if not tasks[what] or parts[3] then reply(player,"use vehicle inspect, vehicle service, or vehicle refuel");return end
+        local ok,result=Brain.setTask(body,tasks[what],{explicit_owner_order=true})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="install" or command=="remove" or command=="replace" then
+        local partId=parts[2]
+        if not partId or parts[4] then reply(player,"use "..command.." PartId [Item.FullType], e.g. "..command.." Battery");return end
+        local task=command=="install" and Constants.TASK.INSTALL_PART
+            or command=="remove" and Constants.TASK.REMOVE_PART or Constants.TASK.REPLACE_PART
+        local ok,result=Brain.setTask(body,task,{explicit_owner_order=true,part=partId,item=parts[3]})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if (command=="change" and string.lower(parts[2] or "")=="tire") or command=="tire" then
+        local partId=command=="tire" and parts[2] or parts[3]
+        local ok,result=Brain.setTask(body,Constants.TASK.CHANGE_TIRE,{explicit_owner_order=true,part=partId})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="repair" then
+        local what=string.lower(parts[2] or "")
+        if what=="base" or what=="house" or what=="structure" or what=="structures"
+            or what=="walls" or what=="furniture" or what=="doors" then
+            local ok,result=Brain.setTask(body,Constants.TASK.REPAIR_STRUCTURE,{explicit_owner_order=true})
+            Body.say(body,"Comrade, "..tostring(result)..".")
+            return
+        end
     end
     if command=="enter" or command=="board" or command=="exit" or command=="disembark" then
         local entering=command=="enter" or command=="board"

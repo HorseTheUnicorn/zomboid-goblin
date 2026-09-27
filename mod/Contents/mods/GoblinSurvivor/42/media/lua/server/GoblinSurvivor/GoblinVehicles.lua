@@ -64,7 +64,7 @@ function Vehicles.update(body,payload,job,now)
     if not wrench then return true,false,"the mechanic's wrench could not load","MISSING_TOOL" end
     local material,fixing,fixer
     if mode=="engine" then
-        material=Support.supply(body,job,payload.anchor,function(i) return World.fullType(i)=="Base.EngineParts" end,now,"engine spare parts")
+        material=Support.supply(body,job,payload.anchor,function(i) return World.fullType(i)=="Base.EngineParts" end,now,"engine spare parts","Base.EngineParts")
         if not material then return false,true,"waiting for engine spare parts","WAITING_FOR_MATERIAL" end
     else
         local item=part:getInventoryItem()
@@ -87,7 +87,7 @@ function Vehicles.update(body,payload,job,now)
                 local full=kind:find("%.") and kind or "Base."..kind
                 Support.supply(body,job,payload.anchor,function(i)
                     return not World.has(World.inventory(body),i) and World.fullType(i)==full
-                end,now,"repair supplies for "..part:getId()..": "..full)
+                end,now,"repair supplies for "..part:getId()..": "..full,full)
             else
                 job.skipped[part:getId()]=true
                 Support.status(body,"no repair recipe for "..part:getId().."; that part needs replacement")

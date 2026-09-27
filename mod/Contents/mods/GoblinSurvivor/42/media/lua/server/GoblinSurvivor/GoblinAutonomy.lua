@@ -5,6 +5,7 @@ local World=require("GoblinSurvivor/GoblinWorld")
 local Work=require("GoblinSurvivor/GoblinWork")
 local Loot=require("GoblinSurvivor/GoblinLoot")
 local Motion=require("GoblinSurvivor/GoblinLocomotion")
+local Goals=require("GoblinSurvivor/GoblinGoals")
 local Autonomy={owners={}}
 
 local function fortifySuppliesAvailable(body)
@@ -21,6 +22,15 @@ local function fortifySuppliesAvailable(body)
     end,body)) do count(source.item) end
     for _,amount in pairs(missing) do if amount>0 then return false end end
     return true
+end
+
+local function threatNear(body,point)
+    local ok,Defense=pcall(require,"GoblinSurvivor/GoblinDefense")
+    if not ok or type(Defense)~="table" or type(Defense.nearestThreat)~="function" then return false end
+    local found=Defense.nearestThreat(body,point,6)
+    if found then return true end
+    local own=Body.position(body)
+    return own~=nil and Defense.nearestThreat(body,own,4)~=nil
 end
 
 function Autonomy.update(body,now)
@@ -65,6 +75,17 @@ function Autonomy.update(body,now)
             data.GoblinOwnerIdleSeconds=0
             data.GoblinOwnerMovingUntil=now+500
         end
+        -- Owner goals: a running step yields to combat, or to recall when the
+        -- owner walks away (moving around inside the work area is fine).
+        local idle=now-record.activeAt>=Config.autonomyIdleSeconds*1000
+        if data.GoblinGoalActive then
+            local bodyPoint=Body.position(body)
+            local recalled=not idle and bodyPoint~=nil
+                and Motion.distance(bodyPoint,point)>(tonumber(Config.goalRecallDistance) or 15)
+            if Goals.tick(body,Brain.setTask,{idle=idle,recalled=recalled,threat=threatNear(body,point)},now) then
+                return true
+            end
+        end
         -- Movement/reconnect cancels only independent work, before its next
         -- inventory/world mutation. Explicit orders (especially WAIT) survive.
         if now-record.activeAt<Config.autonomyIdleSeconds*1000 then
@@ -93,6 +114,10 @@ function Autonomy.update(body,now)
             if followGoal or (key~="arrived" and not (type(key)=="string"
                 and string.match(key,"^slot:%d+$"))) then return false end
         end
+    end
+    -- Standing owner goals take precedence over independent chores.
+    if player and Goals.tick(body,Brain.setTask,{idle=true,threat=threatNear(body,point)},now) then
+        return true
     end
     if now<record.nextAt then return false end
     record.nextAt=now+Config.autonomyDecisionSeconds*1000

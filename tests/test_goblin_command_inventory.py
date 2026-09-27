@@ -40,6 +40,14 @@ class CommandInventoryTests(unittest.TestCase):
             package.loaded['GoblinSurvivor/GoblinStockpiles']={assign=function(b,p,kind,minimum)
                 record('Stockpiles.assign',p,nil,{body=b,item=kind,minimum=minimum})
                 return true,'threshold recorded' end}
+            package.loaded['GoblinSurvivor/GoblinStorage']={
+                assign=function(b,p,category) record('Storage.assign',p,nil,{body=b,category=category})
+                    return true,'assigned' end,
+                unassign=function(b,p) record('Storage.unassign',p,nil,{body=b});return true,'cleared' end}
+            package.loaded['GoblinSurvivor/GoblinGoals']={
+                add=function(owner,name) record('Goals.add',player,nil,{owner=owner,name=name});return true,'goal' end,
+                describe=function(owner) record('Goals.describe',player,nil,{owner=owner});return 'no goals' end,
+                cancel=function(owner,name) record('Goals.cancel',player,nil,{owner=owner,name=name});return true,'cancelled' end}
             Events={OnClientCommand={}}
             package.loaded['GoblinSurvivor/EventHooks']={install=function(key,event,fn)
                 callback=fn;return true end}

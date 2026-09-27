@@ -23,12 +23,19 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.lua.execute('''
             local Jobs=require('GoblinSurvivor/GoblinJobs')
             local registry=Jobs.registry()
-            assert(#registry==9)
+            assert(#registry==22)
             local seen={}
             for _,entry in ipairs(registry) do
                 seen[entry.name]=entry
                 assert(entry.owner_required and not entry.offline_allowed)
-                assert(entry.timeout_ms==300000)
+                assert(entry.timeout_ms==300000 or entry.timeout_ms==600000)
+            end
+            assert(seen.SORT_STORAGE.timeout_ms==600000 and not seen.SORT_STORAGE.destructive)
+            assert(not seen.FETCH_ITEM.destructive and not seen.DELIVER.destructive)
+            assert(seen.REPAIR_STRUCTURE.destructive and seen.REPAIR_STRUCTURE.timeout_ms==600000)
+            assert(not seen.VEHICLE_INSPECT.destructive and seen.REFUEL_VEHICLE.destructive)
+            for _,name in ipairs({'INSTALL_PART','REMOVE_PART','REPLACE_PART','CHANGE_TIRE','VEHICLE_SERVICE'}) do
+                assert(seen[name] and seen[name].destructive and seen[name].owner_required)
             end
             assert(seen.FARM.destructive and seen.CRAFT.destructive)
             assert(seen.REPAIR_VEHICLE.destructive and not seen.CLOSE_CURTAINS.destructive)

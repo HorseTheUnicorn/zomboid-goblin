@@ -134,6 +134,40 @@ class BaseInspectTests(unittest.TestCase):
             assert(Work.jobs[a].target==nil)
         ''')
 
+    def test_model_originated_jobs_need_the_owners_consumed_chat_grant(self):
+        # Qwen commands reach the game only through GoblinBridge -> Brain.execute.
+        # The bridge sets owner_authorized after consuming the owner's one-use
+        # chat grant; without it (or for offline/autonomous grants) jobs refuse.
+        self.lua.execute('''
+            local Brain=require('GoblinSurvivor/GoblinBrain')
+            local before=a.data.GoblinTask
+            local jobs={'SORT_STORAGE','FETCH_ITEM','DELIVER','REPAIR_STRUCTURE',
+                'REFUEL_VEHICLE','INSTALL_PART','REMOVE_PART','REPLACE_PART','CHANGE_TIRE',
+                'VEHICLE_SERVICE','VEHICLE_INSPECT','STOCKPILE','DISMANTLE','CHOP_WOOD','TREAT_PLAYER'}
+            for _,action in ipairs(jobs) do
+                local ok,detail=Brain.execute({action=action,item={name='Base.Nails'}},a)
+                assert(ok==false and detail:find('own request'),action..' '..tostring(detail))
+                ok,detail=Brain.execute({action=action,owner_authorized=true,autonomous=true},a)
+                assert(ok==false,action)
+                assert(a.data.GoblinTask==before)
+            end
+            local calls={}
+            local original=Brain.setTask
+            Brain.setTask=function(body,task,payload) calls[#calls+1]={task=task,payload=payload};return true,'ok' end
+            assert(Brain.execute({action='FETCH_ITEM',owner_authorized=true,item={name='food',count=3}},a))
+            assert(calls[1].task=='FETCH_ITEM' and calls[1].payload.explicit_owner_order)
+            assert(calls[1].payload.item=='food' and calls[1].payload.count==3)
+            assert(Brain.execute({action='REPLACE_PART',owner_authorized=true,job='battery'},a))
+            assert(calls[2].payload.part=='battery')
+            assert(Brain.execute({action='SORT_STORAGE',owner_authorized=true,job='all'},a))
+            assert(calls[3].payload.all==true)
+            assert(Brain.execute({action='DELIVER',owner_authorized=true,job='floor'},a))
+            assert(calls[4].payload.allow_floor==true)
+            assert(Brain.execute({action='CHOP_WOOD',owner_authorized=true,item={count=2}},a))
+            assert(calls[5].payload.count==2)
+            Brain.setTask=original
+        ''')
+
     def test_fortify_base_uses_existing_real_material_path(self):
         self.lua.execute('''
             local Brain=require('GoblinSurvivor/GoblinBrain')

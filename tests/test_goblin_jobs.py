@@ -383,6 +383,26 @@ class ExtendedJobTests(unittest.TestCase):
             with self.assertRaises(IntentError): validator.validate(payload)
         branches={b['properties']['intent']['const'] for b in QwenClient._chat_schema({'mode':'PARTY'})['oneOf']}
         self.assertTrue({'FARM','CRAFT','REPAIR_VEHICLE','OPEN_DOOR','OPEN_WINDOW','CLOSE_CURTAINS'}<=branches)
+        self.assertTrue(set(QwenClient.JOB_ACTIONS)<=branches)
+        for payload in (
+            {'intent':'FETCH_ITEM','mode':'SAFE','item':{'name':'food','count':20}},
+            {'intent':'SORT_STORAGE','mode':'PARTY','job':'all'},
+            {'intent':'REPLACE_PART','mode':'ROAM','job':'battery'},
+            {'intent':'CHANGE_TIRE','mode':'HUNT'},
+            {'intent':'CHOP_WOOD','mode':'PARTY','item':{'count':3}},
+            {'intent':'TREAT_PLAYER','mode':'SAFE'},
+        ):
+            self.assertEqual(validator.validate(payload).intent,payload['intent'])
+        for payload in (
+            {'intent':'FETCH_ITEM','mode':'PARTY'},
+            {'intent':'FETCH_ITEM','mode':'PARTY','item':{'name':'food','count':21}},
+            {'intent':'INSTALL_PART','mode':'PARTY'},
+            {'intent':'REMOVE_PART','mode':'PARTY','job':'../lua'},
+            {'intent':'SORT_STORAGE','mode':'PARTY','job':'everything'},
+            {'intent':'CHOP_WOOD','mode':'PARTY','item':{'count':6}},
+            {'intent':'STOCKPILE','mode':'PARTY'},
+        ):
+            with self.assertRaises(IntentError): validator.validate(payload)
 
 
 if __name__=='__main__':

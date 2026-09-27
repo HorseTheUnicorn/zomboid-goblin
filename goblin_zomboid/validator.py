@@ -20,6 +20,16 @@ INTENTS = {
     "DEFEND_AREA", "GUARD", "PATROL", "FLEE", "ENTER_VEHICLE", "EXIT_VEHICLE",
     "HUNT_START", "HUNT_HINT", "HUNT_RELOCATE", "HUNT_REWARD", "TRADE", "HELP",
 }
+# Deterministic Goblin capability jobs Qwen may start for the speaking owner.
+# The server re-checks every one (owner grant, materials, tools, scope).
+JOB_INTENTS = {
+    "INSPECT_BASE", "MAINTAIN_BASE", "REPAIR_STRUCTURE", "DISMANTLE", "STOCKPILE",
+    "SORT_STORAGE", "FETCH_ITEM", "DELIVER",
+    "VEHICLE_INSPECT", "REFUEL_VEHICLE", "VEHICLE_SERVICE", "INSTALL_PART", "REMOVE_PART",
+    "REPLACE_PART", "CHANGE_TIRE", "CHOP_WOOD", "TREAT_PLAYER",
+}
+INTENTS = INTENTS | JOB_INTENTS
+PART_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 MODE_ALLOWED = {
     "SAFE": INTENTS - {"MOVE_TO", "FOLLOW", "FOLLOW_GOBLIN", "SEARCH", "SCAVENGE", "LOOT_AREA", "ATTACK", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL", "FORM_SQUAD", "ENTER_VEHICLE", "CLEAR_BUILDING"},
     "ROAM": INTENTS - {"JOIN_PARTY", "LEAVE_PARTY", "FORM_SQUAD", "DISMISS_SQUAD", "ASSIGN_JOB", "DEFEND_PLAYER", "DEFEND_AREA", "GUARD", "PATROL"},
@@ -129,8 +139,8 @@ def _item(value: Any) -> dict[str, Any]:
         result["category"] = _text(raw["category"], "item.category", maximum=32)
     if "count" in raw:
         count = raw["count"]
-        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 10:
-            raise IntentError("item.count must be between 1 and 10")
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 20:
+            raise IntentError("item.count must be between 1 and 20")
         result["count"] = count
     if not result:
         raise IntentError("item cannot be empty")
@@ -271,10 +281,25 @@ class IntentValidator:
                 raise IntentError("FARM requires plow, sow, water, harvest, or tend")
             if result["job"] == "sow" and not result.get("item", {}).get("name"):
                 raise IntentError("sowing requires a crop name")
+        if intent in {"CRAFT", "FARM", "BUILD"} and result.get("item", {}).get("count", 1) > 10:
+            raise IntentError("item.count must be between 1 and 10 for this intent")
         if intent == "CRAFT" and not result.get("item", {}).get("name"):
             raise IntentError("CRAFT requires an installed recipe name")
         if intent == "REPAIR_VEHICLE" and result.get("job", "all") not in {"all", "engine", "bodywork"}:
             raise IntentError("vehicle repair requires all, engine, or bodywork")
+        if intent in {"FETCH_ITEM", "STOCKPILE"} and not result.get("item", {}).get("name"):
+            raise IntentError(f"{intent} requires item.name")
+        if intent in {"INSTALL_PART", "REMOVE_PART", "REPLACE_PART"} and "job" not in result:
+            raise IntentError(f"{intent} requires job as the vehicle part id")
+        if intent in {"INSTALL_PART", "REMOVE_PART", "REPLACE_PART", "CHANGE_TIRE"} and "job" in result \
+                and not PART_RE.match(result["job"]):
+            raise IntentError("vehicle part id must be a simple identifier")
+        if intent == "SORT_STORAGE" and result.get("job", "inbox") not in {"inbox", "all"}:
+            raise IntentError("SORT_STORAGE job must be inbox or all")
+        if intent == "DELIVER" and result.get("job", "storage") not in {"storage", "floor"}:
+            raise IntentError("DELIVER job must be storage or floor")
+        if intent == "CHOP_WOOD" and result.get("item", {}).get("count", 1) > 5:
+            raise IntentError("CHOP_WOOD fells at most 5 trees")
         if intent == "ASSIGN_JOB" and "job" not in result:
             raise IntentError("ASSIGN_JOB requires job")
         if "formation" in raw:

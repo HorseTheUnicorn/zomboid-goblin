@@ -158,6 +158,28 @@ function Brain.setTask(body, task, payload)
     return ok, detail
 end
 
+-- Map a validated bridge message onto a capability's owner-order payload.
+local function ownerJobPayload(action, message)
+    local T = Constants.TASK
+    local item = type(message.item) == "table" and message.item or {}
+    local job = type(message.job) == "string" and message.job or nil
+    local payload = { explicit_owner_order = true }
+    if action == T.DISMANTLE or action == T.REPAIR_STRUCTURE or action == T.TREAT_PLAYER
+        or action == T.VEHICLE_INSPECT or action == T.REFUEL_VEHICLE or action == T.VEHICLE_SERVICE then
+        return payload
+    end
+    if action == T.STOCKPILE then payload.item = item.name; return payload end
+    if action == T.SORT_STORAGE then payload.all = job == "all"; return payload end
+    if action == T.FETCH_ITEM then payload.item = item.name; payload.count = item.count or 1; return payload end
+    if action == T.DELIVER then payload.item = item.name; payload.allow_floor = job == "floor"; return payload end
+    if action == T.INSTALL_PART or action == T.REMOVE_PART or action == T.REPLACE_PART then
+        payload.part = job; payload.item = item.name; return payload
+    end
+    if action == T.CHANGE_TIRE then payload.part = job; return payload end
+    if action == T.CHOP_WOOD then payload.count = item.count or 1; return payload end
+    return nil
+end
+
 function Brain.execute(message, body)
     if not Body.isGoblin(body) then return false, "Goblin body is not present" end
     if type(message) ~= "table" or type(message.action) ~= "string" then return false, "malformed Goblin command" end
@@ -166,10 +188,16 @@ function Brain.execute(message, body)
         or action=="UNLOCK_VEHICLE" then
         return Brain.setTask(body,action,{})
     end
-    -- Qwen may converse about salvage, but cannot authorize irreversible
-    -- destruction; only authenticated owner chat can set this task.
-    if action == Constants.TASK.DISMANTLE then return false, "dismantling needs the owner's direct order" end
-    if action == Constants.TASK.STOCKPILE then return false, "stockpiling needs the owner's direct order" end
+    -- Owner-requested capability jobs. Qwen may start any of them, but only
+    -- when GoblinBridge consumed the owner's one-use chat grant for this exact
+    -- command (owner_authorized). Offline/autonomous grants never qualify.
+    local ownerJob = ownerJobPayload(action, message)
+    if ownerJob then
+        if message.owner_authorized ~= true or message.autonomous == true then
+            return false, "that job needs the owner's own request"
+        end
+        return Brain.setTask(body, action, ownerJob)
+    end
     if Jobs.handles(action) then return Brain.setTask(body,action,{job=message.job,item=message.item,
         target=message.target,allow_breach=message.allow_breach==true,autonomous=message.autonomous==true}) end
     if action=="OPEN_DOOR" or action=="OPEN_WINDOW" then return Brain.setTask(body,action,{}) end
@@ -261,6 +289,8 @@ function Brain.update(body, timestamp)
     if Jobs.handles(task) then
         local result=Jobs.update(body,task,payload,now)
         if result.done then
+            -- Goal progression only ever reads this deterministic result.
+            pcall(function() require("GoblinSurvivor/GoblinGoals").onResult(body,task,result,now,payload.goal_id) end)
             local delivery=result.success and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
             Brain.setTask(body,delivery,{owner=Body.owner(body)})
             data.GoblinWorkStatus=result.detail

@@ -24,24 +24,55 @@ The old Milestone 2 live manifest does not match every current source hash.
 Its strict verifier correctly rejects certification of the current build; that
 record is not a substitute for fresh per-ability multiplayer/reload testing.
 
+## Implementation checkpoint — 2026-09-27 (code and fixtures only)
+
+The following capabilities are now implemented and registered. Each has Lua
+fixture tests. **None is live-verified.** The live gates are listed in
+`LIVE_ACCEPTANCE_RUNBOOK.md`. Registry: 22 capabilities.
+
+| Milestone | Added | Key design points |
+| --- | --- | --- |
+| 4 | Storage categories (`storage CATEGORY`), `SORT_STORAGE`, `FETCH_ITEM`, `DELIVER`, `REPAIR_STRUCTURE`; `MAINTAIN_BASE` now chains native repairs after boarding | A primitive per-item ledger (native item ID) is persisted in the task payload and reconciled after interruption or restart. Full-container fallback: same category, then OVERFLOW, then back to source. Cold-storage food is never removed. Repair uses the installed `ISMoveableSpriteProps` eligibility, parts and chance. Parts leave through server custody (no actor-inventory packet). |
+| 5 | `CHOP_WOOD` (IsoTree.WeaponHit), `TREAT_PLAYER` (BodyDamage.SetBandaged) | Real axe and real bandages only. Cooking, tailoring, fishing, trapping and foraging stay unregistered. |
+| 6 | `VEHICLE_INSPECT`, `REFUEL_VEHICLE`, `INSTALL_PART`, `REMOVE_PART`, `REPLACE_PART`, `CHANGE_TIRE`, `VEHICLE_SERVICE` | Vanilla install tests need `getPlayerNum`, so they are re-evaluated server-side. The mechanic key rule, `requireInstalled/Uninstalled`, the engine-door open/close and recipe/profession/trait gates are enforced. Recipe-gated parts (for example brakes) are refused because Goblin has not learned Basic Mechanics; this needs a product decision. Battery charging via a charger is not implemented; use `replace Battery`. |
+| 7 | `goblin_zomboid/reflex.py`, dataset generator, trainer, shipped `reflex_model.json`; `goblin_zomboid/quotes.py` | Per the latest owner direction, Qwen remains the primary conversational voice and combines Lenin/Stalin flavor. It sees the last 12 lines of that player's conversation, a Reflex `social_hint`, and 1-2 sourced quotes. Known misattributions are forbidden, and real atrocities are off-limits for jokes. The small Reflex classifier routes and supplies safe canned lines only when Qwen is offline or fails. Orders always bypass canned replies. |
+| 8 | `GoblinGoals` (`goal secure/organize/repair/vehicle/nails [every N]`, `goal list`, `cancel`) | Persistent step records. Priority selection. Maintenance cycles. Combat and recall interrupts do not consume attempts. Replanning is driven only by the capability result code. |
+| 3/9/10 | No gameplay change | M3 remains live verification only (runbook §1). M9 needs zero-player proof first. M10 stays deferred. |
+
+Qwen may start every capability job (base, logistics, survival, vehicle
+service) on the speaking owner's behalf. The server mints a one-use chat grant
+when the owner addresses their Goblin. Qwen's response must carry that grant.
+GoblinBridge consumes it, and only then does `Brain.execute` accept the job
+(`owner_authorized`). Commands without a grant, and offline/autonomous grants,
+are refused. Breach still needs the explicit `/goblin breach` command. One Qwen
+service drives every player's Goblin: it answers each owner's chat in turn,
+with that Goblin's own context, and can only control the Goblin whose chat it
+is answering.
+
+Reusable tools come from Goblin's persistent toolkit. Consumables and building,
+crafting, medical, farming and vehicle materials are never fabricated: jobs must
+find and consume real installed items or report `MISSING_MATERIAL`.
+
 ## Remaining work
 
 | Milestone | What remains |
 | --- | --- |
-| 3 — Tools and access | Finish native compatibility gaps and current-build live tests for alternate entrances, window breach, fences/gates and vehicle access. Verify material/key transfers and save/reload. Ordinary-door reopening/interior arrival has server positional evidence and live door-state replication observed in both no-Storm clients; continuous client movement capture remains pending. |
-| 4 — Base and logistics | Complete structure repair, storage categories/sorting and fetch/deliver workflows. Inspection, window boarding and stockpiles have partial implementation and earlier user-observed tests; finish current-build conservation, interruption and replication checks. |
-| 5 — Survival | Complete supported construction, farming improvements, cooking, medical, tailoring, woodcutting and feasible foraging/fishing/trapping adapters against installed native behavior. Item existence alone does not establish support. |
-| 6 — Vehicle service | Complete inspect/service, fuel, battery, tires and part removal/installation with real materials and replication. Existing transport, unlock/start and repair paths are a foundation, not completion of this milestone. |
-| 7 — Reflex Brain | Implement the social-only router, original dataset generator, training, small CPU model and Qwen fallback. Resolve the recorded Qwen capability/context gaps and prove that model output cannot expand gameplay authority. |
-| 8 — Goals and autonomy | Add persistent multi-step goals, priorities, maintenance cycles and failure-driven replanning through verified capabilities. |
-| 9 — Offline Life | Establish the verified zero-player simulation mechanism, bounded loaded work area and real offline chores with reconciliation. Do not infer physical work from a persistent identity or queued intent. |
-| 10 — Experimental driving | Implement and test only after preceding milestones are stable. |
-
-Each ability still needs observed movement, material consumption, world changes,
-multiplayer replication and relevant persistence/rollback evidence before it is
-marked complete. Unsupported native operations must remain explicitly identified.
+| 3 — Tools and access | Live gates only: locked-gate two-client rerun, window breach, alternate entrance, fence/gate after restart, vehicle two-client, interruption/restart, safehouse. |
+| 4 — Base and logistics | Live: managed-actor custody for each new job, second-client item-ID agreement, save/restart reconciliation, native repair on IsoZombie. |
+| 5 — Survival | Live: `IsoTree.WeaponHit` and `SetBandaged/syncBodyPart` with the managed actor. Remaining adapters (cooking, tailoring, fishing, trapping, foraging, broader construction, full farming lifecycle) are not implemented. |
+| 6 — Vehicle service | Live: every adapter, `getSqlId` restart resolution, recipe-gate decision, charger-based battery charging. |
+| 7 — Reflex Brain | The shipped Naive Bayes classifier and canned outage replies are only a routing/fallback scaffold, not the V2 tiny dialogue-generation model. The requested 3–15M encoder/decoder (or a justified replacement), 25–50K-pair training corpus, `.76` latency test and outage drill remain. Per owner direction, Qwen stays the primary Lenin/Stalin conversational voice. |
+| 8 — Goals | Live: interrupt/resume and restart. |
+| 9 — Offline Life | Prove zero-player simulation, then design bounded offline chores. |
+| 10 — Experimental driving | Deferred. |
 
 ## Latest validation
+
+September 27 source review: 633 automated tests pass with two expected failures;
+Python compilation, JSON parsing and the 64-record catalog consistency check all
+pass. The review removed a candidate supply-fabrication path so every material
+adapter again requires real items. These results validate code and fixtures,
+not the live gates listed above.
 
 September 26 container checkpoint: ordinary-container approach was observed
 on two no-Storm clients with matching actor/outfit and unchanged empty contents;
@@ -52,8 +83,8 @@ and nonempty transfers remain separate unverified gates. See
 MILESTONE3_CONTAINER_CHECK.md. Current local packages contain 171 source files;
 the 170-file provenance record below is historical.
 
-- Full automated suite: 551 tests pass, two existing expected failures (Python
-  unittest discovery).
+- Earlier checkpoint: 551 tests passed with two existing expected failures
+  before the September 27 implementation additions.
 - Access suite: 36 tests pass, covering direction, restored crossings, reclosed
   doors, removed targets, revoked access and native unlock failures/group retries.
   Direction/restoration, permission and unlock regressions failed before their

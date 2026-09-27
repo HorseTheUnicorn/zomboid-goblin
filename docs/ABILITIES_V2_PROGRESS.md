@@ -2,6 +2,17 @@
 
 ## Current checkpoint — 2026-09-27
 
+- Implementation checkpoint (Claude session, uncommitted): Milestone 4–8 code
+  plus fixtures. Added GoblinTransfer, GoblinStorage, GoblinSortWork,
+  GoblinFetchWork, GoblinDeliverWork, GoblinStructureRepair,
+  GoblinVehicleService, GoblinSurvival, GoblinGoals and goblin_zomboid/reflex.py.
+  The registry now has 22 capabilities. The full suite has 630 tests and passes
+  apart from the art-texture check (art/ absent in the sandbox copy) and the two
+  existing expected failures. The inventory and catalog checkers pass with
+  refreshed source hashes for the audited edits. Nothing was staged, deployed
+  or live-tested. No capability is marked complete. See V2_STATUS.md and
+  LIVE_ACCEPTANCE_RUNBOOK.md.
+
 - CONTAINER matching-key save/restart/resume passed on the current worktree
   with server-side Storm and ordinary no-Storm clients `m3path_61` and
   `m3witness_54`. Native SaveAll persisted the exact registered padlocked

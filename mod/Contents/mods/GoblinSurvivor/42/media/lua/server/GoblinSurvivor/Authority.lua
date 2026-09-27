@@ -18,7 +18,21 @@ local privileged = {
     DISMISS_SQUAD = true,
     ASSIGN_JOB = true,
     SECURE_BASE = true,
-    BUILD = true
+    BUILD = true,
+    INSPECT_BASE = true, MAINTAIN_BASE = true, REPAIR_STRUCTURE = true, DISMANTLE = true,
+    STOCKPILE = true, SORT_STORAGE = true, FETCH_ITEM = true, DELIVER = true,
+    VEHICLE_INSPECT = true, REFUEL_VEHICLE = true, VEHICLE_SERVICE = true, INSTALL_PART = true,
+    REMOVE_PART = true, REPLACE_PART = true, CHANGE_TIRE = true, CHOP_WOOD = true, TREAT_PLAYER = true
+}
+-- Jobs any owner may have Qwen start for their own Goblin (no commander role).
+local ownerJobs = {
+    BUILD = true, SECURE_BASE = true, ENTER_VEHICLE = true, EXIT_VEHICLE = true,
+    OPEN_DOOR = true, OPEN_WINDOW = true, GAIN_ACCESS = true, CLOSE_CURTAINS = true,
+    FARM = true, CRAFT = true, REPAIR_VEHICLE = true,
+    INSPECT_BASE = true, MAINTAIN_BASE = true, REPAIR_STRUCTURE = true, DISMANTLE = true,
+    STOCKPILE = true, SORT_STORAGE = true, FETCH_ITEM = true, DELIVER = true,
+    VEHICLE_INSPECT = true, REFUEL_VEHICLE = true, VEHICLE_SERVICE = true, INSTALL_PART = true,
+    REMOVE_PART = true, REPLACE_PART = true, CHANGE_TIRE = true, CHOP_WOOD = true, TREAT_PLAYER = true
 }
 
 local GRANT_TTL_MS = 60000
@@ -88,12 +102,7 @@ function Authority.consume(message)
     if grant == nil or grant.expires_at <= now then return false end
     if grant.kind == "offline" then return false end
     if type(message.owner) ~= "string" or string.lower(message.owner) ~= string.lower(grant.speaker) then return false end
-    if not grant.commander and message.action ~= "BUILD" and message.action ~= "SECURE_BASE"
-        and message.action ~= "ENTER_VEHICLE" and message.action ~= "EXIT_VEHICLE"
-        and message.action ~= "OPEN_DOOR" and message.action ~= "OPEN_WINDOW"
-        and message.action ~= "GAIN_ACCESS"
-        and message.action ~= "CLOSE_CURTAINS"
-        and message.action ~= "FARM" and message.action ~= "CRAFT" and message.action ~= "REPAIR_VEHICLE" then return false end
+    if not grant.commander and not ownerJobs[message.action] then return false end
     -- Grants are capabilities for one high-level mutation, not reusable
     -- session credentials.  A failed downstream action cannot be replayed.
     Authority.grants[token] = nil

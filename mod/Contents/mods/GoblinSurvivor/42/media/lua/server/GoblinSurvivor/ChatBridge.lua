@@ -79,6 +79,34 @@ function ChatBridge.directIntent(text)
         and (contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"truck")) then
         return Constants.TASK.UNLOCK_VEHICLE
     end
+    if lower:match("^chop%f[%A]") or lower:match("^cut%s+down%s+") or contains(lower,"fell a tree")
+        or contains(lower,"fell the tree") then
+        return Constants.TASK.CHOP_WOOD
+    end
+    if lower:match("^bandage%s+me") or lower:match("^patch%s+me%s+up") or lower:match("^heal%s+me")
+        or lower:match("^treat%s+my%s+wound") or contains(lower,"i'm bleeding") or contains(lower,"im bleeding") then
+        return Constants.TASK.TREAT_PLAYER
+    end
+    local vehicleWord=contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"truck")
+        or lower:match("%f[%a]van%f[%A]") ~= nil
+    if vehicleWord and (lower:match("^refuel%f[%A]") or lower:match("^fill%s+up") or lower:match("^gas%s+up")
+        or lower:match("^fuel%s+up")) then
+        return Constants.TASK.REFUEL_VEHICLE
+    end
+    if vehicleWord and (lower:match("^service%f[%A]") or lower:match("^tune%s+up")) then
+        return Constants.TASK.VEHICLE_SERVICE
+    end
+    if vehicleWord and (lower:match("^inspect%f[%A]") or lower:match("^check%f[%A]")
+        or lower:match("^look%s+over")) then
+        return Constants.TASK.VEHICLE_INSPECT
+    end
+    if (lower:match("^change%s+") or lower:match("^replace%s+") or lower:match("^swap%s+"))
+        and (contains(lower,"tire") or contains(lower,"tyre") or contains(lower,"flat")) then
+        return Constants.TASK.CHANGE_TIRE
+    end
+    if (lower:match("^replace%s+") or lower:match("^swap%s+")) and contains(lower,"battery") then
+        return Constants.TASK.REPLACE_PART
+    end
     -- Singular/plural and intervening words must still dispatch a real order.
     if (lower:match("%f[%a]kill%f[%A]") or lower:match("%f[%a]attack%f[%A]"))
         and (contains(lower,"zombie") or contains(lower,"zed")) then return Constants.TASK.ATTACK end
@@ -112,6 +140,23 @@ function ChatBridge.directIntent(text)
     if string.match(lower,"%f[%a]repair%f[%A]") or string.match(lower,"%f[%a]fix%f[%A]") then
         if contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"engine")
             or contains(lower,"truck") or contains(lower,"bodywork") then return Constants.TASK.REPAIR_VEHICLE end
+        if contains(lower,"base") or contains(lower,"house") or contains(lower,"wall")
+            or contains(lower,"door") or contains(lower,"furniture") or contains(lower,"structure") then
+            return Constants.TASK.REPAIR_STRUCTURE
+        end
+    end
+    if (lower:match("^sort%f[%A]") or lower:match("^organi[sz]e%f[%A]") or contains(lower,"tidy up"))
+        and (contains(lower,"storage") or contains(lower,"stuff") or contains(lower,"base")
+            or contains(lower,"inbox") or contains(lower,"supplies") or contains(lower,"items")
+            or lower:match("^sort[%p%s]*$") or lower:match("^sort%s+everything")) then
+        return Constants.TASK.SORT_STORAGE
+    end
+    if lower:match("^bring%s+me%s+") or lower:match("^fetch%s+") or lower:match("^get%s+me%s+") then
+        return Constants.TASK.FETCH_ITEM
+    end
+    if lower:match("^put%s+away") or lower:match("^put%s+your%s+stuff%s+away")
+        or lower:match("^unload%f[%A]") or lower:match("^stash%s+") then
+        return Constants.TASK.DELIVER
     end
     if string.match(lower,"%f[%a]sow%f[%A]") or string.match(lower,"%f[%a]plant%f[%A]")
         or contains(lower,"plow") or contains(lower,"plough") or contains(lower,"dig a furrow")
@@ -166,6 +211,27 @@ local function applyDirect(player, speaker, task, text)
     if body == nil then return false, tostring(detail or "Goblin unavailable") end
     local payload = { owner = speaker, manual = task == Constants.TASK.FOLLOW }
     if task == Constants.TASK.DISMANTLE then payload.explicit_owner_order = true end
+    if task == Constants.TASK.SORT_STORAGE or task == Constants.TASK.FETCH_ITEM
+        or task == Constants.TASK.DELIVER or task == Constants.TASK.REPAIR_STRUCTURE then
+        payload = ChatBridge.logisticsPayload(task, text)
+    end
+    if task == Constants.TASK.CHOP_WOOD or task == Constants.TASK.TREAT_PLAYER then
+        payload = { explicit_owner_order = true }
+        local count = string.match(string.lower(text or ""), "(%d+)%s+trees?")
+        if count then payload.count = math.max(1, math.min(5, tonumber(count))) end
+    end
+    if task == Constants.TASK.REFUEL_VEHICLE or task == Constants.TASK.VEHICLE_SERVICE
+        or task == Constants.TASK.VEHICLE_INSPECT or task == Constants.TASK.CHANGE_TIRE
+        or task == Constants.TASK.REPLACE_PART then
+        payload = { explicit_owner_order = true }
+        if task == Constants.TASK.REPLACE_PART then payload.part = "Battery" end
+        local lower = string.lower(text or "")
+        for _, id in ipairs({ {"front left","TireFrontLeft"}, {"front right","TireFrontRight"},
+            {"rear left","TireRearLeft"}, {"rear right","TireRearRight"},
+            {"back left","TireRearLeft"}, {"back right","TireRearRight"} }) do
+            if task == Constants.TASK.CHANGE_TIRE and contains(lower, id[1]) then payload.part = id[2] end
+        end
+    end
     local lower=string.lower(text or "")
     if task==Constants.TASK.CRAFT or task==Constants.TASK.FARM or task==Constants.TASK.REPAIR_VEHICLE then
         payload=ChatBridge.jobPayload(task,text)
@@ -208,6 +274,43 @@ function ChatBridge.jobPayload(task,text)
     if name then recipe=name end
     if recipe then recipe=recipe:gsub("%s+please.*$",""):gsub("[%p]$","") end
     return {item={name=recipe,count=tonumber(count) or 1}}
+end
+
+-- Natural-language logistics orders from the authenticated owner. The item or
+-- category named here is still validated by the capability's prepare step.
+function ChatBridge.logisticsPayload(task,text)
+    local lower=string.lower(text or "")
+    lower=string.gsub(lower,"^%s*goblin[%s,:!]*","")
+    lower=string.gsub(lower,"^please%s+","")
+    local payload={explicit_owner_order=true}
+    if task==Constants.TASK.SORT_STORAGE then
+        payload.all=contains(lower,"everything") or contains(lower," all") or contains(lower,"floor")
+        return payload
+    end
+    if task==Constants.TASK.FETCH_ITEM then
+        local rest=lower:match("^bring%s+me%s+(.+)") or lower:match("^fetch%s+(.+)") or lower:match("^get%s+me%s+(.+)") or ""
+        rest=rest:gsub("%s+please.*$",""):gsub("[%p]+$","")
+        local count,name=rest:match("^(%d+)%s+(.+)$")
+        if not count then
+            local words={some=3,a=1,an=1,one=1,two=2,three=3,four=4,five=5}
+            local word,remainder=rest:match("^(%a+)%s+(.+)$")
+            if word and words[word] then count,name=words[word],remainder end
+        end
+        name=name or rest
+        name=name:gsub("^the%s+",""):gsub("^my%s+",""):gsub("^some%s+","")
+        -- Preserve an exact Module.Type full name as typed.
+        local exact=(text or ""):match("([%a%d_]+%.[%a%d_]+)")
+        payload.item=exact or name:match("^(%S+)")
+        payload.count=math.max(1,math.min(20,tonumber(count) or 1))
+        return payload
+    end
+    if task==Constants.TASK.DELIVER then
+        payload.allow_floor=contains(lower,"floor")
+        local exact=(text or ""):match("([%a%d_]+%.[%a%d_]+)")
+        if exact then payload.item=exact end
+        return payload
+    end
+    return payload
 end
 
 function ChatBridge.accessPayload(text)

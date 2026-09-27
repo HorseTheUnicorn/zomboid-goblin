@@ -114,6 +114,8 @@ local function nearestThreat(body, origin, radius)
     return best
 end
 
+Defense.nearestThreat = nearestThreat
+
 local function targetIsAlive(target)
     if target == nil or Body.isGoblin(target) then return false end
     local okDead, dead = call(target, "isDead")

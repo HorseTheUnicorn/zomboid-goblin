@@ -629,6 +629,7 @@ function Spawner.setBaseForPlayer(player, clear)
         or math.floor(oldBase.y) ~= math.floor(point.y)
         or math.floor(oldBase.z) ~= math.floor(point.z) then
         record.stockpile_rules = nil
+        record.storage_assignments = nil
     end
     local body = Spawner.findForOwner(owner)
     if body ~= nil then
@@ -680,6 +681,61 @@ function Spawner.setStockpileRuleForOwner(owner, fullType, minimum, target)
     end
     transmitStore()
     return true, "stockpile threshold recorded; Base.Nails collection requires a separate explicit stockpile order"
+end
+
+-- Semantic storage category assignments, keyed by container marker ID.
+-- Like stockpile rules they are metadata only and are cleared when the base moves.
+function Spawner.storageAssignmentsForOwner(owner)
+    local record = recordFor(owner, false)
+    return record and type(record.storage_assignments) == "table" and record.storage_assignments or {}
+end
+
+function Spawner.setStorageAssignmentForOwner(owner, assignment)
+    local record = recordFor(owner, false)
+    local function whole(value)
+        return type(value) == "number" and value == math.floor(value) and math.abs(value) <= 10000000
+    end
+    if not record or record.base_set ~= true or type(assignment) ~= "table"
+        or type(assignment.id) ~= "string" or assignment.id == "" or #assignment.id > 256
+        or type(assignment.category) ~= "string" or #assignment.category > 32
+        or type(assignment.building_id) ~= "string"
+        or not whole(assignment.x) or not whole(assignment.y) or not whole(assignment.z) then
+        return false, "storage assignment is invalid or the base is not set"
+    end
+    local assignments = type(record.storage_assignments) == "table" and record.storage_assignments or {}
+    local count = 0
+    for _ in pairs(assignments) do count = count + 1 end
+    if count >= 24 and not assignments[assignment.id] then return false, "storage assignment limit reached" end
+    assignments[assignment.id] = { id = assignment.id, category = assignment.category,
+        x = assignment.x, y = assignment.y, z = assignment.z, building_id = assignment.building_id }
+    record.storage_assignments = assignments
+    transmitStore()
+    return true, "storage category recorded"
+end
+
+function Spawner.clearStorageAssignmentForOwner(owner, id)
+    local record = recordFor(owner, false)
+    if not record or type(record.storage_assignments) ~= "table" or type(id) ~= "string"
+        or not record.storage_assignments[id] then return false end
+    record.storage_assignments[id] = nil
+    transmitStore()
+    return true
+end
+
+-- Persistent owner goals (primitive records only; see GoblinGoals).
+function Spawner.goalsForOwner(owner)
+    local record = recordFor(owner, false)
+    if not record then return nil end
+    if type(record.goals) ~= "table" then record.goals = {} end
+    return record.goals
+end
+
+function Spawner.setGoalsForOwner(owner, goals)
+    local record = recordFor(owner, false)
+    if not record or type(goals) ~= "table" or #goals > 8 then return false end
+    record.goals = goals
+    transmitStore()
+    return true
 end
 
 function Spawner.baseForOwner(owner)

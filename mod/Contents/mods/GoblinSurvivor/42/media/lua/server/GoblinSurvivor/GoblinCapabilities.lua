@@ -183,7 +183,7 @@ function Capabilities.update(name,body,payload,now)
     local timeout=tonumber(definition.timeout_ms) or 300000
     if type(now)=="number" and type(runtime.startedAt)=="number" and now-runtime.startedAt>timeout then
         local result=Capabilities.result(true,false,"TIMEOUT",
-            "job stopped after five minutes; check materials and access, then retry",0)
+            "job stopped after "..math.floor(timeout/60000+0.5).." minutes; check materials and access, then retry",0)
         runtime.last_result=result
         return Capabilities.result(result.done,result.success,result.code,result.detail,result.progress)
     end

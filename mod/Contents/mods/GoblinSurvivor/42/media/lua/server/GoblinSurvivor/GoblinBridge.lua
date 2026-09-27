@@ -18,7 +18,12 @@ local actions = {
     LOOT=true, LOOT_AREA=true, RETURN_TO_BASE=true, GO_HOME=true, RETURN=true,
     SET_BASE=true, REMEMBER_BASE=true, SECURE_BASE=true, BUILD=true, ATTACK=true,
     DEFEND_PLAYER=true, DEFEND_AREA=true, CLEAR_BUILDING=true, REST=true,
-    RETREAT=true, FLEE=true, MOVE_TO=true
+    RETREAT=true, FLEE=true, MOVE_TO=true,
+    -- Capability jobs Qwen may start with the owner's one-use chat grant.
+    INSPECT_BASE=true, MAINTAIN_BASE=true, REPAIR_STRUCTURE=true, DISMANTLE=true, STOCKPILE=true,
+    SORT_STORAGE=true, FETCH_ITEM=true, DELIVER=true, VEHICLE_INSPECT=true, REFUEL_VEHICLE=true,
+    VEHICLE_SERVICE=true, INSTALL_PART=true, REMOVE_PART=true, REPLACE_PART=true, CHANGE_TIRE=true,
+    CHOP_WOOD=true, TREAT_PLAYER=true
 }
 
 local allowedKeys = {
@@ -92,7 +97,7 @@ local function valid(message)
         end
         if not safeText(message.item.name, 96) then return false end
         local count=message.item.count
-        if count~=nil and (type(count)~="number" or count~=math.floor(count) or count<1 or count>10) then return false end
+        if count~=nil and (type(count)~="number" or count~=math.floor(count) or count<1 or count>20) then return false end
     end
     if action == "EQUIP" and (type(message.item) ~= "table"
         or message.item.name ~= Config.weaponType) then return false end
@@ -180,7 +185,12 @@ local function process(stem)
                 detail = "offline grant expired, owner returned, or task changed"
             end
         else
-            accepted, detail = Brain.execute(normalizedMessage(message), body)
+            local normalized = normalizedMessage(message)
+            -- valid() already consumed the owner's one-use chat grant for every
+            -- privileged action; only then may Brain treat it as the owner's order.
+            -- This flag is set here, never read from the wire (not an allowed key).
+            normalized.owner_authorized = Authority.requires(message.action) == true
+            accepted, detail = Brain.execute(normalized, body)
         end
     end
     local status = accepted and "accepted" or "failed"

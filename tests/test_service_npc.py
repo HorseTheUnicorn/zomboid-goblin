@@ -7,6 +7,7 @@ import unittest
 
 from goblin_zomboid.config import AgentConfig
 from goblin_zomboid.protocol import make_message
+from goblin_zomboid.reflex import ReflexRouter
 from goblin_zomboid.service import GoblinService
 from goblin_zomboid.validator import IntentValidator
 
@@ -499,8 +500,11 @@ class NpcServiceTests(unittest.TestCase):
                     self.wait()
                 return super().propose_speech(context)
         qwen=PumpingQwen()
+        # Greetings are answered by Reflex now; this test is about Qwen
+        # inference pumping, so run it with the Reflex model unavailable.
         service=GoblinService(self.config,memory_path=self.directory/'memory.sqlite3',
-            qwen=qwen,clock=lambda:clock[0])
+            qwen=qwen,clock=lambda:clock[0],
+            reflex=ReflexRouter(model_path=self.directory/'no-reflex-model.json'))
         try:
             self._publish_state(service)
             self._publish_chat(service,'Alice','Goblin, hello','alice-first')
@@ -510,6 +514,31 @@ class NpcServiceTests(unittest.TestCase):
             service.run_once()
             self.assertEqual([c['controlled_owner'] for c in qwen.speech_contexts],['Alice','Bob'])
             self.assertEqual({c.fields['owner'] for c in self._commands(service)},{'Alice','Bob'})
+        finally:
+            service.close()
+
+    def test_qwen_can_start_owner_jobs_with_the_chat_grant_only(self):
+        class JobQwen(FakeQwen):
+            def propose_intent(self, context):
+                return IntentValidator().validate({'intent':'FETCH_ITEM','mode':'PARTY',
+                    'item':{'name':'food','count':3}})
+        service=self._service(JobQwen())
+        try:
+            self._publish_state(service)
+            service.store.publish("events", make_message("event.chat", timestamp_ms=2_000_000,
+                speaker="Alice", text="Goblin, grab me some grub from home", authorized=True,
+                authority_token="grant-test-1"), stem="job-granted")
+            self.assertEqual(service.run_once().status, "npc_command_published")
+            jobs=[c for c in self._commands(service) if c.fields['action']=='FETCH_ITEM']
+            self.assertEqual(len(jobs),1)
+            self.assertEqual(jobs[0].fields['owner'],'Alice')
+            self.assertEqual(jobs[0].fields['authority_token'],'grant-test-1')
+            self.assertEqual(jobs[0].fields['item'],{'name':'food','count':3})
+            # Without the owner's chat grant the same job is never published.
+            self._publish_chat(service,'Bob','Goblin, grab me some grub from home','job-ungranted')
+            self.assertEqual(service.run_once().status,'rejected')
+            self.assertFalse(any(c.fields['owner']=='Bob' and c.fields['action']=='FETCH_ITEM'
+                                 for c in self._commands(service)))
         finally:
             service.close()
 

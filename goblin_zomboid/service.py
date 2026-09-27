@@ -27,7 +27,8 @@ from .memory import MemoryStore
 from .npc import NPC_ID, OFFLINE_ACTIONS, NpcBodyDriver, npc_id_for_owner
 from .protocol import Message
 from .qwen import QwenClient, QwenError
-from .social import ChatterGovernor
+from .reflex import ReflexDecision, ReflexRouter, SOCIAL_CATEGORIES
+from .social import ChatterGovernor, sanitize_speech
 from .state import brain_view, public_view
 from .tracker import TrackerStore
 from .validator import IntentError
@@ -52,8 +53,15 @@ class GoblinService:
         memory_path: str | Path,
         qwen: QwenClient | None = None,
         clock: Callable[[], float] = time.time,
+        reflex: ReflexRouter | None = None,
     ) -> None:
         self.config = config
+        # Social-only fast path. A missing or corrupt model is an outage that
+        # silently falls back to Qwen; it never blocks chat or gameplay.
+        self.reflex = reflex if reflex is not None else ReflexRouter()
+        self.reflex_stats: dict[str, int] = {}
+        # Short per-owner conversation history so Qwen holds a real dialogue.
+        self.dialogue: dict[str, list[dict[str, str]]] = {}
         self.clock = clock
         self.agent = AgentRuntime(config, clock=clock)
         self.store = self.agent.store
@@ -356,6 +364,20 @@ class GoblinService:
             speech = self._publish_reply(chat, companion, prepared_speech=f"Comrade, {detail[:180]}.")
             return ServiceResult("npc_spoke" if speech else "npc_steady",
                                  "server handled the requested task; no substitute or duplicate action")
+        reflex = self._reflex_decision(chat, companion, text, speaker)
+        reflex_reply = None
+        if reflex.route == "SOCIAL" and isinstance(reflex.reply, str):
+            try:
+                reflex_reply = sanitize_speech(reflex.reply)
+            except ValueError:
+                LOG.warning("REFLEX_REPLY_REJECTED owner=%s", speaker)
+        if reflex_reply and self.qwen is None:
+            # Reflex is the low-latency outage fallback. With Qwen available,
+            # conversation keeps the richer combined historical persona.
+            speech = self._publish_reply(chat, companion, prepared_speech=reflex_reply)
+            self._remember_turn(speaker, text, speech)
+            return ServiceResult("reflex_spoke" if speech else "npc_steady",
+                                 f"reflex {reflex.category} in {reflex.latency_ms:.2f} ms")
         if self.qwen is None:
             detail = "Qwen is unavailable; deterministic slash commands still work"
             return ServiceResult("no_qwen", detail)
@@ -367,19 +389,27 @@ class GoblinService:
             "event": {"type": "chat", "speaker": speaker, "text": text},
             "persistent_goblins": self._roster_context(),
             "companion": brain_view(companion),
+            "conversation": list(self.dialogue.get(speaker, [])),
         })
+        if reflex.route == "SOCIAL":
+            context["social_hint"] = reflex.category.lower()
         speech = None
         try:
             combined = getattr(self.qwen, "propose_chat", None)
             if callable(combined):
                 intent, generated_speech = combined(context)
                 speech = self._publish_reply(chat, companion, prepared_speech=generated_speech)
+                self._remember_turn(speaker, text, speech)
             else:
                 # Compatibility for older adapters; production uses one request.
                 speech = self._publish_reply(chat, companion)
                 intent = self.qwen.propose_intent(context)
         except QwenError as exc:
-            self._publish_reply(chat, companion, prepared_speech=
+            fallback = None
+            if (reflex.category in SOCIAL_CATEGORIES and reflex.confidence >= 0.5
+                    and reflex.route == "FALLBACK"):
+                fallback = self.reflex._reply(reflex.category, speaker)
+            self._publish_reply(chat, companion, prepared_speech=fallback or
                 "Comrade, my radio jammed. Try again; /goblin follow, loot, home or wait still work.")
             return ServiceResult("qwen_failed", f"speech={bool(speech)}; intent failed: {exc}")
 
@@ -406,6 +436,27 @@ class GoblinService:
             f"{speaker}'s {body.npc_id} received {decision.action.action.value}",
             result.detail,
         )
+
+    def _remember_turn(self, owner: str, said: str, reply: str | None) -> None:
+        history = self.dialogue.setdefault(owner, [])
+        history.append({"from": "player", "text": said[:240]})
+        if reply:
+            history.append({"from": "goblin", "text": reply[:240]})
+        del history[:-12]
+
+    def _reflex_decision(self, chat: Mapping[str, object], companion: Mapping[str, object],
+                         text: str, speaker: str) -> ReflexDecision:
+        name = companion.get("name")
+        try:
+            decision = self.reflex.route(
+                text, owner=speaker, companion_name=name if isinstance(name, str) else None,
+                direct_action=chat.get("direct_action") if isinstance(chat.get("direct_action"), str) else None)
+        except Exception as exc:  # a broken router is an outage, not a crash
+            LOG.warning("REFLEX_FAILED detail=%s", str(exc)[:200])
+            decision = ReflexDecision("FALLBACK", "OTHER", 0.0, None, "reflex raised", 0.0)
+        key = decision.route if decision.route != "SOCIAL" else f"SOCIAL:{decision.category}"
+        self.reflex_stats[key] = self.reflex_stats.get(key, 0) + 1
+        return decision
 
     @staticmethod
     def _offline_eligible(companion: Mapping[str, object]) -> bool:
@@ -655,4 +706,6 @@ class GoblinService:
             "selected_owner": self.current_owner,
             "selected_npc_id": self.current_body.npc_id if self.current_body else None,
             "companion_count": len(self._companions(self.last_state)),
+            "reflex": {"available": self.reflex.available, "error": self.reflex.error,
+                       "routes": dict(self.reflex_stats)},
         }
