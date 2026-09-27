@@ -2,6 +2,19 @@
 
 ## Current checkpoint — 2026-09-27
 
+- CONTAINER matching-key save/restart/resume passed on the current worktree
+  with server-side Storm and ordinary no-Storm clients `m3path_61` and
+  `m3witness_54`. Native SaveAll persisted the exact registered padlocked
+  container marker, Base.Nails content item ID, matching Base.KeyPadlock item
+  ID, padlock key ID and primitive task payload. After a full restart, without
+  redispatch, Goblin restored the job, physically moved to the same reachable
+  container and completed with contents, lock and key unchanged; both clients
+  independently observed matching ready/terminal identities. Cleanup succeeded
+  and all five disposable packages again match the 171-file source. This closes
+  only matching-key CONTAINER task persistence/reconciliation. Explicit
+  authorized locked-door opening remains intended behavior; other Milestone 3
+  routes remain separate. See MILESTONE3_CONTAINER_CHECK.md.
+
 - CONTAINER normal-task denial passed on source e61f8f6 with server-side Storm
   and two ordinary no-Storm clients (`m3path_61`, `m3witness_54`). A real
   registered native container holding one real Nails item refused both a
@@ -10,8 +23,8 @@
   clients observed matching ready/terminal contents and lock values. Probe and
   flags were removed and all five disposable packages again match the 171-file
   source exactly. This does not restrict intentional explicit locked-door
-  opening and does not prove keyed-container restart recovery. See
-  MILESTONE3_CONTAINER_CHECK.md.
+  opening. Matching-key restart recovery was subsequently verified separately;
+  see MILESTONE3_CONTAINER_CHECK.md.
 
 - Fresh permanent-toolkit provisioning and restart persistence passed on
   926bb88 with server-side Storm and ordinary no-Storm account `m3toolkit_27`.

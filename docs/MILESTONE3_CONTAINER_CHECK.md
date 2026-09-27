@@ -174,7 +174,8 @@ Client observer SHA-256:
 The route proves native managed-actor key compatibility, physical movement,
 lock/key/content conservation, and two-client observation for this access
 operation. It does not prove inventory transfer or keyed-job save/restart
-recovery. Goblin opening locked doors remains intentional behavior and is not
+recovery in that run; the later persistence run below closes that separate
+gate. Goblin opening locked doors remains intentional behavior and is not
 restricted by this container check.
 
 ## Two-client missing-key and code-lock refusal, 2026-09-27
@@ -212,5 +213,50 @@ Client observer SHA-256:
 `d42dd276f43068ae6a287b45c9502b184cb41e3384a6eb664cc1af37b69290cf`.
 This closes the normal-task missing-key/code-lock refusal gate. It does not
 change the explicit access adapter: Goblin opening locked doors is intended
-behavior when its authorized route supports that operation. Keyed-container
-save/restart remains separate and unverified.
+behavior when its authorized route supports that operation.
+
+## Two-client matching-key save/restart/resume, 2026-09-27
+
+The current worktree ran on the disposable `goblin-local` server with
+server-side Storm and two ordinary no-Storm clients (`m3path_61` and
+`m3witness_54`). A normal
+`Brain.setTask(... GAIN_ACCESS ... {target={kind="CONTAINER"}})` selected one
+registered native `IsoThumpable` containing `Base.Nails` item ID `1304541578`.
+The container remained padlocked with key ID `214660143`; Goblin held the exact
+matching real `Base.KeyPadlock` item ID `1083153593`. The fixture was placed on
+a same-floor square proven reachable by a bounded breadth-first search rather
+than by geometric proximity alone.
+
+The hold phase persisted target marker `m3path_61:1790520022698:1`, exact
+content/key identities and the primitive task payload. The probe explicitly
+forced Goblin's normal inventory checkpoint, then the native server SaveAll
+wrote GlobalModData while the task remained held. Both clients independently
+reported the same content ID, `padlocked=true`, and key ID during the hold.
+
+After a full server and client restart, without redispatching the task:
+
+- the same target payload and container marker restored;
+- content ID `1304541578`, padlock key ID `214660143`, exact held key item ID
+  `1083153593`, and matching-key access all restored;
+- Goblin physically resumed `MOVING_TO_TARGET` and completed at
+  `(10778.579,9767.754,0)`;
+- terminal state retained unchanged contents, the locked padlock, and the key;
+- both clients independently observed the same ready and terminal identities;
+- cleanup removed the temporary fixture/key, restored FOLLOW, and removed all
+  staged probe/flag files; and
+- all five disposable server/client direct and Workshop packages again matched
+  the 171-file source by exact file set and SHA-256.
+
+Raw passing logs:
+
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-hold-final-20260927.server.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-hold-final-20260927.client10.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-hold-final-20260927.client11.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-resume-final-20260927.server.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-resume-final-20260927.client10.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-persistence-resume-final-20260927.client11.log`
+
+This closes matching-key container task persistence/reconciliation only. It
+does not certify other Milestone 3 routes or destructive container access.
+Explicit authorized locked-door opening remains intended Goblin behavior and
+is not limited by the non-destructive container rules.
