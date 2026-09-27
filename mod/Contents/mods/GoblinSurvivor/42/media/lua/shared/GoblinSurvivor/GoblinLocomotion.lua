@@ -8,7 +8,11 @@ local Motion = {
     followDetours = setmetatable({}, { __mode = "k" }),
     workDetours = setmetatable({}, { __mode = "k" }),
     memories = setmetatable({}, { __mode = "k" }),
-    leaderSamples = setmetatable({}, { __mode = "k" })
+    leaderSamples = setmetatable({}, { __mode = "k" }),
+    -- Last native path request per body, and churn counters for diagnosis.
+    requests = setmetatable({}, { __mode = "k" }),
+    churn = setmetatable({}, { __mode = "k" }),
+    followArrived = setmetatable({}, { __mode = "k" })
 }
 local rejoined = setmetatable({}, { __mode = "k" })
 
@@ -364,7 +368,26 @@ end
 function Motion.clearFollowSlot(body)
     Motion.followSlots[body] = nil
     Motion.followDetours[body] = nil
+    Motion.followArrived[body] = nil
 end
+
+-- Count navigation churn (route resets, stops, native requests) and report
+-- it at most every 5 s when Goblin keeps re-planning instead of walking.
+local function noteChurn(body, kind, detail, timestamp)
+    local stats = Motion.churn[body]
+    if not stats or timestamp - stats.since >= 5000 then
+        if stats and (stats.requests > 6 or stats.resets > 6 or stats.stops > 6) then
+            print("[GoblinSurvivor] NAV_CHURN window_ms=" .. tostring(timestamp - stats.since)
+                .. " requests=" .. stats.requests .. " resets=" .. stats.resets .. " stops=" .. stats.stops
+                .. " last_reset=" .. tostring(stats.lastReset) .. " task=" .. tostring((data(body) or {}).GoblinNavigationTask))
+        end
+        stats = { since = timestamp, requests = 0, resets = 0, stops = 0 }
+        Motion.churn[body] = stats
+    end
+    stats[kind] = stats[kind] + 1
+    if kind == "resets" then stats.lastReset = detail end
+end
+Motion.noteChurn = noteChurn
 
 function Motion.followGoal(body, owner, timestamp)
     local _, dead = call(owner, "isDead")
@@ -412,10 +435,17 @@ function Motion.followGoal(body, owner, timestamp)
     local adjacent = math.abs(math.floor(actor.x)-math.floor(leader.x)) <= 1
         and math.abs(math.floor(actor.y)-math.floor(leader.y)) <= 1
     local needsClearance = adjacent or gap < 2.5
-    if gap <= arrivalDistance and not needsClearance
+    -- Arrival hysteresis: once settled, stay put until the owner is clearly
+    -- further away. Without it an owner shuffling on the boundary toggled
+    -- Goblin between "arrived" (stop, cancel route) and a fresh path every
+    -- few frames, so he stood still twitching instead of walking.
+    local settleDistance = Motion.followArrived[body] and arrivalDistance + 1.25 or arrivalDistance
+    if gap <= settleDistance and not needsClearance
         and actorLocallyConnected then
+        Motion.followArrived[body] = true
         return nil, gap, { goal_type = "follow_slot", goal_key = "arrived" }
     end
+    Motion.followArrived[body] = nil
     local slot = stableFollowGoal(body, owner, actor, leader, timestamp)
     if not slot then
         if gap <= arrivalDistance and actorLocallyConnected then
@@ -541,6 +571,7 @@ function Motion.stop(body)
         Motion.paths[body], Motion.followDetours[body] = nil, nil
         return
     end
+    if Motion.paths[body] then noteChurn(body, "stops", nil, nowMs()) end
     cancelNativeRoute(body)
     call(body, "setVariable", "GoblinMoveType", "IDLE")
     call(body, "setRunning", false)
@@ -657,6 +688,7 @@ function Motion.drive(body, goal, moveType, timestamp, options)
     if vehicle then Motion.stop(body); return true, "riding" end
     if not Motion.controls(body) then
         Motion.paths[body] = nil
+        Motion.requests[body] = nil -- a new simulation owner must path at once
         setNavigation(body, nil, "delegated", nil, timestamp)
         return true, "delegated"
     end
@@ -713,9 +745,31 @@ function Motion.drive(body, goal, moveType, timestamp, options)
     local goalKey = options.goal_key or pointKey(goal)
     local goalType = options.goal_type or "location"
     local path = Motion.paths[body]
-    if not path or path.goalKey ~= goalKey or path.goalType ~= goalType then
+    local lastRequest = Motion.requests[body]
+    -- Only plain destinations jitter; detour waypoints legitimately advance
+    -- one tile at a time and must be requested as they come.
+    local jittery = goalType == "location" or goalType == "follow_slot"
+    if jittery and path and (path.goalKey ~= goalKey or path.goalType ~= goalType) and path.goal
+        and path.goalType == goalType and Motion.distance(path.goal, goal) < 1.5
+        and lastRequest and timestamp - lastRequest.at < 5000 then
+        -- Same kind of goal, nudged by less than a tile and a half (a follow
+        -- slot or loot target re-rounded): keep the live route and its
+        -- progress/repath timers instead of starting over every tick.
+        path.goalKey = goalKey
+    elseif not path or path.goalKey ~= goalKey or path.goalType ~= goalType then
+        noteChurn(body, "resets", tostring(path and path.goalType) .. ">" .. tostring(goalType), timestamp)
+        local replaced = path ~= nil
         path = { point = point, progressAt = timestamp, startedAt = timestamp, nextPathAt = 0,
             failures = 0, goalKey = goalKey, goalType = goalType }
+        -- Rate-limit native requests when a live route is merely re-keyed:
+        -- it must still respect the repath cooldown unless the goal really
+        -- moved. An explicit stop/clear (new approach) paths at once.
+        local last = Motion.requests[body]
+        if replaced and jittery and last and last.goalType == goalType and timestamp - last.at < Config.repathSeconds * 1000
+            and Motion.distance(last.goal, goal) < 1.5 and not options.obstruction_cleared then
+            path.nextPathAt = last.at + Config.repathSeconds * 1000
+            path.goal = last.goal
+        end
         Motion.paths[body] = path
     end
     if Motion.distance(point, path.point) > 0.1 then
@@ -761,6 +815,8 @@ function Motion.drive(body, goal, moveType, timestamp, options)
         end
         path.route = route
         path.goal = { x = goal.x, y = goal.y, z = goal.z }
+        Motion.requests[body] = { at = timestamp, goal = path.goal, goalType = goalType }
+        noteChurn(body, "requests", nil, timestamp)
         leaveNativeIdleForPath(body)
         if stuck then
             path.failures = path.failures + 1

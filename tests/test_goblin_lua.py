@@ -157,6 +157,24 @@ class GoblinLuaTests(unittest.TestCase):
             assert(a.pathCalls == 2)
         ''')
 
+    def test_jittering_goal_does_not_restart_the_route_every_frame(self):
+        # Live: ~150 native re-requests in 15 s while Goblin stood still,
+        # because a goal re-rounded across a tile edge reset the route.
+        self.lua.execute('''
+            a=actor(0,0,0)
+            local lines={}
+            print=function(line) lines[#lines+1]=line end
+            for i=0,40 do
+                local goal={x=10+(i%2)*1.1,y=0.5,z=0}
+                Motion.drive(a,goal,'WALK',clock+i*100)
+            end
+            assert(a.pathCalls<=4, 'route restarted '..a.pathCalls..' times in 4 s')
+            -- A real move (new target several tiles away) still paths at once.
+            local before=a.pathCalls
+            Motion.drive(a,{x=20,y=5,z=0},'WALK',clock+4100)
+            assert(a.pathCalls==before+1)
+        ''')
+
     def test_stationary_actor_is_retried_without_restart_every_frame(self):
         self.lua.execute('''
             a=actor(0,0,0); goal={x=10,y=0,z=0}

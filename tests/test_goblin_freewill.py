@@ -89,6 +89,26 @@ class FreewillLuaTests(unittest.TestCase):
             assert(record.nextAt>later, 'filler chores should resume after the grace')
         ''')
 
+    def test_follow_arrival_has_hysteresis(self):
+        # Live: Goblin stood twitching as an idle owner's shuffle toggled him
+        # between "arrived" (stop) and a fresh path every few frames.
+        self.lua.execute('''
+            Motion=require('GoblinSurvivor/GoblinLocomotion')
+            player.x,player.y=5.5,0.5
+            a.x,a.y=1.3,0.5  -- 4.2 tiles: not settled yet, so he walks
+            local _,_,nav=Motion.followGoal(a,player,1000)
+            assert(nav.goal_key~='arrived')
+            a.x,a.y=2.4,0.5  -- reaches the follow radius and settles
+            _,_,nav=Motion.followGoal(a,player,1100)
+            assert(nav.goal_key=='arrived')
+            a.x,a.y=1.3,0.5  -- owner shuffles a tile away: stays settled
+            _,_,nav=Motion.followGoal(a,player,1200)
+            assert(nav.goal_key=='arrived')
+            a.x,a.y=0.5,0.5  -- 5 tiles: clearly left, so he follows again
+            _,_,nav=Motion.followGoal(a,player,1300)
+            assert(nav.goal_key~='arrived')
+        ''')
+
     def test_explicit_orders_are_never_recalled(self):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy')
