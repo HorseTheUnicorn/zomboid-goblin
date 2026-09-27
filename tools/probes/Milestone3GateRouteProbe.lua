@@ -92,8 +92,13 @@ Events.OnTick.Add(function()
             local ok,err=pcall(function()
                 local t=active
                 t.gate=IsoThumpable.new(getCell(),square,"fixtures_doors_01_0","fixtures_doors_01_1",north,{})
-                t.gate:setIsDoor(true);t.gate:setKeyId(id);t.gate:setLockedByPadlock(true)
+                t.gate:setIsDoor(true)
+                -- Register the gate before lock setters emit SyncThumpable
+                -- packets. Build 42 rejects a lock packet whose object still
+                -- has index -1, which invalidates the fixture rather than the
+                -- Goblin access route being tested.
                 square:AddSpecialObject(t.gate);t.gate:transmitCompleteItemToClients()
+                t.gate:setKeyId(id);t.gate:setLockedByPadlock(true)
                 t.key=body:getInventory():AddItem("Base.KeyPadlock");assert(t.key);t.key:setKeyId(id)
                 local x,y=square:getX()-(north and 0 or 1),square:getY()-(north and 1 or 0)
                 Access.resolveTargetScope=function() return {bounds={x=x,y=y,x2=x,y2=y}} end
