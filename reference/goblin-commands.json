@@ -40,7 +40,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "be26801f6b0250fd14427b1ae118f8cc7ecdcadfb3bbea7b81521e2e417d2e41"
+    "sha256": "8c14ac28ddbebe9bd0db0904e829f4e127d31e0e086fe2ad13225b91f368ade1"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -616,6 +616,18 @@
           "LUA_FIXTURE_ONLY"
         ],
         "engine_tested": false
+      },
+      {
+        "command": "salvage",
+        "aliases": [
+          "scrap"
+        ],
+        "task": "DISMANTLE",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
       }
     ],
     "arguments": {
@@ -870,11 +882,11 @@
     "sources": [
       {
         "path": "goblin_zomboid/validator.py",
-        "sha256": "acb0f469a43b87aa3d286b390e4b949cd745fe7c16d086acc32eb0b67cda6518"
+        "sha256": "aeea7c04596b979547cd39c6d7a4f0ce0026c3743ef8f68e9ce26b8eefd88ad4"
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "9a91884592ace5c23cfde3acf4e627db73264f2b624dd74ae9705c0fee4d76ca"
+        "sha256": "5d725cf5387972490e40053461ea9bef4f73ad1399fd2282f66264364471c94b"
       },
       {
         "path": "goblin_zomboid/service.py",

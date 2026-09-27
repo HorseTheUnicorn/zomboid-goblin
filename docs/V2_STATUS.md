@@ -95,6 +95,26 @@ sets every perk to 10).
 
 Live checks are in the runbook, section 6c.
 
+### Furniture salvage
+
+Owner direction, 2026-09-27: Goblin also breaks up furniture for planks and
+other materials by himself. `DISMANTLE` has a salvage mode:
+
+- **What he scraps:** the nearest empty, single-tile wooden furniture within
+  `GoblinSalvageRadius` (24) tiles. He never touches player-built objects.
+- **Where he won't:** anything outdoors, inside the saved base or within
+  `GoblinSalvageBaseBuffer` (6) tiles of it, or in any safehouse (including
+  the owner's own). Protection is re-checked just before the scrap.
+- **What he gets:** vanilla's moveables scrap rules decide what drops. Goblin
+  then picks it up through the audited pickup path, so planks, nails and the
+  rest are real items.
+- **When it runs:** the idle chore loop triggers it when base windows need
+  boards and no planks are at hand (only while the owner is online). Qwen's
+  free will can choose `DISMANTLE` with `job: salvage`, and the owner can use
+  `/goblin salvage` (or `scrap`).
+- **Turning it off:** `GoblinSalvageEnabled=false` disables it; the explicit
+  `dismantle furniture` order inside the base is unchanged.
+
 ### Locked gate route, 2026-09-27 (server passes, two-client observation pending)
 
 Three disposable-server runs of `Milestone3GateRouteProbe` (13:31, 13:38 and

@@ -44,7 +44,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | storage CATEGORY/clear | sort [all] | fetch Item/category [count] | deliver [item/category] [floor] | repair base | vehicle inspect/service/refuel | install/remove/replace Part [Item] | change tire [Part] | chop [1-5] | bandage me | freewill on/off | goal secure/organize/repair/vehicle/nails [every N] | goal list | cancel [goal] | dismantle furniture | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
+    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | storage CATEGORY/clear | sort [all] | fetch Item/category [count] | deliver [item/category] [floor] | repair base | vehicle inspect/service/refuel | install/remove/replace Part [Item] | change tire [Part] | chop [1-5] | bandage me | freewill on/off | goal secure/organize/repair/vehicle/nails [every N] | goal list | cancel [goal] | dismantle furniture | salvage | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -253,6 +253,12 @@ local function handle(player, rawText)
     if command=="maintain" and (parts[2] == nil or string.lower(parts[2]) == "base") then
         local ok,result=Brain.setTask(body,Constants.TASK.MAINTAIN_BASE,{})
         Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
+    if command=="salvage" or command=="scrap" then
+        local ok,result=Brain.setTask(body,Constants.TASK.DISMANTLE,{salvage=true,explicit_owner_order=true})
+        reply(player,ok and "Goblin will scrap empty wooden furniture nearby (never in your base) and keep the planks."
+            or tostring(result))
         return
     end
     if command=="dismantle" then

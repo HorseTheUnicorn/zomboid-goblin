@@ -72,7 +72,13 @@ local Config = {
     -- Free will: how long scripted chores wait for Qwen to choose a job, and
     -- how far the owner may walk before Goblin drops free-will/goal work.
     freewillGraceSeconds = 60,
-    goalRecallDistance = 15
+    goalRecallDistance = 15,
+
+    -- Salvage: Goblin scraps empty wooden furniture in nearby non-base,
+    -- non-safehouse buildings for planks when the base runs short.
+    salvageEnabled = true,
+    salvageRadius = 24,
+    salvageBaseBuffer = 6
 }
 
 local function parseBoolean(value, defaultValue)
@@ -206,6 +212,9 @@ function Config.refresh()
     Config.autonomyBarricadeRadius = boundedNumber(option("GoblinAutonomyBarricadeRadius", Config.autonomyBarricadeRadius), Config.autonomyBarricadeRadius, 2, 20)
     Config.freewillGraceSeconds = boundedNumber(option("GoblinFreewillGraceSeconds", Config.freewillGraceSeconds), Config.freewillGraceSeconds, 10, 600)
     Config.goalRecallDistance = boundedNumber(option("GoblinGoalRecallDistance", Config.goalRecallDistance), Config.goalRecallDistance, 5, 60)
+    Config.salvageEnabled = parseBoolean(option("GoblinSalvageEnabled", Config.salvageEnabled), Config.salvageEnabled)
+    Config.salvageRadius = boundedNumber(option("GoblinSalvageRadius", Config.salvageRadius), Config.salvageRadius, 3, 40)
+    Config.salvageBaseBuffer = boundedNumber(option("GoblinSalvageBaseBuffer", Config.salvageBaseBuffer), Config.salvageBaseBuffer, 0, 100)
 
     if Config.followWalkDistance <= Config.followPreferredDistance then Config.followWalkDistance = Config.followPreferredDistance + 1 end
     if Config.followRunDistance <= Config.followWalkDistance then Config.followRunDistance = Config.followWalkDistance + 1 end

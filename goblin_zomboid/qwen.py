@@ -190,6 +190,8 @@ class QwenClient:
                 props["job"] = {"enum": ["inbox", "all"]}
             if action == "DELIVER":
                 props["job"] = {"enum": ["storage", "floor"]}
+            if action == "DISMANTLE":
+                props["job"] = {"enum": ["here", "salvage"]}
             if action in {"FARM", "CRAFT"}:
                 props["item"] = {"type": "object", "properties": {
                     "name": {"type": "string", "minLength": 1, "maxLength": 64},
@@ -241,7 +243,9 @@ class QwenClient:
             "or seat number. FOLLOW also boards/exits with the owner. These actions do not drive the vehicle. "
             "Base and survival jobs (no target): INSPECT_BASE surveys the saved base; MAINTAIN_BASE boards "
             "windows then repairs; REPAIR_STRUCTURE repairs damaged base objects and clears broken glass; "
-            "DISMANTLE scraps the one empty wooden furniture piece beside the owner; STOCKPILE refills the tracked "
+            "DISMANTLE scraps the one empty wooden furniture piece beside the owner (job here), or with job "
+            "salvage Goblin finds empty wooden furniture in nearby buildings outside the base (never the base or "
+            "a safehouse), scraps it and keeps the planks and nails; STOCKPILE refills the tracked "
             "item.name (e.g. Base.Nails); SORT_STORAGE sorts the inbox (job inbox) or everything loose (job all) "
             "into the owner's category containers; FETCH_ITEM brings item.name (exact type like Base.Nails or a "
             "category like food, medical, tools, materials) with item.count 1-20 from the base to the owner; "
@@ -369,7 +373,8 @@ class QwenClient:
         " FREE WILL TURN: nobody spoke to you. You are deciding on your own what to do next, like a player "
         "who never idles. Read situation (time, weather, threats, owner condition, base, stock, vehicle, "
         "your inventory, recent events), memory (trust, places, journal) and conversation. Pick ONE useful "
-        "action from the allowed intents: fix what is broken, restock what is short, service the car if "
+        "action from the allowed intents: fix what is broken, restock what is short (when the base lacks planks "
+        "or nails, DISMANTLE with job salvage scraps furniture elsewhere for them), service the car if "
         "fuel or tires are low, treat the owner if they are bleeding, sort or tidy the base, chop wood, "
         "scavenge, or stay near the owner when threats are close. Never repeat a job that just failed with "
         "the same result; choose something else. Owner-facing text narrates what you are about to do and "

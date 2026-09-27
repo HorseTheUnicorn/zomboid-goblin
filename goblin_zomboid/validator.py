@@ -294,6 +294,8 @@ class IntentValidator:
         if intent in {"INSTALL_PART", "REMOVE_PART", "REPLACE_PART", "CHANGE_TIRE"} and "job" in result \
                 and not PART_RE.match(result["job"]):
             raise IntentError("vehicle part id must be a simple identifier")
+        if intent == "DISMANTLE" and result.get("job", "here") not in {"here", "salvage"}:
+            raise IntentError("DISMANTLE job must be here or salvage")
         if intent == "SORT_STORAGE" and result.get("job", "inbox") not in {"inbox", "all"}:
             raise IntentError("SORT_STORAGE job must be inbox or all")
         if intent == "DELIVER" and result.get("job", "storage") not in {"storage", "floor"}:

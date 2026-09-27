@@ -154,6 +154,12 @@ function Autonomy.update(body,now)
                     data.GoblinLastAutonomyAction="FORTIFY"
                     return Brain.setTask(body,"FORTIFY",{autonomous=true})
                 end
+                -- Short of planks: scrap empty wooden furniture in nearby
+                -- non-base buildings instead of wandering off to loot.
+                if player and Config.salvageEnabled ~= false then
+                    local ok=Brain.setTask(body,"DISMANTLE",{salvage=true,autonomous=true})
+                    if ok then data.GoblinLastAutonomyAction="SALVAGE";return true end
+                end
                 break -- Check nearby supplies once, not once per window.
             end
         end

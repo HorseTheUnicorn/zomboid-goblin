@@ -165,6 +165,7 @@ local function ownerJobPayload(action, message)
     local item = type(message.item) == "table" and message.item or {}
     local job = type(message.job) == "string" and message.job or nil
     local payload = { explicit_owner_order = true }
+    if action == T.DISMANTLE and job == "salvage" then payload.salvage = true; return payload end
     if action == T.DISMANTLE or action == T.REPAIR_STRUCTURE or action == T.TREAT_PLAYER
         or action == T.VEHICLE_INSPECT or action == T.REFUEL_VEHICLE or action == T.VEHICLE_SERVICE then
         return payload
