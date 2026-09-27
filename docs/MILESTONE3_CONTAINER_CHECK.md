@@ -127,3 +127,52 @@ Lua 5.1 syntax validation passed. This narrows the managed-actor compatibility
 gap, but does not establish movement to a keyed crate, content transfers,
 replication of keyed access, or saved keyed-job recovery. No door behavior was
 changed and no combination-guessing or destructive container method is claimed.
+
+## Two-client keyed-container route, 2026-09-27
+
+Gameplay source remained `2c1e463`. Disposable server PID 32376 ran Storm;
+no-Storm clients 51428 (`m3path_61`) and 37224 (`m3witness_54`) used exact
+171-file copies of the worktree package. The flag-gated probe created one
+temporary native `IsoThumpable` container on the owner's otherwise empty floor
+tile, added a real `Base.KeyPadlock` with the matching key ID to the managed
+IsoZombie inventory, and dispatched the ordinary `Brain.setTask` GAIN_ACCESS
+path. It never moved the Goblin directly.
+
+- Tick 916: accepted target `m3path_61:1790514903214:1` at
+  `(10778,9764,0)`. Goblin began at `(10779.972,9767.296,0)`.
+- Server samples showed actual movement through `(10779.111,9766.830,0)` to
+  `(10778.500,9765.955,0)`.
+- Tick 961: `COMPLETE`; `contents_unchanged=true`, `locked=true`,
+  `actor_access=true`, and `key_retained=true`.
+- Both clients independently resolved the same marker, read an empty container
+  with `padlocked=true`, observed online actor ID 5895 moving toward the
+  target, and reported actual outfit 14155798 matching the roster outfit.
+- Neither client logged `SyncThumpablePacket`, `object index -1`, or a network
+  exception during this run.
+- Probe cleanup removed only its temporary key and crate; all staged probe and
+  flag files were removed. The server and clients were stopped afterward.
+- Read-only package checks then reported exact SHA-256/file-set matches for the
+  server direct package and both clients' direct and Workshop copies: 171 files
+  each.
+
+An earlier disposable run set key/padlock fields before registering the crate.
+Build 42 emitted `SyncThumpable` packets with object index -1 and both clients
+rejected them. That was a probe-order defect, not a Goblin adapter failure. The
+corrected probe registers and transmits the crate before lock setters, matching
+the requirement that client replication be error-free before acceptance. The
+failed-run logs are retained separately rather than counted as passing evidence.
+
+Raw passing logs:
+
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-route-two-client-20260927.server.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-route-two-client-20260927.client10.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-keyed-route-two-client-20260927.client11.log`
+
+Probe SHA-256: `1b0a92fd3a8e0b9e3403dc1371aa9e6b54054909d942b980065385720f766256`.
+Client observer SHA-256:
+`074019b53b683271a9ef6b374081478fa6d7166133911ac965f8488c52a199dd`.
+The route proves native managed-actor key compatibility, physical movement,
+lock/key/content conservation, and two-client observation for this access
+operation. It does not prove inventory transfer or keyed-job save/restart
+recovery. Goblin opening locked doors remains intentional behavior and is not
+restricted by this container check.
