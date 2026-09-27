@@ -75,9 +75,19 @@ function Autonomy.update(body,now)
             data.GoblinOwnerIdleSeconds=0
             data.GoblinOwnerMovingUntil=now+500
         end
+        local idle=now-record.activeAt>=Config.autonomyIdleSeconds*1000
+        -- Free-will work (Qwen's own choice) yields to combat or recall too.
+        if data.GoblinFreewill == true and data.GoblinTask ~= "FOLLOW" then
+            local bodyPoint=Body.position(body)
+            local far=bodyPoint~=nil and Motion.distance(bodyPoint,point)>(tonumber(Config.goalRecallDistance) or 15)
+            if (not idle and far) or threatNear(body,point) then
+                Brain.setTask(body,"FOLLOW",{owner=Body.owner(body)})
+                data.GoblinFreewillInterrupted = far and "recall" or "combat"
+                return false
+            end
+        end
         -- Owner goals: a running step yields to combat, or to recall when the
         -- owner walks away (moving around inside the work area is fine).
-        local idle=now-record.activeAt>=Config.autonomyIdleSeconds*1000
         if data.GoblinGoalActive then
             local bodyPoint=Body.position(body)
             local recalled=not idle and bodyPoint~=nil
@@ -118,6 +128,13 @@ function Autonomy.update(body,now)
     -- Standing owner goals take precedence over independent chores.
     if player and Goals.tick(body,Brain.setTask,{idle=true,threat=threatNear(body,point)},now) then
         return true
+    end
+    -- With free will on, give Qwen the first chance to choose Goblin's next
+    -- job; scripted chores only fill in if it has been silent for a while,
+    -- so Goblin is never left standing around.
+    if data.GoblinFreewillEnabled == true then
+        local lastChoice=math.max(record.activeAt or 0,tonumber(data.GoblinFreewillLastAt) or 0)
+        if now-lastChoice<(tonumber(Config.freewillGraceSeconds) or 60)*1000 then return false end
     end
     if now<record.nextAt then return false end
     record.nextAt=now+Config.autonomyDecisionSeconds*1000

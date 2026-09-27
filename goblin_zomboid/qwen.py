@@ -54,6 +54,11 @@ class QwenClient:
     def set_wait_callback(self, callback: Callable[[], None]) -> None:
         self.wait_callback = callback
 
+    def background(self, timeout_seconds: float = 12.0) -> "QwenClient":
+        """A twin client for worker threads: no wait callback into the service."""
+        return QwenClient(base_url=self.base_url, model=self.model,
+                          timeout_seconds=min(timeout_seconds, self.timeout_seconds), validator=self.validator)
+
     @staticmethod
     def _system_prompt() -> str:
         return (
@@ -359,6 +364,91 @@ class QwenClient:
             return intent, sanitize_speech(intent.data.get("text"))
         except (IntentError, TypeError, ValueError) as exc:
             raise QwenError(f"Qwen chat failed strict action/speech validation: {exc}") from exc
+
+    THINK_RULES = (
+        " FREE WILL TURN: nobody spoke to you. You are deciding on your own what to do next, like a player "
+        "who never idles. Read situation (time, weather, threats, owner condition, base, stock, vehicle, "
+        "your inventory, recent events), memory (trust, places, journal) and conversation. Pick ONE useful "
+        "action from the allowed intents: fix what is broken, restock what is short, service the car if "
+        "fuel or tires are low, treat the owner if they are bleeding, sort or tidy the base, chop wood, "
+        "scavenge, or stay near the owner when threats are close. Never repeat a job that just failed with "
+        "the same result; choose something else. Owner-facing text narrates what you are about to do and "
+        "why, and you may bitch and grumble about the work, the weather or the owner's choices while doing "
+        "it. Now and then ask the owner a real question or raise a problem instead of (or as well as) "
+        "working. SAY is only for when talking really is the best move. Never claim work is finished."
+    )
+
+    def propose_think(self, context: Mapping[str, Any]) -> tuple[ValidatedIntent, str]:
+        """Free-will decision: one action plus narration, same strict schema as chat."""
+        if not isinstance(context, Mapping):
+            raise QwenError("think context must be an object")
+        try:
+            identity = {"name": context.get("companion", {}).get("name"),
+                        "owner": context.get("controlled_owner")}
+            prompt = (self._chat_prompt() + self.CONVERSATION_RULES + self.THINK_RULES
+                      + quote_prompt(pick_quotes(count=1)) + " Your identity data: " + json.dumps(identity)
+                      + ". Copy the actual context.mode.")
+            content = self._request_json(prompt, brain_view(context), max_tokens=240,
+                                         schema=self._chat_schema(context))
+            intent = self.validator.validate_json(content)
+            return intent, sanitize_speech(intent.data.get("text"))
+        except (IntentError, TypeError, ValueError) as exc:
+            raise QwenError(f"Qwen free-will turn failed validation: {exc}") from exc
+
+    def propose_banter(self, context: Mapping[str, Any]) -> list[dict[str, str]]:
+        """A short exchange between two nearby Goblins: 2-4 alternating lines."""
+        if not isinstance(context, Mapping):
+            raise QwenError("banter context must be an object")
+        names = [g.get("name") for g in context.get("goblins", []) if isinstance(g, Mapping)]
+        if len(names) != 2 or not all(isinstance(n, str) and n for n in names):
+            raise QwenError("banter needs exactly two named Goblins")
+        prompt = FeralPersonality.system_prompt() + (
+            " Two Goblin companions, each loyal to a different player, just met in Project Zomboid. "
+            "Write a short in-character exchange between them: 2 to 4 lines, alternating speakers, each "
+            "under 180 characters. They may compare their comrades, argue about who has the better base, "
+            "gossip, boast, or plan. Use the goblins' situation and memory. Only real, correctly attributed "
+            "Lenin/Stalin quotes if any. Return {\"lines\":[{\"speaker\":\"<name>\",\"text\":\"...\"}]}."
+        ) + quote_prompt(pick_quotes())
+        schema = {"type": "object", "properties": {"lines": {"type": "array", "minItems": 2, "maxItems": 4,
+                  "items": {"type": "object", "properties": {"speaker": {"enum": names},
+                            "text": {"type": "string", "minLength": 1, "maxLength": 180}},
+                            "required": ["speaker", "text"], "additionalProperties": False}}},
+                  "required": ["lines"], "additionalProperties": False}
+        content = self._request_json(prompt, brain_view(context), max_tokens=320, schema=schema)
+        try:
+            value = json.loads(content)
+            lines = value["lines"] if isinstance(value, dict) and set(value) == {"lines"} else None
+            if not isinstance(lines, list) or not 2 <= len(lines) <= 4:
+                raise ValueError("banter must have 2-4 lines")
+            result = []
+            for line in lines:
+                if not isinstance(line, dict) or set(line) != {"speaker", "text"} or line["speaker"] not in names:
+                    raise ValueError("banter line is malformed")
+                result.append({"speaker": line["speaker"], "text": sanitize_speech(line["text"])})
+            return result
+        except (KeyError, TypeError, ValueError) as exc:
+            raise QwenError(f"invalid banter: {exc}") from exc
+
+    def propose_journal(self, context: Mapping[str, Any]) -> str:
+        """Summarize one in-game day in Goblin's voice for his long-term journal."""
+        prompt = FeralPersonality.system_prompt() + (
+            " Write Goblin's private journal entry for the finished day from the events given: two or three "
+            "sentences, under 380 characters, first person, grumpy and funny, mentioning places and how he "
+            "feels about his comrade. Only facts from the events. Return {\"text\":\"...\"}."
+        )
+        content = self._request_json(prompt, brain_view(context), max_tokens=200, schema={
+            "type": "object", "properties": {"text": {"type": "string", "minLength": 1, "maxLength": 380}},
+            "required": ["text"], "additionalProperties": False})
+        try:
+            value = json.loads(content)
+            if not isinstance(value, dict) or set(value) != {"text"}:
+                raise ValueError("unexpected journal fields")
+            text = str(value["text"]).strip()
+            if not text or len(text) > 400:
+                raise ValueError("journal length")
+            return text
+        except (TypeError, ValueError) as exc:
+            raise QwenError(f"invalid journal: {exc}") from exc
 
     def propose_speech(self, context: Mapping[str, Any]) -> str:
         if not isinstance(context, Mapping):

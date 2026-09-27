@@ -4,7 +4,7 @@ local Net = require("GoblinSurvivor/Net")
 -- A grant is minted only while handling an authoritative player command on
 -- the PZ server.  Python may carry the opaque value through the private
 -- bridge, but it cannot invent one and Qwen never receives it.
-local Authority = { grants = {}, sequence = 0, offlineByNpc = {} }
+local Authority = { grants = {}, sequence = 0, offlineByNpc = {}, companionByNpc = {} }
 Authority.offlineActions = { WAIT=true, LOOT_AREA=true, RETURN_TO_BASE=true, SECURE_BASE=true, EQUIP=true }
 
 local privileged = {
@@ -101,6 +101,16 @@ function Authority.consume(message)
     local grant = Authority.grants[token]
     if grant == nil or grant.expires_at <= now then return false end
     if grant.kind == "offline" then return false end
+    if grant.kind == "companion" then
+        -- Standing free-will grant: only this Goblin, only while its owner is
+        -- online, only for owner jobs, one decision per grant.
+        if message.freewill ~= true or grant.npc_id ~= message.npc_id
+            or type(message.owner) ~= "string" or string.lower(message.owner) ~= string.lower(grant.owner)
+            or not ownerJobs[message.action] then return false end
+        Authority.grants[token] = nil
+        Authority.companionByNpc[grant.npc_id] = nil
+        return true
+    end
     if type(message.owner) ~= "string" or string.lower(message.owner) ~= string.lower(grant.speaker) then return false end
     if not grant.commander and not ownerJobs[message.action] then return false end
     -- Grants are capabilities for one high-level mutation, not reusable
@@ -156,6 +166,31 @@ function Authority.consumeOffline(message, body)
         grant.task_sequence ~= data.GoblinTaskSequence then return false end
     Authority.grants[token] = nil
     return true
+end
+
+-- A reusable-per-heartbeat grant that lets Qwen's free-will loop start owner
+-- jobs for an online owner who has free will enabled (the default).
+function Authority.issueCompanion(body)
+    local Body = require("GoblinSurvivor/GoblinBody")
+    if not Config.enabled or not Body.isGoblin(body) or not Body.exists(body) then return nil end
+    local data = Body.data(body)
+    if not data or data.GoblinFreewillEnabled ~= true then return nil end
+    local owner = Body.owner(body)
+    local online = false
+    for _, player in ipairs(require("GoblinSurvivor/GoblinWorld").values(getOnlinePlayers())) do
+        if string.lower(player:getUsername()) == string.lower(owner) then online = true end
+    end
+    if not online then return nil end
+    local now = nowMs()
+    purge(now)
+    local previous = Authority.companionByNpc[data.GoblinID]
+    if previous and Authority.grants[previous] then return previous end
+    Authority.sequence = Authority.sequence + 1
+    local token = "companion-" .. tostring(now) .. "-" .. tostring(Authority.sequence) .. "-" .. randomPart()
+    Authority.grants[token] = { kind = "companion", owner = owner, npc_id = data.GoblinID,
+        expires_at = now + 90000 }
+    Authority.companionByNpc[data.GoblinID] = token
+    return token
 end
 
 function Authority.snapshot()

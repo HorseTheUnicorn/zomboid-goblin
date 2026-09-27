@@ -34,7 +34,8 @@ class CommandInventoryTests(unittest.TestCase):
                 ensureForPlayer=function(p) record('Spawner.ensureForPlayer',p);return body end,
                 setBaseForPlayer=function(p) record('Spawner.setBaseForPlayer',p);return true,'base' end,
                 snapshotForOwner=function(name) record('Spawner.snapshotForOwner',name);return {} end,
-                removeForPlayer=function(p) record('Spawner.removeForPlayer',p) end}
+                removeForPlayer=function(p) record('Spawner.removeForPlayer',p) end,
+                setFreewillForOwner=function(owner,on) record('Spawner.setFreewillForOwner',player,nil,{owner=owner,on=on});return true end}
             package.loaded['GoblinSurvivor/GoblinBrain']={setTask=function(b,t,p)
                 record('Brain.setTask',b,t,p);return true,'accepted' end}
             package.loaded['GoblinSurvivor/GoblinStockpiles']={assign=function(b,p,kind,minimum)

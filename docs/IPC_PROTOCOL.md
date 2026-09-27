@@ -34,6 +34,12 @@ There are no caller-supplied coordinates or remote object IDs for these jobs.
 `CRAFT.item.name` is an installed hand-recipe name and `item.count` is 1–10
 batches. `REPAIR_VEHICLE.job` is all/engine/bodywork. These are explicit-owner
 jobs, not additions to the offline model's autonomous capability allowlist.
+Free will: `runtime.state` companions for an online owner carry `freewill`, a coarse
+`situation` object (labels and counts, no coordinates) and a private
+`companion_authority_token`. The agent strips every `*_token` key before Qwen.
+A command with `freewill: true` (never combined with `autonomous`) spends that
+one-use grant, is limited to owner jobs, and is accepted only while Goblin is
+following or already doing free-will work.
 Passenger orders take no model-supplied target, seat, vehicle ID, or coordinates.
 Lua resolves them from the authenticated owner and native nearby vehicles. The
 server-to-client companion roster carries the validated session binding and

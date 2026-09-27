@@ -38,6 +38,7 @@ def _is_sensitive_key(key: str) -> bool:
     normalized = key.casefold().replace("-", "_")
     return (
         normalized in _DROP_KEYS
+        or normalized.endswith("token")
         or normalized.startswith(("coord", "coordinate"))
         or bool(_DROP_RE.search(normalized))
     )

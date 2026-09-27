@@ -109,6 +109,22 @@ function Telemetry.write(force)
         if item.owner_online == false and item.body_present then
             item.authority_token = require("GoblinSurvivor/Authority").issueOffline(Spawner.findByNpcId(item.npc_id))
         end
+        if item.owner_online == true and item.body_present then
+            local body = Spawner.findByNpcId(item.npc_id)
+            local data = body and require("GoblinSurvivor/GoblinBody").data(body)
+            item.freewill = data ~= nil and data.GoblinFreewillEnabled == true
+            if data and type(data.GoblinFreewillInterrupted) == "string" then
+                item.freewill_interrupted = data.GoblinFreewillInterrupted
+            end
+            -- Coarse labels/counts only; never coordinates (see GoblinSituation).
+            local okSituation, situation = pcall(function()
+                return require("GoblinSurvivor/GoblinSituation").build(body) end)
+            if okSituation then item.situation = situation end
+            if item.freewill then
+                -- Private bridge credential; the agent strips *_token before Qwen.
+                item.companion_authority_token = require("GoblinSurvivor/Authority").issueCompanion(body)
+            end
+        end
         companions[#companions + 1] = item
         npcs[#npcs + 1] = {
             npc_id = item.npc_id,

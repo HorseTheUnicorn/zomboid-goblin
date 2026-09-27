@@ -29,7 +29,8 @@ local actions = {
 local allowedKeys = {
     protocol=true, request_id=true, timestamp_ms=true, type=true, npc_id=true,
     owner=true, action=true, priority=true, reason=true, text=true, target=true,
-    item=true, job=true, loot_focus=true, authority_token=true, controller_action=true, autonomous=true
+    item=true, job=true, loot_focus=true, authority_token=true, controller_action=true, autonomous=true,
+    freewill=true
 }
 local targetKeys = { kind=true, name=true, player=true, label=true }
 local itemKeys = { name=true, count=true, category=true }
@@ -104,6 +105,8 @@ local function valid(message)
     if message.authority_token ~= nil and not Net.safeId(message.authority_token, 128) then return false end
     if message.controller_action ~= nil and not Net.safeTable(message.controller_action) then return false end
     if message.autonomous ~= nil and type(message.autonomous) ~= "boolean" then return false end
+    if message.freewill ~= nil and type(message.freewill) ~= "boolean" then return false end
+    if message.freewill == true and message.autonomous == true then return false end
     if message.autonomous ~= true and Authority.requires(action) and not Authority.consume(message) then return false end
     return true
 end
@@ -156,6 +159,14 @@ local function normalizedMessage(message)
     return message
 end
 
+-- Qwen's free-will choices may only replace idle following or earlier
+-- free-will work, never an explicit owner order such as WAIT or a job.
+local function freewillReady(body)
+    local data = Body.data(body)
+    if not data or data.GoblinFreewillEnabled ~= true then return false end
+    return data.GoblinTask == "FOLLOW" or data.GoblinFreewill == true
+end
+
 local function process(stem)
     local message = IPC.readReady("commands", stem)
     if message == nil or message.type ~= "command.npc_action" then
@@ -184,6 +195,8 @@ local function process(stem)
             else
                 detail = "offline grant expired, owner returned, or task changed"
             end
+        elseif message.freewill == true and not freewillReady(body) then
+            detail = "busy with the owner's own order"
         else
             local normalized = normalizedMessage(message)
             -- valid() already consumed the owner's one-use chat grant for every
@@ -191,6 +204,15 @@ local function process(stem)
             -- This flag is set here, never read from the wire (not an allowed key).
             normalized.owner_authorized = Authority.requires(message.action) == true
             accepted, detail = Brain.execute(normalized, body)
+            if accepted and message.freewill == true then
+                -- Free-will work is recallable and never overrides later orders.
+                local data = Body.data(body)
+                if data then
+                    if message.action ~= "SAY" then data.GoblinFreewill = true end
+                    data.GoblinFreewillLastAt = type(getTimestampMs) == "function" and getTimestampMs() or 0
+                    data.GoblinFreewillInterrupted = nil
+                end
+            end
         end
     end
     local status = accepted and "accepted" or "failed"

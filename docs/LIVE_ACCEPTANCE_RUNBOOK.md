@@ -133,6 +133,23 @@ falls back to `TARGET_UNLOADED`.
 4. Save/restart between acquisition and use, then verify identity and counts are
    reconciled without duplicates or lost items.
 
+## 6c. Free will, memory and meetups
+
+1. Stand still for over a minute. Within about 40 s Goblin announces a job
+   (often with a complaint), and the server logs a `QWEN_COMMAND ... status=accepted`
+   for a job action with no chat. `/goblin state` shows the job.
+2. Walk 20+ tiles away mid-job: Goblin drops it and follows. Pull a zombie
+   close: same. Give `/goblin wait`, then idle: Goblin never replaces WAIT.
+3. `/goblin freewill off`: only scripted chores resume after the idle timer.
+   Then `/goblin freewill on`.
+4. Hurt the owner (fall damage). Within seconds Goblin reacts (treat or comment).
+   Later chat ("do you remember the kitchen?") draws on memory. Restart the
+   agent and check that trust and places persist (`*.mind.sqlite3`).
+5. Two players with Goblins stand within 12 tiles, both idle: the Goblins
+   trade 2–4 lines, and no item moves between them.
+6. After an in-game day passes, the agent admin snapshot `free_will.stats.journal`
+   increments.
+
 ## 7. Milestone 9 — Offline Life (not implemented)
 
 No offline chore is registered. Every new capability declares

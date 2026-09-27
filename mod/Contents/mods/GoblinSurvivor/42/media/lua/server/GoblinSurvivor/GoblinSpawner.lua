@@ -293,6 +293,7 @@ local function applyRecord(body, record)
     data.GoblinOwner = record.owner
     data.GoblinName = record.name
     data.GoblinID = record.npc_id
+    data.GoblinFreewillEnabled = record.freewill ~= false
     local task = Constants.ALLOWED_TASKS[record.task] and record.task or Constants.TASK.FOLLOW
     local payload = type(record.task_payload) == "table" and record.task_payload or { owner = record.owner }
     -- Discovery runs repeatedly: do not reset sequence/deadlines or restart
@@ -720,6 +721,24 @@ function Spawner.clearStorageAssignmentForOwner(owner, id)
     record.storage_assignments[id] = nil
     transmitStore()
     return true
+end
+
+-- Free will: Qwen may choose Goblin's own jobs while the owner is online.
+-- On by default; the owner can switch it off with /goblin freewill off.
+function Spawner.setFreewillForOwner(owner, enabled)
+    local record = recordFor(owner, false)
+    if not record then return false end
+    record.freewill = enabled == true
+    local body = Spawner.findForOwner(owner)
+    local data = body and Body.data(body)
+    if data then data.GoblinFreewillEnabled = record.freewill end
+    transmitStore()
+    return true
+end
+
+function Spawner.freewillForOwner(owner)
+    local record = recordFor(owner, false)
+    return record ~= nil and record.freewill ~= false
 end
 
 -- Persistent owner goals (primitive records only; see GoblinGoals).

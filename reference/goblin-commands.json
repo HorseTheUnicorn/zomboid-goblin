@@ -40,7 +40,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "45a0eba064b52e8d507e2abe7f500720d65f00a8a513eac5b2b6f85d5e11d743"
+    "sha256": "be26801f6b0250fd14427b1ae118f8cc7ecdcadfb3bbea7b81521e2e417d2e41"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -604,6 +604,18 @@
           "LUA_FIXTURE_ONLY"
         ],
         "engine_tested": false
+      },
+      {
+        "command": "freewill on",
+        "aliases": [
+          "freewill off"
+        ],
+        "task": null,
+        "handler": "Spawner.setFreewillForOwner",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
       }
     ],
     "arguments": {
@@ -862,11 +874,11 @@
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "96ab7512169bf1851732c6a26447cc2218f0400102c848b53ae34cc6805abae7"
+        "sha256": "c6d030afdae4b32660136191488932742dc660b512d4b08101953b2e7ba2c77e"
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "2b268bf4d106d770121681ba35a06935f26547990bc1949f4031294b069c0f6f"
+        "sha256": "3ff13fbd6d8afe6683da83a796814b9b49a0c589ec8e816270cd65ef42602c01"
       }
     ],
     "chat_generation_actions": [

@@ -98,6 +98,7 @@ local function setTaskInternal(body, task, payload)
     Transport.clear(body)
     local data = Body.data(body)
     data.GoblinAutonomous = payload.autonomous == true
+    data.GoblinFreewill = false
     if task ~= Constants.TASK.ATTACK then
         Body.setCombatPose(body, false)
     end
@@ -289,6 +290,8 @@ function Brain.update(body, timestamp)
     if Jobs.handles(task) then
         local result=Jobs.update(body,task,payload,now)
         if result.done then
+            pcall(function() require("GoblinSurvivor/GoblinSituation").note(body,"job",
+                task.." "..tostring(result.code)..": "..tostring(result.detail)) end)
             -- Goal progression only ever reads this deterministic result.
             pcall(function() require("GoblinSurvivor/GoblinGoals").onResult(body,task,result,now,payload.goal_id) end)
             local delivery=result.success and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW

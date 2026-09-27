@@ -83,6 +83,7 @@ class NpcBodyDriver:
         authority_token: str | None = None,
         owner: str | None = None,
         autonomous: bool = False,
+        freewill: bool = False,
     ) -> DriverResult:
         admitted = self.gate.admit(action)
         if not admitted.accepted:
@@ -114,6 +115,10 @@ class NpcBodyDriver:
             fields["authority_token"] = authority_token
         if autonomous:
             fields["autonomous"] = True
+        if freewill and not autonomous:
+            # Qwen's own choice for an online owner: the server only lets it
+            # replace idle following or earlier free-will work.
+            fields["freewill"] = True
         if action.target_kind is not None:
             fields["target"] = {
                 "kind": action.target_kind,

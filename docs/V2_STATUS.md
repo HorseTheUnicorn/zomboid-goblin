@@ -53,6 +53,48 @@ Reusable tools come from Goblin's persistent toolkit. Consumables and building,
 crafting, medical, farming and vehicle materials are never fabricated: jobs must
 find and consume real installed items or report `MISSING_MATERIAL`.
 
+### Free will, memory and social life
+
+Owner direction, 2026-09-27: Goblin should act like a player who never idles.
+He may grumble about the work, but he always has something to do. He has no
+survival needs of his own, and his skills are already maxed (GoblinIdentity
+sets every perk to 10).
+
+- **Situation report** (`GoblinSituation.lua`): each online companion's
+  telemetry carries labels and counts only, never coordinates. It covers time,
+  weather, threat level and direction, room, the owner's health, wounds and
+  moodles, base damage and stock shortages, vehicle state, carried categories,
+  nearby Goblins, and a sequence-numbered log of recent events (jobs, kills,
+  hordes, owner hurt).
+- **Free-will loop** (`service._think_tick` → `QwenClient.propose_think`): while
+  the owner is idle for 10 s or more and Goblin is following, Qwen picks one
+  job at least every 40 s (15 s per Goblin when there are more) and narrates or
+  complains about it. It runs on a background thread, so chat always comes
+  first.
+  - Publishing uses a per-Goblin companion grant (`Authority.issueCompanion`:
+    90 s, one use, owner jobs only, `freewill=true`, owner online).
+  - The bridge accepts it only when Goblin is following or already doing
+    free-will work, so explicit orders are never overridden.
+  - Free-will work is recalled to FOLLOW on a threat, or when the owner walks
+    more than `GoblinGoalRecallDistance` away.
+  - Scripted chores wait `GoblinFreewillGraceSeconds` for Qwen before filling in.
+  - `/goblin freewill on|off` toggles it (on by default).
+- **Memory** (`goblin_zomboid/mind.py`, `*.mind.sqlite3`):
+  - Episodes (the last 400 per Goblin), visited rooms with notes like "nearly
+    died here", and a daily journal. Qwen refines the journal; a heuristic
+    entry is written first.
+  - Trust in the owner rises with thanks, praise, apologies and finished work,
+    and falls with insults, hordes and the owner getting hurt.
+  - A digest goes into every chat and free-will prompt.
+- **Proactive talk**: free-will turns may be pure speech (questions, complaints),
+  and they reuse the owner's conversation history.
+- **Goblin meetups**: when two different owners' Goblins are within 12 tiles
+  and both are idle, Qwen writes a 2–4 line exchange, spoken 4 s apart. Each
+  pair has a 10-minute cooldown, and both remember the meeting. This is talk
+  only: no items change hands.
+
+Live checks are in the runbook, section 6c.
+
 ## Remaining work
 
 | Milestone | What remains |
