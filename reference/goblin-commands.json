@@ -878,7 +878,7 @@
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "824d6ed6330b274b789a95dc3ddf386fbbcd32e7b73c69714a77569105414b68"
+        "sha256": "b32cab9339b5018250fd3bdd57f770c37b295a949ce089debe968bce797e3ae3"
       }
     ],
     "chat_generation_actions": [

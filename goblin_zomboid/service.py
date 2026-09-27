@@ -687,6 +687,25 @@ class GoblinService:
             return None
         companions = self._companions(fields)
         eligible = [c for c in companions if self._think_eligible(c) and isinstance(c.get("npc_id"), str)]
+        # Meetups are rare (10 min per pair) and time-sensitive: they go before
+        # the next think turn, which would otherwise always be due.
+        if callable(getattr(self.qwen, "propose_banter", None)):
+            pair = self._banter_pair(companions, now)
+            if pair is not None:
+                goblins = []
+                for companion in pair:
+                    view = brain_view(companion)
+                    situation = view.get("situation") if isinstance(view.get("situation"), Mapping) else {}
+                    digest = self.mind.digest(str(companion["npc_id"]))
+                    goblins.append({"name": companion.get("name"), "owner": companion.get("owner"),
+                                    "task": companion.get("task"),
+                                    "situation": {k: situation.get(k) for k in ("time", "weather", "threats",
+                                                  "base", "place") if k in situation},
+                                    "memory": {"trust_in_owner": digest["trust_in_owner"],
+                                               "recent_memories": digest["recent_memories"][-5:]}})
+                self._submit_think("banter", {"pair": [(c.get("npc_id"), c.get("name")) for c in pair]},
+                                   "propose_banter", {"goblins": goblins})
+                return None
         if callable(getattr(self.qwen, "propose_think", None)):
             interval = max(40.0, 15.0 * len(eligible))
             for companion in eligible:
@@ -711,22 +730,6 @@ class GoblinService:
                            "persistent_goblins": self._roster_context()}
                 self._submit_think("think", {"npc_id": npc_id, "owner": owner}, "propose_think", context)
                 return None
-        if callable(getattr(self.qwen, "propose_banter", None)):
-            pair = self._banter_pair(companions, now)
-            if pair is not None:
-                goblins = []
-                for companion in pair:
-                    view = brain_view(companion)
-                    situation = view.get("situation") if isinstance(view.get("situation"), Mapping) else {}
-                    digest = self.mind.digest(str(companion["npc_id"]))
-                    goblins.append({"name": companion.get("name"), "owner": companion.get("owner"),
-                                    "task": companion.get("task"),
-                                    "situation": {k: situation.get(k) for k in ("time", "weather", "threats",
-                                                  "base", "place") if k in situation},
-                                    "memory": {"trust_in_owner": digest["trust_in_owner"],
-                                               "recent_memories": digest["recent_memories"][-5:]}})
-                self._submit_think("banter", {"pair": [(c.get("npc_id"), c.get("name")) for c in pair]},
-                                   "propose_banter", {"goblins": goblins})
         return None
 
     def _banter_pair(self, companions: list[Mapping[str, object]], now: float):

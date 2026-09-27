@@ -132,15 +132,15 @@ class FreewillServiceTests(unittest.TestCase):
         service.think_initial_delay = 0
         return service
 
-    def _state(self, service, **overrides):
+    def _state(self, service, together=False, **overrides):
         base = {"alive": True, "body_present": True, "body_mode": "npc", "control_ready": True,
                 "npc_engine_ready": True, "mode": "PARTY", "weapon_ready": True, "owner_online": True,
                 "owner_idle_seconds": 20, "task": "FOLLOW", "combat_state": "NONE", "freewill": True}
         alice = dict(base, npc_id="goblin.primary.alice", owner="Alice", name="Ratspit",
                      companion_authority_token="companion-alice",
-                     situation=situation(nearby=[{"npc_id": "goblin.primary.bob", "name": "Snotgrub"}]))
+                     situation=situation(nearby=[{"npc_id": "goblin.primary.bob", "name": "Snotgrub"}] if together else []))
         bob = dict(base, npc_id="goblin.primary.bob", owner="Bob", name="Snotgrub", freewill=False,
-                   situation=situation(nearby=[{"npc_id": "goblin.primary.alice", "name": "Ratspit"}]))
+                   situation=situation(nearby=[{"npc_id": "goblin.primary.alice", "name": "Ratspit"}] if together else []))
         alice.update(overrides.pop("alice", {}))
         bob.update(overrides.pop("bob", {}))
         stamp = int(self.now[0] * 1000)
@@ -217,6 +217,21 @@ class FreewillServiceTests(unittest.TestCase):
         finally:
             service.close()
 
+    def test_meetup_goes_before_a_due_think_turn(self):
+        # Live: with both Goblins thinking every ~40 s the banter slot never came up.
+        qwen = ThinkingQwen()
+        service = self._service(qwen)
+        try:
+            self._state(service, together=True, bob={"freewill": True, "companion_authority_token": "companion-bob"})
+            service.run_once(); self._drain(service)
+            self.assertEqual(service.run_once().status, "banter_scheduled")
+            self.assertEqual(qwen.think_contexts, [])
+            service.run_once(); self._drain(service)
+            self.assertEqual(len(qwen.think_contexts), 1)  # thinking resumes next
+            self.assertEqual(len(qwen.banter_contexts), 1)  # pair cooldown holds
+        finally:
+            service.close()
+
     def test_choosing_follow_while_following_is_not_published(self):
         qwen = ThinkingQwen(action="FOLLOW")
         service = self._service(qwen)
@@ -264,7 +279,7 @@ class FreewillServiceTests(unittest.TestCase):
         service = self._service(qwen)
         try:
             # Alice's Goblin is busy with an order, so only social paths run.
-            self._state(service, alice={"task": "WAIT"})
+            self._state(service, together=True, alice={"task": "WAIT"})
             service.run_once()
             self._drain(service)
             self.assertEqual(service.run_once().status, "banter_scheduled")
@@ -273,7 +288,7 @@ class FreewillServiceTests(unittest.TestCase):
             says = [c for c in self._commands(service) if c.fields["action"] == "SAY"]
             self.assertEqual(len(says), 1)  # the second line is 4 s later
             self.now[0] += 5
-            self._state(service, alice={"task": "WAIT"})
+            self._state(service, together=True, alice={"task": "WAIT"})
             service.run_once()
             says = [c for c in self._commands(service) if c.fields["action"] == "SAY"]
             self.assertEqual([c.fields["npc_id"] for c in says],
