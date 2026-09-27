@@ -176,3 +176,41 @@ lock/key/content conservation, and two-client observation for this access
 operation. It does not prove inventory transfer or keyed-job save/restart
 recovery. Goblin opening locked doors remains intentional behavior and is not
 restricted by this container check.
+
+## Two-client missing-key and code-lock refusal, 2026-09-27
+
+Source `e61f8f6` ran on disposable server PID 41792 with server-side Storm.
+Ordinary no-Storm clients 47276 (`m3path_61`) and 32600 (`m3witness_54`)
+entered the same running world. A flag-gated server probe created and registered
+one native `IsoThumpable` container, placed one real `Base.Nails` item inside,
+then exercised Goblin's ordinary `Brain.setTask(... GAIN_ACCESS ... CONTAINER)`
+route. The fixture was registered and transmitted before any lock setter could
+emit a `SyncThumpable` packet.
+
+- Missing matching padlock key: the normal task returned `accepted=false` with
+  `no natively accessible container within five tiles`.
+- Nonzero combination code 7419: the same normal task returned the same refusal.
+- Both refusals retained the exact prior active task and payload, Goblin
+  inventory IDs, content ID 771542329 and native lock state. No fixture key was
+  added and no lock or content mutation occurred.
+- Both clients independently observed content ID 771542329 at ready and terminal
+  phases. They agreed on `padlocked=true, code=0` for the missing-key phase and
+  `padlocked=false, code=7419` for the code-lock phase.
+- Probe cleanup removed the temporary crate. All eight staged flag/probe files
+  were removed, both clients and the server were stopped, and read-only package
+  checks reported exact SHA-256/file-set matches for all five disposable
+  packages: 171 files each.
+
+Raw passing logs:
+
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-container-denial-two-client-20260927.server.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-container-denial-two-client-20260927.client10.log`
+- `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-container-denial-two-client-20260927.client11.log`
+
+Probe SHA-256: `cde0918f59c30d569fa2f0a4068b29096076880d12ce5ad0937cbf485a518fb9`.
+Client observer SHA-256:
+`d42dd276f43068ae6a287b45c9502b184cb41e3384a6eb664cc1af37b69290cf`.
+This closes the normal-task missing-key/code-lock refusal gate. It does not
+change the explicit access adapter: Goblin opening locked doors is intended
+behavior when its authorized route supports that operation. Keyed-container
+save/restart remains separate and unverified.

@@ -1,6 +1,17 @@
 # Abilities V2 evidence ledger
 
-## Current checkpoint — 2026-09-26
+## Current checkpoint — 2026-09-27
+
+- CONTAINER normal-task denial passed on source e61f8f6 with server-side Storm
+  and two ordinary no-Storm clients (`m3path_61`, `m3witness_54`). A real
+  registered native container holding one real Nails item refused both a
+  missing matching padlock key and nonzero combination code. The active task,
+  payload, Goblin inventory, content ID and lock state were unchanged; both
+  clients observed matching ready/terminal contents and lock values. Probe and
+  flags were removed and all five disposable packages again match the 171-file
+  source exactly. This does not restrict intentional explicit locked-door
+  opening and does not prove keyed-container restart recovery. See
+  MILESTONE3_CONTAINER_CHECK.md.
 
 - Fresh permanent-toolkit provisioning and restart persistence passed on
   926bb88 with server-side Storm and ordinary no-Storm account `m3toolkit_27`.
