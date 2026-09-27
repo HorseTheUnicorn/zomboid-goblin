@@ -12,7 +12,8 @@ local Motion = {
     -- Last native path request per body, and churn counters for diagnosis.
     requests = setmetatable({}, { __mode = "k" }),
     churn = setmetatable({}, { __mode = "k" }),
-    followArrived = setmetatable({}, { __mode = "k" })
+    followArrived = setmetatable({}, { __mode = "k" }),
+    followChasing = setmetatable({}, { __mode = "k" })
 }
 local rejoined = setmetatable({}, { __mode = "k" })
 
@@ -369,6 +370,7 @@ function Motion.clearFollowSlot(body)
     Motion.followSlots[body] = nil
     Motion.followDetours[body] = nil
     Motion.followArrived[body] = nil
+    Motion.followChasing[body] = nil
 end
 
 -- Count navigation churn (route resets, stops, native requests) and report
@@ -421,9 +423,15 @@ function Motion.followGoal(body, owner, timestamp)
                 blacklist_kind = "approach" }
         end
     end
-    if math.floor(actor.z) ~= math.floor(leader.z) or gap > 6 then
+    -- Mode hysteresis: chase the owner directly beyond 6 tiles, and keep
+    -- doing so until within 4.5. Live logs showed a Goblin hovering near 6
+    -- tiles flipping between a slot and the character target every tick.
+    local chaseLimit = Motion.followChasing[body] and 4.5 or 6
+    if math.floor(actor.z) ~= math.floor(leader.z) or gap > chaseLimit then
+        Motion.followChasing[body] = true
         return leader, gap, { goal_type = "character", follow_target = owner, goal_key = "character" }
     end
+    Motion.followChasing[body] = nil
     local actorSquare, leaderSquare = squareAt(actor), squareAt(leader)
     -- Short-range following needs both streamed endpoints before selecting a
     -- slot or falling back to a character path. The normal spawn gap can be

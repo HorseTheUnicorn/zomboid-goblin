@@ -109,6 +109,21 @@ class FreewillLuaTests(unittest.TestCase):
             assert(nav.goal_key~='arrived')
         ''')
 
+    def test_follow_chase_mode_has_hysteresis(self):
+        self.lua.execute('''
+            Motion=require('GoblinSurvivor/GoblinLocomotion')
+            player.x,player.y=8.5,0.5
+            a.x,a.y=1.9,0.5    -- 6.6 tiles: chase the owner directly
+            local _,_,nav=Motion.followGoal(a,player,1000)
+            assert(nav.goal_type=='character')
+            a.x,a.y=3.0,0.5    -- 5.5 tiles: still chasing, no flip to a slot
+            _,_,nav=Motion.followGoal(a,player,1100)
+            assert(nav.goal_type=='character')
+            a.x,a.y=4.4,0.5    -- 4.1 tiles: close enough to take a slot
+            _,_,nav=Motion.followGoal(a,player,1200)
+            assert(nav.goal_type~='character')
+        ''')
+
     def test_explicit_orders_are_never_recalled(self):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy')
