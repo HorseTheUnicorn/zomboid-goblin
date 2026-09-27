@@ -2,6 +2,15 @@
 
 ## Current checkpoint — 2026-09-26
 
+- Fresh permanent-toolkit provisioning and restart persistence passed on
+  926bb88 with server-side Storm and ordinary no-Storm account `m3toolkit_27`.
+  The new Goblin had exactly one of all 29 reserved types; every checked
+  drainable/fluid tool was empty and a repeated ensure changed no native item
+  identity or inventory size. After a clean server/client restart, persistence
+  reported `restored:35`, all 29 types were still singular/empty, and another
+  ensure remained identity-idempotent. Probe and flag were removed. This does
+  not infer any physical ability merely from tool presence; see
+  MILESTONE3_TOOLKIT_CHECK.md.
 - CONTAINER GAIN_ACCESS real save/restart passed on 72d102e. Native SaveAll
   and GlobalModData save occurred while the task was held; a fresh server
   restored the exact target ID and content baseline without redispatch, then

@@ -4,7 +4,7 @@
   "baseline_revision": "ac74788f4b8a54f1b0520f173f7963a822c77e49",
   "engine_tested_capabilities": [],
   "permanent_toolkit": {
-    "status": "RUNTIME_RESOLVED_AND_UNIT_TESTED_NOT_PHYSICAL_ACTION_PROOF",
+    "status": "RUNTIME_RESOLVED_UNIT_TESTED_AND_LIVE_PERSISTENCE_VERIFIED_NOT_PHYSICAL_ACTION_PROOF",
     "game_build": "42.20.4 b0bbce05d5",
     "enabled_mods_fingerprint": "4f99f45372dfce785c7d6acddf62ae45333574a16575218e514548b24910596e",
     "source": {
@@ -32,10 +32,16 @@
       "Base.Hinge", "Base.Doorknob", "Base.ScrapMetal", "Base.SheetMetal", "Base.Wire", "Base.Twine",
       "Base.WaterBottleFull", "Base.EngineParts", "Base.CarBattery1", "Base.Pills"
     ],
+    "live_evidence": [
+      "2026-09-27 disposable Build 42.20.4 server-side-Storm/no-Storm-client run on 926bb88: fresh m3toolkit_27 Goblin had exactly one of each of 29 configured reserved types; all checked drainable/fluid tools were empty and repeated ensureKit preserved every observed item identity and inventory size.",
+      "After a clean server/client restart, INVENTORY_READY restored the same 35-item Goblin inventory; all 29 reserved types remained singular/empty and another ensureKit call preserved all observed item identities and size. See docs/MILESTONE3_TOOLKIT_CHECK.md."
+    ],
     "limitations": [
       "Registry resolution proves identifiers, not that any particular world action supports the managed IsoZombie",
       "Bolt cutters, sledgehammer and battery charger remain unavailable to planners until each native workflow is separately verified",
-      "Blowtorch provisioning deliberately creates no propane"
+      "Blowtorch provisioning deliberately creates no propane",
+      "Reserved-tool exclusion has source and unit coverage but still needs per-recipe and delivery live acceptance where those paths are enabled",
+      "The IsoZombie inventory is server-authoritative; no client inventory UI visibility is claimed"
     ]
   },
   "capabilities": [

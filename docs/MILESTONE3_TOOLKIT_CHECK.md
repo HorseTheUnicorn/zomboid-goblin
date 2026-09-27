@@ -82,3 +82,45 @@ Probe SHA-256:
 Raw log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-fuel-20260926.server.log`.
 Four probe-control tests pass, including restoration after simulated unwanted
 refilling. Staged probe and flag removed after final sample.
+
+## Fresh provisioning and server-restart persistence on 926bb88
+
+Disposable `goblin-local` used server-side Storm and one ordinary no-Storm
+client logged in as the fresh test account `m3toolkit_27`. The first server was
+PID 59056 and the client was PID 46820. The account's managed Goblin reported
+`INVENTORY_READY ... status=new`, followed by one copy of every one of the 29
+configured reserved tool types.
+
+- The probe called `Tools.ensureKit` a second time and recorded
+  `complete=true count=29 empty_contents=true`.
+- Native item IDs/full types and total inventory size were identical before
+  and after that idempotence call (`inventory_identity_unchanged=true`, size
+  35). Newly provisioned drainable and fluid-backed reserved tools therefore
+  contained no generated fuel or fluid.
+- The client and server were stopped normally so the native save path ran.
+  A fresh server process (PID 40236) and fresh no-Storm client process (PID
+  20112) then loaded the same account.
+- On restart, the server reported
+  `INVENTORY_READY npc_id=goblin.primary.m3toolkit_27 status=restored:35`.
+  The restored actor again had exactly one of all 29 reserved types, all
+  checked drainable/fluid contents were empty, and another `Tools.ensureKit`
+  call left every observed inventory identity and the size unchanged.
+
+This closes fresh empty-tool provisioning, repeated-update idempotence and
+normal server save/restart persistence for the permanent toolkit. It does not
+by itself prove that every future recipe excludes reserved tools, client UI
+visibility of the IsoZombie inventory, or any physical ability associated with
+a tool; those remain capability-specific gates.
+
+Evidence:
+
+- Initial log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-fresh-20260927.server.log`
+  (SHA-256 `88649528ec9eadafacd2b31fd3250ca2ae9f82f2dbca548502fd76ae67d5992b`).
+- Restart log: `C:\Users\tomgr\Zomboid\goblin-test-backups\m3-toolkit-restart-20260927.server.log`
+  (SHA-256 `cd82cc98c2033851dccd517e8d7dfefbd21ec5afd6518f002b4828319a9c63ef`).
+- Probe SHA-256:
+  `59f8a5e7ad63bc825cb276780b2f43ba333a1acefffdb4feea7251aca9a1df0e`.
+
+Both processes were stopped and the staged probe/flag were removed. The local
+profile retained `SaveWorldEveryMinutes=0`; production and Workshop were not
+changed.
