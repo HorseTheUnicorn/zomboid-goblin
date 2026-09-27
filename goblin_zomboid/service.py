@@ -784,6 +784,11 @@ class GoblinService:
             del history[:-12]
         day = self.mind.last_day.get(str(npc_id))
         action = decision.action.action
+        if action is Action.FOLLOW and latest.get("task") == "FOLLOW":
+            # "Keep following" while already following is not a choice; treat
+            # it as a talk turn so the next turn is pushed toward real work.
+            self._count("think_follow_noop")
+            action = Action.SAY
         if action is Action.SAY:
             self.mind.record(str(npc_id), "thought", spoken or "kept quiet", day)
             self._count("think_spoke")

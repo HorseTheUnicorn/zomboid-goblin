@@ -104,6 +104,8 @@ class ThinkingQwen(FakeQwen):
         payload = {"intent": self.action, "mode": context["mode"]}
         if self.action == "SAY":
             payload["text"] = text
+        if self.action == "FOLLOW":
+            payload["target"] = {"kind": "player", "player": "speaker"}
         return IntentValidator().validate(payload), text
 
     def propose_banter(self, context):
@@ -212,6 +214,18 @@ class FreewillServiceTests(unittest.TestCase):
             service.run_once()  # identical line again: dropped, stays quiet
             self.assertEqual(len(self._commands(service)), before)
             self.assertEqual(service.think_stats.get("think_repeat_dropped"), 1)
+        finally:
+            service.close()
+
+    def test_choosing_follow_while_following_is_not_published(self):
+        qwen = ThinkingQwen(action="FOLLOW")
+        service = self._service(qwen)
+        try:
+            self._state(service, bob={"situation": situation()})
+            service.run_once(); self._drain(service)
+            self.assertEqual(service.run_once().status, "think_spoke")
+            self.assertEqual([c.fields["action"] for c in self._commands(service)], ["SAY"])
+            self.assertEqual(service.think_stats.get("think_follow_noop"), 1)
         finally:
             service.close()
 

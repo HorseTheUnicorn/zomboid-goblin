@@ -377,6 +377,7 @@ class QwenClient:
         "it. Now and then ask the owner a real question or raise a problem instead of (or as well as) "
         "working. SAY is only for when talking really is the best move. Never claim work is finished. "
         "If event.last_turn_was_talk is true you already talked last time: pick a real job now, not SAY. "
+        "FOLLOW is not a job; choose it only when threats are close. "
         "Never reuse the jokes, images or questions in event.your_recent_lines; say something new or keep "
         "the narration to a few plain words."
     )
