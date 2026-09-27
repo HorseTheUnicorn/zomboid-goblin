@@ -951,6 +951,40 @@ class AccessV2Tests(unittest.TestCase):
             assert(send('FOLLOW',{kind='teleport',label='anywhere'})=='rejected')
         ''')
 
+    def test_free_will_follow_does_not_hold_back_chores(self):
+        # Live: Qwen chose "FOLLOW" every ~40 s; each one reset the chore
+        # grace timer, so Goblin stood beside his owner indefinitely.
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinBridge']=nil
+            package.loaded['GoblinSurvivor/Config']={enabled=true,npcId='dev.survivor.001'}
+            package.loaded['GoblinSurvivor/Net']={safeTable=function() return true end,
+                safeId=function(value) return type(value)=='string' end}
+            package.loaded['GoblinSurvivor/Authority']={requires=function(a) return a=='CHOP_WOOD' end,
+                consume=function() return true end,consumeOffline=function() return false end}
+            package.loaded['GoblinSurvivor/GoblinSpawner']={findByNpcId=function(id) return a end}
+            local md={GoblinFreewillEnabled=true,GoblinTask='FOLLOW'}
+            package.loaded['GoblinSurvivor/GoblinBody']={owner=function() return 'horse' end,
+                say=function() end,data=function() return md end}
+            package.loaded['GoblinSurvivor/GoblinBrain']={execute=function() return true,'accepted' end}
+            local n=0
+            package.loaded['GoblinSurvivor/IPC']={isReady=function() return true end,
+                listReady=function() return {'one'} end,
+                readReady=function() return bridge_message end,
+                writeResponse=function() end,acknowledge=function() end,archive=function() end,deadletter=function() end}
+            local Bridge=require('GoblinSurvivor/GoblinBridge')
+            local function send(action)
+                n=n+1
+                bridge_message={protocol=1,request_id='fw-'..n,timestamp_ms=n,type='command.npc_action',
+                    npc_id='dev.survivor.001.horse',owner='horse',action=action,freewill=true,
+                    authority_token='companion-'..n}
+                Bridge.tick()
+            end
+            send('FOLLOW')
+            assert(md.GoblinFreewillLastAt==nil and md.GoblinFreewill~=true)
+            send('CHOP_WOOD')
+            assert(md.GoblinFreewillLastAt~=nil and md.GoblinFreewill==true)
+        ''')
+
     def test_other_player_safehouse_denies_access_and_breach(self):
         self.lua.execute('''
             SafeHouse={getSafeHouse=function(square)

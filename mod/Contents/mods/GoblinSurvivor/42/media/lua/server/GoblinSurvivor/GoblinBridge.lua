@@ -223,8 +223,12 @@ local function process(stem)
             if accepted and message.freewill == true then
                 -- Free-will work is recallable and never overrides later orders.
                 local data = Body.data(body)
-                if data then
-                    if message.action ~= "SAY" then data.GoblinFreewill = true end
+                -- "Keep following"/"wait" is not a choice of work: it must not hold
+                -- back filler chores, or Goblin just stands there.
+                local idleChoice = message.action == "SAY" or message.action == "FOLLOW"
+                    or message.action == "WAIT" or message.action == "NOOP"
+                if data and not idleChoice then
+                    data.GoblinFreewill = true
                     data.GoblinFreewillLastAt = type(getTimestampMs) == "function" and getTimestampMs() or 0
                     data.GoblinFreewillInterrupted = nil
                 end
