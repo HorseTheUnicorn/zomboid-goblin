@@ -29,7 +29,7 @@ only). Capture the server stdout log and both client `console.txt` files.
 
 | Gate | Procedure | Pass criteria |
 | --- | --- | --- |
-| Locked gate, two-client rerun | Re-run the `Milestone3GateRouteProbe/Observer` pair as corrected on 09-26. | Both clients log matching `ready` → `terminal` identities: padlock removed, key consumed, gate open, Goblin on the `to` side. |
+| Locked gate, two-client rerun | Re-run the `Milestone3GateRouteProbe/Observer` pair as corrected on 09-27 (server-origin gate sent with `transmitAddObjectToSquare`; observer matches the Goblin by online ID). Server-side runs already pass; see V2_STATUS. | Both clients log matching `ready` → `terminal` identities: padlock removed, key consumed, gate open, Goblin on the `to` side. |
 | Window breach | Owner types `/goblin breach building` beside a house whose only entry is a closed window. | Server logs a breach route. The window is smashed or opened on **both** clients. Goblin is inside. Save and restart, then confirm the window state persisted. |
 | Alternate entrance | Lock the front door without a key and leave the back door open. Order `/goblin access building`. | The route falls back to the back door. The front door stays locked on both clients. |
 | Fence/gate after restart | Cross a fence (`access yard`), save, restart, repeat. | The same traversal works after restart. No duplicate or phantom crossing. |

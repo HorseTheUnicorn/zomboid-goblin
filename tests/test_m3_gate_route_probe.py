@@ -14,16 +14,22 @@ class GateRouteProbeTests(unittest.TestCase):
         self.assertIsNotNone(lua.eval("loadstring")(PROBE.read_text()))
         self.assertIsNotNone(lua.eval("loadstring")(OBSERVER.read_text()))
 
-    def test_fixture_is_registered_before_syncing_lock_fields(self):
+    def test_server_origin_fixture_has_network_index_before_lock_sync(self):
         source = PROBE.read_text()
-        registered = source.index("center:AddSpecialObject(t.gate)")
-        transmitted = source.index("t.gate:transmitCompleteItemToClients()")
+        transmitted = source.index("center:transmitAddObjectToSquare(t.gate")
+        registered = source.index("center:getSpecialObjects():add(t.gate)")
         key_set = source.index("t.gate:setKeyId(lockId)")
         padlocked = source.index("t.gate:setLockedByPadlock(true)")
 
-        self.assertLess(registered, transmitted)
-        self.assertLess(transmitted, key_set)
+        self.assertLess(transmitted, registered)
+        self.assertLess(registered, key_set)
         self.assertLess(key_set, padlocked)
+
+    def test_fixture_waits_for_actor_square_and_coordinates_to_agree(self):
+        source = PROBE.read_text()
+        self.assertIn("math.floor(body:getX())~=center:getX()", source)
+        self.assertIn("math.floor(body:getY())~=center:getY()", source)
+        self.assertIn("math.floor(body:getZ())~=center:getZ()", source)
 
     def test_fixture_forces_normal_route_without_moving_actor_directly(self):
         source = PROBE.read_text()
@@ -59,6 +65,18 @@ class GateRouteProbeTests(unittest.TestCase):
         self.assertIn('return fallback,"native-door"', source)
         self.assertIn('side=="from" and open==false and padlocked==true', source)
         self.assertIn('side=="to" and open==true and padlocked==false', source)
+
+    def test_clients_identify_the_goblin_without_server_mod_data(self):
+        # Live 2026-09-27: every client phase logged target_missing because
+        # the observer searched client-side modData, which the server never
+        # replicates. Clients now match the native online ID from the probe.
+        probe = PROBE.read_text()
+        observer = OBSERVER.read_text()
+        self.assertIn("online_id=t.body and t.body:getOnlineID() or -1", probe)
+        self.assertIn("body:getOnlineID()==args.online_id", observer)
+        self.assertIn('body:GetVariable("GoblinID")==wanted', observer)
+        self.assertNotIn("data.GoblinOwner==account", observer)
+        self.assertIn("gate_found=", observer)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,10 @@ local function notify(t,phase,success)
         phase=phase,success=success==true,id=t.marker,owner=owner,
         x=t.gateSquare:getX(),y=t.gateSquare:getY(),z=t.gateSquare:getZ(),
         from_x=t.center:getX(),from_y=t.center:getY(),
-        to_x=t.destination:getX(),to_y=t.destination:getY(),key_id=lockId})
+        to_x=t.destination:getX(),to_y=t.destination:getY(),key_id=lockId,
+        -- Clients cannot see server modData on the actor; they identify the
+        -- Goblin by its native online ID instead.
+        online_id=t.body and t.body:getOnlineID() or -1})
 end
 
 local function noEdgeObject(a,b)
@@ -78,6 +81,14 @@ end
 local function validCenter(body,ownerPlayer)
     local center=body:getCurrentSquare()
     if not center or center:getZ()~=0 or center:getRoom() then return nil end
+    -- Native zombie simulation can briefly advance the actor coordinates
+    -- before getCurrentSquare() catches up. Building the fixture during that
+    -- window makes the probe assert the opposite crossing direction even
+    -- though GAIN_ACCESS physically crosses the gate. Wait for one coherent
+    -- actor snapshot before choosing the fixture square.
+    if math.floor(body:getX())~=center:getX()
+        or math.floor(body:getY())~=center:getY()
+        or math.floor(body:getZ())~=center:getZ() then return nil end
     local ownerSquare=ownerPlayer:getCurrentSquare()
     if not ownerSquare or ownerSquare:getZ()~=center:getZ() then return nil end
     local dx=ownerPlayer:getX()-body:getX();local dy=ownerPlayer:getY()-body:getY()
@@ -120,8 +131,15 @@ local function createFixture(body,player)
         "fixtures_doors_01_1",true,{})
     t.gate:setIsDoor(true)
     t.gate:getModData().GoblinM3GateRouteID=t.marker
-    -- Registration must precede lock setters that emit SyncThumpable packets.
-    center:AddSpecialObject(t.gate);t.gate:transmitCompleteItemToClients()
+    -- This fixture originates on the server, unlike a normal player build
+    -- that already has a predicted client object. transmitCompleteItemToClients
+    -- only updates that pre-existing object, so use the native add-object
+    -- packet here. Keep the same instance in specialObjects as well because
+    -- IsoGridSquare:getDoor() searches that collection for pathing doors.
+    center:transmitAddObjectToSquare(t.gate,center:getObjects():size())
+    center:getSpecialObjects():add(t.gate)
+    -- Lock setters emit SyncThumpable immediately, so they must run only
+    -- after transmitAddObjectToSquare assigns a real object index.
     t.gate:setKeyId(lockId);t.gate:setLockedByPadlock(true)
     t.key=body:getInventory():AddItem("Base.KeyPadlock");assert(t.key,"fixture key unavailable")
     t.key:setKeyId(lockId);t.keyItemId=tostring(t.key:getID())

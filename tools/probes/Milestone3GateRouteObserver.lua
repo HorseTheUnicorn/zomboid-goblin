@@ -42,11 +42,21 @@ local function findGate(args)
     if fallback then return fallback,"native-door" end
 end
 
-local function findGoblin(account)
+local function findGoblin(args)
+    -- Server modData (GoblinNPC/GoblinOwner) never reaches clients, so the
+    -- earlier lookup always failed and every phase logged target_missing.
+    -- Match the native online ID the server sends, then the Goblin mod's
+    -- client-side GoblinID animation variable as a fallback.
     local zombies=getCell():getZombieList()
+    local wanted="dev.survivor.001."..tostring(args.owner)
     for index=0,zombies:size()-1 do
-        local body=zombies:get(index);local data=body:getModData()
-        if data.GoblinNPC==true and data.GoblinOwner==account then return body end
+        local body=zombies:get(index)
+        if type(args.online_id)=="number" and args.online_id>=0 and body:getOnlineID()==args.online_id then
+            return body,"online_id"
+        end
+        if body:getVariableBoolean("GoblinNPC") and body:GetVariable("GoblinID")==wanted then
+            return body,"goblin_id"
+        end
     end
 end
 
@@ -70,7 +80,7 @@ Events.OnTick.Add(function()
     end
     for index=#observations,1,-1 do
         local observation=observations[index];local args=observation.payload
-        local gate,identifiedBy=findGate(args);local body=findGoblin(args.owner)
+        local gate,identifiedBy=findGate(args);local body,bodyBy=findGoblin(args)
         if gate and body then
             local bx,by=math.floor(body:getX()),math.floor(body:getY())
             local side=bx==args.from_x and by==args.from_y and "from"
@@ -87,12 +97,14 @@ Events.OnTick.Add(function()
                     .." padlocked="..tostring(padlocked)
                     .." key_id="..tostring(gate:getKeyId())
                     .." identified_by="..tostring(identifiedBy)
+                    .." goblin_by="..tostring(bodyBy)
                     .." expected="..tostring(expected))
                 table.remove(observations,index)
             end
         elseif now-observation.received>8000 then
             print("[GoblinSurvivor] M3_GATE_ROUTE_CLIENT account="..playerAccount
-                .." phase="..tostring(args.phase).." target_missing=true")
+                .." phase="..tostring(args.phase).." target_missing=true"
+                .." gate_found="..tostring(gate~=nil).." goblin_found="..tostring(body~=nil))
             table.remove(observations,index)
         end
     end

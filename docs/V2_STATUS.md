@@ -95,6 +95,20 @@ sets every perk to 10).
 
 Live checks are in the runbook, section 6c.
 
+### Locked gate route, 2026-09-27 (server passes, two-client observation pending)
+
+Three disposable-server runs of `Milestone3GateRouteProbe` (13:31, 13:38 and
+13:43 local) ended `terminal=COMPLETE success=true crossed=true open=true
+padlocked=false key_id=-1 key_consumed=true returned_padlocks=1`, then cleaned
+up. Both clients logged `target_missing=true` for every phase, so the
+two-client half of the gate is still open. The observer searched client-side
+`modData.GoblinNPC/GoblinOwner`, which the server never replicates, so it could
+not find the Goblin regardless of the gate. The probe now sends the Goblin's
+native online ID, and the observer matches on that, or on the client-side
+`GoblinID` variable. It also logs `gate_found`/`goblin_found` when a phase is
+missing. The probe also waits for a coherent actor square and sends the
+server-built gate with `transmitAddObjectToSquare` before any lock packets.
+
 ## Remaining work
 
 | Milestone | What remains |
