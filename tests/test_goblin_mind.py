@@ -182,6 +182,17 @@ class FreewillServiceTests(unittest.TestCase):
         finally:
             service.close()
 
+    def test_free_will_may_replace_scripted_filler_chores(self):
+        qwen = ThinkingQwen()
+        service = self._service(qwen)
+        try:
+            self._state(service, alice={"task": "LOOT", "autonomous": True}, bob={"situation": situation()})
+            service.run_once()
+            self._drain(service)
+            self.assertEqual(service.run_once().status, "freewill_command_published")
+        finally:
+            service.close()
+
     def test_owner_order_or_busy_goblin_is_never_overridden(self):
         for override in ({"task": "WAIT"}, {"freewill": False}, {"owner_idle_seconds": 2},
                          {"combat_state": "ENGAGED"}, {"companion_authority_token": None}):

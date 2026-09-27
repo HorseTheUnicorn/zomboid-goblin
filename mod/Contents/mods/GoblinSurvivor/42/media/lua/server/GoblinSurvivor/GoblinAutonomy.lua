@@ -133,7 +133,14 @@ function Autonomy.update(body,now)
     -- job; scripted chores only fill in if it has been silent for a while,
     -- so Goblin is never left standing around.
     if data.GoblinFreewillEnabled == true then
-        local lastChoice=math.max(record.activeAt or 0,tonumber(data.GoblinFreewillLastAt) or 0)
+        -- Measure from when Goblin last became idle too: otherwise, once the
+        -- owner has been still for a while, every return to FOLLOW is
+        -- immediately refilled by a chore and Qwen never gets a turn.
+        if record.followSequence~=sequence then
+            record.followSequence,record.followSince=sequence,now
+        end
+        local lastChoice=math.max(record.activeAt or 0,tonumber(data.GoblinFreewillLastAt) or 0,
+            record.followSince or 0)
         if now-lastChoice<(tonumber(Config.freewillGraceSeconds) or 60)*1000 then return false end
     end
     if now<record.nextAt then return false end

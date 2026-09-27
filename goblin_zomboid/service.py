@@ -638,7 +638,7 @@ class GoblinService:
     def _think_eligible(cls, companion: Mapping[str, object]) -> bool:
         idle = companion.get("owner_idle_seconds", 0)
         return (cls._social_ready(companion) and companion.get("freewill") is True
-                and companion.get("task") == "FOLLOW"
+                and (companion.get("task") == "FOLLOW" or companion.get("autonomous") is True)
                 and isinstance(idle, (int, float)) and math.isfinite(idle) and idle >= 10
                 and isinstance(companion.get("companion_authority_token"), str))
 

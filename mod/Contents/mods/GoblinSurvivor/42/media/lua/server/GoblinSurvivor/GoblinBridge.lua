@@ -164,7 +164,9 @@ end
 local function freewillReady(body)
     local data = Body.data(body)
     if not data or data.GoblinFreewillEnabled ~= true then return false end
-    return data.GoblinTask == "FOLLOW" or data.GoblinFreewill == true
+    -- Scripted filler chores (autonomous) are fair game too: they only run
+    -- because nobody chose anything better.
+    return data.GoblinTask == "FOLLOW" or data.GoblinFreewill == true or data.GoblinAutonomous == true
 end
 
 local function process(stem)
