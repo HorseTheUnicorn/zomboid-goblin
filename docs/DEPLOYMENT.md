@@ -29,7 +29,7 @@ costs and success/condition rules without player-only XP. No hidden player is
 created and no global recipes are changed. Passenger support adds two server-only
 packet validation guards: a player's entry/seat-switch packet cannot displace a
 Goblin already in that seat. Boarding fails closed if those guards are missing.
-Rebuild and run `CompanionJobsTest` and `CompanionSeatsTest` against the target game/Storm jars after game updates; an
+Rebuild and run `CompanionJobsTest`, `CompanionSeatsTest` and `CompanionAuthorityTest` against the target game/Storm jars after game updates; an
 unverified game update is not a safe production deployment.
 
 To rebuild the platform-independent helper jar on Windows with JDK 25:

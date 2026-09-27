@@ -2131,7 +2131,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinBody.lua",
-          "sha256": "30c7d483156d17775b82d35dc884ec03ceac48d19f44b47529816a3bf8033332"
+          "sha256": "3d1b40fb16a9cdbee09daab75f33f0f36e11a8ca4ab2047ce13e675a1fea8549"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/Config.lua"

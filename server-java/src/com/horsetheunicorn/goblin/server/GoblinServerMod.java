@@ -20,7 +20,8 @@ public final class GoblinServerMod implements ZomboidMod {
         if (!StormEnv.isStormServer()) return java.util.List.of();
         return java.util.List.of(
             new CompanionSeats("zombie.network.packets.vehicle.VehicleEnterPacket"),
-            new CompanionSeats("zombie.network.packets.vehicle.VehicleSwitchSeatPacket"));
+            new CompanionSeats("zombie.network.packets.vehicle.VehicleSwitchSeatPacket"),
+            new CompanionAuthority());
     }
     @Override public void registerEventHandlers() {
         if (StormEnv.isStormServer()) StormEventDispatcher.registerEventHandler(this);
@@ -54,6 +55,7 @@ public final class GoblinServerMod implements ZomboidMod {
                 CompanionSeats.class.getMethod("ready"), "goblinServerPassengerReady");
             System.out.println("[GoblinSurvivor] SERVER_JAVA_READY inventory=native jobs=craft,repair rejoin=native_authority atomic_ipc=true client_hooks=none");
             System.out.println("[GoblinSurvivor] PASSENGER_SEAT_GUARD ready="+CompanionSeats.ready());
+            System.out.println("[GoblinSurvivor] OWNER_AUTHORITY_PIN ready="+CompanionAuthority.ready());
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Goblin server API registration failed", error);
         }

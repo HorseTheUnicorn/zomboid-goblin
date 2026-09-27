@@ -278,6 +278,8 @@ function Body.setPhysicalState(body, physical, moveType, combatState)
     local moving = move ~= Constants.MOVE_TYPE.IDLE
     local running = move == Constants.MOVE_TYPE.RUN
     setVariable(body, "GoblinNPC", true)
+    -- Read by the server plugin to keep native simulation with the owner.
+    setVariable(body, "GoblinOwner", tostring(data.GoblinOwner or ""))
     setVariable(body, "GoblinPhysicalState", physical)
     setVariable(body, "GoblinMoveType", move)
     setVariable(body, "GoblinCombatState", data.GoblinCombatState)
@@ -333,6 +335,7 @@ function Body.applyInvariants(body)
     call(body, "setTurnAlertedValues", -5, 5)
     setVariable(body, "GoblinNPC", true)
     setVariable(body, "GoblinID", tostring(data.GoblinID))
+    setVariable(body, "GoblinOwner", tostring(data.GoblinOwner or ""))
     setVariable(body, "NoLungeTarget", true)
     setVariable(body, "NoLungeAttack", true)
     setVariable(body, "ZombieHitReaction", "Chainsaw")
