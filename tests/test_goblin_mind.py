@@ -193,6 +193,28 @@ class FreewillServiceTests(unittest.TestCase):
         finally:
             service.close()
 
+    def test_talk_turn_then_job_turn_and_no_repeated_lines(self):
+        qwen = ThinkingQwen(action="SAY")
+        service = self._service(qwen)
+        try:
+            self._state(service, bob={"situation": situation()})
+            service.run_once(); self._drain(service)
+            self.assertEqual(service.run_once().status, "think_spoke")
+            npc = "goblin.primary.alice"
+            self.assertGreaterEqual(service.next_think[npc], self.now[0] + 90)
+            self.assertEqual(service.mind.episodes(npc)[-1]["day"], 3)
+            service.next_think[npc] = 0
+            service.run_once(); self._drain(service)
+            context = qwen.think_contexts[-1]["event"]
+            self.assertTrue(context["last_turn_was_talk"])
+            self.assertEqual(len(context["your_recent_lines"]), 1)
+            before = len(self._commands(service))
+            service.run_once()  # identical line again: dropped, stays quiet
+            self.assertEqual(len(self._commands(service)), before)
+            self.assertEqual(service.think_stats.get("think_repeat_dropped"), 1)
+        finally:
+            service.close()
+
     def test_owner_order_or_busy_goblin_is_never_overridden(self):
         for override in ({"task": "WAIT"}, {"freewill": False}, {"owner_idle_seconds": 2},
                          {"combat_state": "ENGAGED"}, {"companion_authority_token": None}):

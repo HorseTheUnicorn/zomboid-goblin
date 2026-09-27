@@ -35,6 +35,13 @@ local allowedKeys = {
 local targetKeys = { kind=true, name=true, player=true, label=true }
 local itemKeys = { name=true, count=true, category=true }
 local accessTargetKinds = { BUILDING=true, ROOM=true, YARD=true, VEHICLE=true, CONTAINER=true }
+-- Semantic (label-only) target kinds the Python controller attaches, e.g. a
+-- FOLLOW of the speaker or LOOT_AREA of the current area. They never carry
+-- coordinates or object IDs; Lua resolves the real target itself.
+local semanticTargetKinds = {
+    nearby_threat=true, escape_route=true, nearby_building=true, named_location=true, area=true,
+    player=true, home_base=true, candidate=true, current_position=true, goblin=true, squad=true
+}
 
 local function log(text)
     if type(print) == "function" then print("[GoblinSurvivor] " .. tostring(text)) end
@@ -53,7 +60,12 @@ local function validTarget(target)
         if type(key) ~= "string" or not targetKeys[string.lower(key)] then return false end
     end
     if target.kind ~= nil then
-        if type(target.kind) ~= "string" or string.upper(target.kind) ~= target.kind
+        if type(target.kind) ~= "string" then return false end
+        if semanticTargetKinds[target.kind] == true then
+            local label = target.label or target.name or target.player
+            return label == nil or label == "" or safeText(label, 96)
+        end
+        if string.upper(target.kind) ~= target.kind
             or accessTargetKinds[target.kind] ~= true then return false end
         return true
     end
@@ -180,6 +192,8 @@ local function process(stem)
         return
     end
     if not Config.enabled or not valid(message) then
+        log("QWEN_COMMAND_REJECTED request=" .. tostring(message.request_id) .. " action=" .. tostring(message.action)
+            .. " reason=failed server validation")
         IPC.writeResponse(message.request_id, "rejected", "Goblin command failed server validation")
         IPC.acknowledge(message.request_id, "rejected")
         IPC.archive("commands", stem, "Goblin command rejected")

@@ -911,6 +911,46 @@ class AccessV2Tests(unittest.TestCase):
             Bridge.tick();assert(#executed==1 and response_status=='rejected')
         ''')
 
+    def test_qwen_bridge_accepts_python_semantic_target_kinds(self):
+        # Regression (live, 2026-09-27): the Python controller attaches
+        # label-only kinds such as current_position/player; Lua rejected every
+        # such LOOT_AREA/FOLLOW silently.
+        self.lua.execute('''
+            package.loaded['GoblinSurvivor/GoblinBridge']=nil
+            package.loaded['GoblinSurvivor/Config']={enabled=true,npcId='dev.survivor.001'}
+            package.loaded['GoblinSurvivor/Net']={safeTable=function() return true end,
+                safeId=function(value) return type(value)=='string' end}
+            package.loaded['GoblinSurvivor/Authority']={requires=function(a) return a=='GAIN_ACCESS' end,
+                consume=function() return true end,consumeOffline=function() return false end}
+            package.loaded['GoblinSurvivor/GoblinSpawner']={findByNpcId=function(id) return a end}
+            package.loaded['GoblinSurvivor/GoblinBody']={owner=function() return 'horse' end,
+                say=function() end,data=function() return {} end}
+            executed={};response_status=nil
+            package.loaded['GoblinSurvivor/GoblinBrain']={execute=function(message,body)
+                executed[#executed+1]=message;return true,'accepted'
+            end}
+            local n=0
+            local function send(action,target)
+                n=n+1
+                bridge_message={protocol=1,request_id='sem-'..n,timestamp_ms=n,type='command.npc_action',
+                    npc_id='dev.survivor.001.horse',owner='horse',action=action,target=target,
+                    authority_token='grant-'..n}
+                Bridge.tick();return response_status
+            end
+            package.loaded['GoblinSurvivor/IPC']={isReady=function() return true end,
+                listReady=function() return {'one'} end,
+                readReady=function() return bridge_message end,
+                writeResponse=function(id,status) response_status=status end,
+                acknowledge=function() end,archive=function() end,deadletter=function() end}
+            Bridge=require('GoblinSurvivor/GoblinBridge')
+            assert(send('LOOT_AREA',{kind='current_position',label='current area'})=='accepted')
+            assert(executed[#executed].action=='LOOT')
+            assert(send('FOLLOW',{kind='player',label='speaker'})=='accepted')
+            assert(send('FOLLOW',{kind='player',label='x=10 y=20'})=='rejected')
+            assert(send('GAIN_ACCESS',{kind='building'})=='rejected')
+            assert(send('FOLLOW',{kind='teleport',label='anywhere'})=='rejected')
+        ''')
+
     def test_other_player_safehouse_denies_access_and_breach(self):
         self.lua.execute('''
             SafeHouse={getSafeHouse=function(square)

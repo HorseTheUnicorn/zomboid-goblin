@@ -874,11 +874,11 @@
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "c6d030afdae4b32660136191488932742dc660b512d4b08101953b2e7ba2c77e"
+        "sha256": "4116683cba6f6073e3a7645321a51d03abf5c39140a9a86d4824fdf0c9450ae0"
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "3ff13fbd6d8afe6683da83a796814b9b49a0c589ec8e816270cd65ef42602c01"
+        "sha256": "ce1a72b8ad11b2e768f4098b69cf0b044c52454128ffcd789eb47531cbb488ca"
       }
     ],
     "chat_generation_actions": [

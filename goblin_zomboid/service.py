@@ -14,6 +14,7 @@ from pathlib import Path
 import threading
 import time
 import random
+import difflib
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -74,6 +75,8 @@ class GoblinService:
         self.journal_queue: list[tuple[str, int]] = []  # (npc_id, finished day)
         self.think_initial_delay = 15.0
         self.think_stats: dict[str, int] = {}
+        self.last_think_talk: dict[str, bool] = {}
+        self.recent_think_lines: dict[str, list[str]] = {}
         self.clock = clock
         self.agent = AgentRuntime(config, clock=clock)
         self.store = self.agent.store
@@ -421,7 +424,8 @@ class GoblinService:
                 speech = self._publish_reply(chat, companion, prepared_speech=generated_speech)
                 self._remember_turn(speaker, text, speech)
                 self.mind.record(body.npc_id, "chat", f"{speaker} said: {text[:100]}"
-                                 + (f" / I said: {speech[:100]}" if speech else ""))
+                                 + (f" / I said: {speech[:100]}" if speech else ""),
+                                 self.mind.last_day.get(body.npc_id))
             else:
                 # Compatibility for older adapters; production uses one request.
                 speech = self._publish_reply(chat, companion)
@@ -698,7 +702,9 @@ class GoblinService:
                 situation = view.pop("situation", None)
                 context = {"mode": body.mode, "controlled_npc_id": npc_id, "controlled_owner": owner,
                            "event": {"type": "free_will",
-                                     "interrupted": companion.get("freewill_interrupted")},
+                                     "interrupted": companion.get("freewill_interrupted"),
+                                     "last_turn_was_talk": self.last_think_talk.get(npc_id, False),
+                                     "your_recent_lines": list(self.recent_think_lines.get(npc_id, []))},
                            "companion": view, "situation": situation,
                            "memory": self.mind.digest(npc_id),
                            "conversation": list(self.dialogue.get(str(owner), [])),
@@ -759,25 +765,41 @@ class GoblinService:
             return ServiceResult("controller_rejected", decision.reason)
         now = self.clock()
         spoken = None
+        recent = self.recent_think_lines.setdefault(str(npc_id), [])
+        if speech and any(difflib.SequenceMatcher(None, speech.lower(), old.lower()).ratio() >= 0.55
+                          for old in recent):
+            self._count("think_repeat_dropped")
+            speech = None  # a rerun of an earlier line: act silently instead
         if speech and self.chatter.record(f"think:{npc_id}:{int(now)}", "game", speech,
                                           now=int(now), priority=2).allowed:
             result = self.npc_driver.execute(SafeAction(Action.SAY, 2, "free-will narration", text=speech,
                                                         npc_id=body.npc_id), owner=owner)
             spoken = speech if result.accepted else None
+        if spoken:
+            recent.append(spoken[:240])
+            del recent[:-5]
         if spoken and isinstance(owner, str):
             history = self.dialogue.setdefault(owner, [])
             history.append({"from": "goblin", "text": spoken[:240]})
             del history[:-12]
+        day = self.mind.last_day.get(str(npc_id))
         action = decision.action.action
         if action is Action.SAY:
-            self.mind.record(str(npc_id), "thought", spoken or "kept quiet")
+            self.mind.record(str(npc_id), "thought", spoken or "kept quiet", day)
             self._count("think_spoke")
+            self.last_think_talk[str(npc_id)] = True
+            # Talking is cheap; give the next decision (which must be a job) more room.
+            self.next_think[str(npc_id)] = max(self.next_think.get(str(npc_id), 0), now + 90)
+            LOG.info("FREEWILL_TALK owner=%s spoke=%s", owner, bool(spoken))
             return ServiceResult("think_spoke" if spoken else "npc_steady", "Goblin spoke up on his own")
         result = self.npc_driver.execute(decision.action, owner=owner, freewill=True,
                                          authority_token=latest.get("companion_authority_token"))
         self.last_action = decision.action.as_dict()
-        self.mind.record(str(npc_id), "choice", f"decided to {action.value}" + (f": {spoken}" if spoken else ""))
+        self.last_think_talk[str(npc_id)] = False
+        self.mind.record(str(npc_id), "choice", f"decided to {action.value}" + (f": {spoken}" if spoken else ""), day)
         self._count("think_acted" if result.accepted else "think_refused")
+        LOG.info("FREEWILL_ACTION owner=%s action=%s status=%s detail=%s", owner, action.value,
+                 result.status, str(result.detail)[:160])
         return ServiceResult("freewill_command_published" if result.accepted else result.status,
                              f"{owner}'s Goblin chose {action.value} on his own", result.detail)
 
