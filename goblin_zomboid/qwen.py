@@ -177,10 +177,15 @@ class QwenClient:
                                  "required": ["name"], "additionalProperties": False}
                 if action in {"FETCH_ITEM", "STOCKPILE"}:
                     required.append("item")
-            if action in {"CHOP_WOOD", "FORAGE", "COOK"}:
+            if action in {"CHOP_WOOD", "FORAGE", "COOK", "CHECK_TRAPS"}:
+                maximum = {"FORAGE": 10, "COOK": 6}.get(action, 5)
                 props["item"] = {"type": "object", "properties": {
-                    "count": {"type": "integer", "minimum": 1, "maximum": 10 if action == "FORAGE" else 5}},
+                    "count": {"type": "integer", "minimum": 1, "maximum": maximum}},
                     "required": ["count"], "additionalProperties": False}
+            if action == "COOK":
+                props["job"] = {"enum": ["food", "soup", "stew"]}
+            if action == "CHECK_TRAPS":
+                props["job"] = {"enum": ["check", "place"]}
             if action in {"INSTALL_PART", "REMOVE_PART", "REPLACE_PART"}:
                 props["job"] = {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"}
                 required.append("job")
@@ -252,8 +257,10 @@ class QwenClient:
             "DELIVER puts Goblin's carried cargo away (optional item.name filter; job floor only if the owner "
             "said the floor is fine); CHOP_WOOD fells item.count 1-5 trees near the owner; TREAT_PLAYER bandages "
             "the owner's wounds; FORAGE searches forest/field ground near the owner for item.count 1-10 real "
-            "finds and brings them home; CHECK_TRAPS empties and re-baits the traps around the base; COOK puts "
-            "item.count 1-5 raw foods from nearby storage in a nearby stove and takes them out cooked. Vehicle jobs use the nearest parked vehicle within five tiles "
+            "finds and brings them home; CHECK_TRAPS empties and re-baits the traps around the base, or with "
+            "job place sets item.count 1-5 new baited traps near the owner; COOK with job food puts item.count 1-5 "
+            "raw foods in a nearby stove or campfire and takes them out cooked, with job soup or stew fills a pot "
+            "with item.count 1-6 ingredients and cooks it; with no stove or fire nearby Goblin builds a campfire. Vehicle jobs use the nearest parked vehicle within five tiles "
             "of the owner: VEHICLE_INSPECT reports, REFUEL_VEHICLE adds real petrol, VEHICLE_SERVICE inspects, "
             "inflates tires, charges the battery and refuels, INSTALL_PART/REMOVE_PART/REPLACE_PART need job as the part id in lower "
             "case (battery, tirefrontleft, headlightleft, ...) and optional item.name, CHANGE_TIRE takes an "

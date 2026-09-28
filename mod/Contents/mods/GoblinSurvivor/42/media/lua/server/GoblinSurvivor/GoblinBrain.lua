@@ -167,8 +167,7 @@ local function ownerJobPayload(action, message)
     local payload = { explicit_owner_order = true }
     if action == T.DISMANTLE and job == "salvage" then payload.salvage = true; return payload end
     if action == T.DISMANTLE or action == T.REPAIR_STRUCTURE or action == T.TREAT_PLAYER
-        or action == T.VEHICLE_INSPECT or action == T.REFUEL_VEHICLE or action == T.VEHICLE_SERVICE
-        or action == T.CHECK_TRAPS then
+        or action == T.VEHICLE_INSPECT or action == T.REFUEL_VEHICLE or action == T.VEHICLE_SERVICE then
         return payload
     end
     if action == T.STOCKPILE then payload.item = item.name; return payload end
@@ -181,7 +180,14 @@ local function ownerJobPayload(action, message)
     if action == T.CHANGE_TIRE then payload.part = job; return payload end
     if action == T.CHOP_WOOD then payload.count = item.count or 1; return payload end
     if action == T.FORAGE then payload.count = item.count or 5; return payload end
-    if action == T.COOK then payload.count = item.count or 3; return payload end
+    if action == T.COOK then
+        if job == "soup" or job == "stew" then payload.dish = job end
+        payload.count = item.count; return payload
+    end
+    if action == T.CHECK_TRAPS then
+        if job == "place" then payload.place = item.count or 2 end
+        return payload
+    end
     return nil
 end
 

@@ -21,6 +21,17 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(result.mode, "PARTY")
         self.assertEqual(result.data["text"], "Stay close, meatbags.")
 
+    def test_cook_and_trap_jobs(self) -> None:
+        soup = self.validator.validate({"intent": "COOK", "mode": "SAFE", "job": "soup", "item": {"count": 6}})
+        self.assertEqual(soup.data["job"], "soup")
+        place = self.validator.validate({"intent": "CHECK_TRAPS", "mode": "SAFE", "job": "place", "item": {"count": 3}})
+        self.assertEqual(place.data["job"], "place")
+        for bad in ({"intent": "COOK", "mode": "SAFE", "job": "cake"},
+                    {"intent": "COOK", "mode": "SAFE", "job": "food", "item": {"count": 6}},
+                    {"intent": "CHECK_TRAPS", "mode": "SAFE", "job": "place", "item": {"count": 6}}):
+            with self.assertRaises(IntentError):
+                self.validator.validate(bad)
+
     def test_equip_requires_the_preferred_weapon(self) -> None:
         result = self.validator.validate(
             {

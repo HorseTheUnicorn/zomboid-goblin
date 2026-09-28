@@ -1,18 +1,21 @@
--- Milestone 5 survival life: foraging, trap runs and stove cooking.
+-- Milestone 5 survival life: foraging, traps and cooking.
 --
 -- FORAGE     : the installed forageSystem (shared/Foraging) rolls a real item
 --              for the forage zone and month at each spot Goblin searches.
 --              Finds are ordinary cargo; Goblin's next delivery takes them to
 --              the base (never conjured, never quarantined).
--- CHECK_TRAPS: STrapSystem trap records within range of the base/owner.
---              Goblin empties caught animals with the installed
---              STrapGlobalObject:removeAnimal (a live catch is dispatched, so
---              the result is the native corpse/food item) and re-baits empty
---              traps with his own conjured bait, owned by his player.
--- COOK       : raw cookable food from nearby storage goes into a loaded
---              IsoStove container that has heat (Goblin switches it on and
---              back off). The engine cooks it; Goblin takes each item out once
---              isCooked() and before it burns, then delivers it with his cargo.
+-- CHECK_TRAPS: check mode visits STrapSystem traps near the base/owner,
+--              empties catches with STrapGlobalObject:removeAnimal (a live
+--              catch is dispatched) and re-baits with conjured bait. Place mode
+--              builds new traps server-side the way TrapBO:create does
+--              (IsoThumpable + TrapSystem.initObjectModData, owned by the
+--              player) from conjured trap items, then baits them.
+-- COOK       : food mode puts raw cookable food in a hot stove or campfire and
+--              takes it out once isCooked(). Soup/stew mode fills a fresh pot
+--              with real ingredients through the installed evolved recipe
+--              (EvolvedRecipe.addItem) and cooks the pot. With no stove or fire
+--              nearby, Goblin builds a campfire (SCampfireSystem:addCampfire)
+--              beside the owner and feeds it his own firewood.
 local Body = require("GoblinSurvivor/GoblinBody")
 local World = require("GoblinSurvivor/GoblinWorld")
 local Support = require("GoblinSurvivor/GoblinJobSupport")
@@ -161,7 +164,9 @@ end
 
 Life.Traps = {}
 Life.TRAP_RADIUS = 30
+Life.TRAP_PLACE_RADIUS = 12
 Life.TRAP_BAIT = "Base.Carrots"
+Life.TRAP_TYPE = "Base.TrapBox"
 
 local function trapSystem()
     local system = rawget(_G, "STrapSystem")
@@ -184,6 +189,13 @@ local function trapsNear(anchor)
     return found
 end
 
+local function trapAt(x, y, z)
+    local system = trapSystem()
+    if not system or type(system.getLuaObjectAt) ~= "function" then return nil end
+    local ok, trap = pcall(system.getLuaObjectAt, system, x, y, z)
+    return ok and trap or nil
+end
+
 local function needsVisit(trap)
     if trap.destroyed then return false end
     if type(trap.animal) == "table" and trap.animal.type then return true end
@@ -204,20 +216,180 @@ local function trapper(body, ownerName)
     }
 end
 
+local function trapDefinition(fullType)
+    for _, def in ipairs(rawget(_G, "Traps") or {}) do
+        if def.type == fullType then return def end
+    end
+    return nil
+end
+
+local function flag(name)
+    local flags = rawget(_G, "IsoFlagType")
+    return flags and flags[name]
+end
+
+-- Mirrors TrapBO:isValid: free, floored, not solid, no tree, no trap, and a
+-- trapping zone so animals can actually come.
+function Life.Traps.siteValid(square)
+    if not square then return false end
+    local _, outside = call(square, "isOutside")
+    if outside ~= true then return false end
+    local p = World.point(square)
+    if trapAt(p.x, p.y, p.z) then return false end
+    local _, moving = call(square, "getMovingObjects")
+    local _, n = call(moving, "size")
+    if (n or 0) > 0 then return false end
+    for _, name in ipairs({ "solid", "solidtrans" }) do
+        local f = flag(name)
+        if f and select(2, call(square, "has", f)) == true then return false end
+    end
+    local floor = flag("solidfloor")
+    if floor and select(2, call(square, "has", floor)) ~= true then return false end
+    local types = rawget(_G, "IsoObjectType")
+    if types and types.tree and select(2, call(square, "has", types.tree)) == true then return false end
+    local TrapSystem = rawget(_G, "TrapSystem")
+    if TrapSystem and type(TrapSystem.getTrapZones) == "function" then
+        local ok, zones = pcall(TrapSystem.getTrapZones, square)
+        if not ok or type(zones) ~= "table" or next(zones) == nil then return false end
+    end
+    return true
+end
+
+local function placeSite(body, anchor, runtime)
+    runtime.tried = runtime.tried or {}
+    for _ = 1, 40 do
+        local r = Life.TRAP_PLACE_RADIUS
+        local point = { x=anchor.x + random(2*r+1) - r, y=anchor.y + random(2*r+1) - r, z=anchor.z }
+        local key = point.x..":"..point.y
+        local square = World.square(point)
+        if not runtime.tried[key] and square and Policy.access(body, { getSquare=function() return square end })
+            and Life.Traps.siteValid(square) then
+            -- Keep traps a few tiles apart.
+            local spaced = true
+            for _, entry in ipairs(trapsNear(point)) do if entry.d < 9 then spaced = false end end
+            if spaced then return square end
+        end
+        runtime.tried[key] = true
+    end
+    return nil
+end
+
+-- Server-side TrapBO:create: the same IsoThumpable, modData and replication,
+-- owned by the player, using a conjured trap item that Goblin spends.
+function Life.Traps.place(body, square, owner, fullType)
+    local def = trapDefinition(fullType)
+    local Thumpable = rawget(_G, "IsoThumpable")
+    if not def or not Thumpable then return nil, "trap definitions are not loaded" end
+    local Provision = require("GoblinSurvivor/GoblinProvision")
+    local created = Provision.enabled() and Provision.create(body, fullType, 1, "trap") or nil
+    local item = created and created[1]
+    if not item then return nil, "could not make a trap" end
+    local cell = getCell()
+    local ok, object = pcall(Thumpable.new, cell, square, def.sprite, false, {})
+    if not ok or not object then
+        call(World.inventory(body), "DoRemoveItem", item)
+        return nil, "the trap object could not be built"
+    end
+    local snare = def.sprite == "constructedobjects_01_16" or def.sprite == "constructedobjects_01_18"
+    call(object, "setName", "Trap")
+    call(object, "setMaxHealth", 50)
+    call(object, "setHealth", 50)
+    call(object, "setCanPassThrough", snare)
+    call(object, "setBlockAllTheSquare", not snare)
+    call(object, "setIsThumpable", not snare)
+    call(square, "AddSpecialObject", object)
+    call(square, "RecalcAllWithNeighbours", true)
+    local TrapSystem = rawget(_G, "TrapSystem")
+    if TrapSystem then pcall(TrapSystem.initObjectModData, object, def, false, owner) end
+    call(object, "transmitCompleteItemToClients")
+    call(World.inventory(body), "DoRemoveItem", item)
+    local p = World.point(square)
+    if not trapAt(p.x, p.y, p.z) and type(triggerEvent) == "function" then
+        pcall(triggerEvent, "OnObjectAdded", object)
+    end
+    local trap = trapAt(p.x, p.y, p.z)
+    if not trap then
+        local system = trapSystem()
+        if system and type(system.loadIsoObject) == "function" then pcall(system.loadIsoObject, system, object) end
+        trap = trapAt(p.x, p.y, p.z)
+    end
+    if not trap then return nil, "the trap system did not register the new trap" end
+    print("[GoblinSurvivor] TRAP_PLACED owner="..tostring(select(2, call(owner, "getUsername")))
+        .." type="..fullType.." at="..p.x..":"..p.y..":"..p.z)
+    return trap
+end
+
+local function bait(body, trap, ownerName)
+    if trap.bait or trap.destroyed then return false end
+    local Provision = require("GoblinSurvivor/GoblinProvision")
+    local created = Provision.enabled() and Provision.create(body, Life.TRAP_BAIT, 1, "trap bait") or nil
+    local item = created and created[1]
+    if not item then return false end
+    local ok = pcall(trap.addBait, trap, Life.TRAP_BAIT, 0, -0.05, trapper(body, ownerName))
+    call(World.inventory(body), "DoRemoveItem", item)
+    return ok and trap.bait ~= nil
+end
+
 function Life.Traps.prepare(body, owner, request)
     local name, why = ownerOrder(body, owner, request)
     if not name then return nil, why end
+    if not trapSystem() then return nil, "the installed trap system is not loaded" end
+    local place = tonumber(type(request) == "table" and request.place) or 0
+    if place ~= math.floor(place) or place < 0 or place > 5 then return nil, "place 1 to 5 traps per order" end
+    if place > 0 then
+        local anchor = anchorFor(body, owner, false)
+        if not anchor then return nil, "owner position unavailable" end
+        if not placeSite(body, anchor, {}) then
+            return nil, "no open outdoor ground where animals roam near you"
+        end
+        return { owner=name, anchor=anchor, place=place, placed=0, completed=0, caught=0, baited=0 },
+            "setting "..place.." baited trap(s) near you"
+    end
     local anchor = anchorFor(body, owner, true)
     if not anchor then return nil, "owner position unavailable" end
-    if not trapSystem() then return nil, "the installed trap system is not loaded" end
     local traps = trapsNear(anchor)
-    if #traps == 0 then return nil, "no traps within thirty tiles of the base or you" end
+    if #traps == 0 then return nil, "no traps within thirty tiles of the base or you; try traps place" end
     return { owner=name, anchor=anchor, completed=0, caught=0, baited=0 },
         "checking "..#traps.." trap(s)"
 end
 
+local function placeUpdate(body, payload, runtime, now)
+    if (payload.placed or 0) >= payload.place then
+        return true, true, string.format("set %d baited trap(s)", payload.placed), "COMPLETE"
+    end
+    if not runtime.site then
+        runtime.site = placeSite(body, payload.anchor, runtime)
+        runtime.readyAt, runtime.siteAt = nil, now
+        if not runtime.site then
+            return true, (payload.placed or 0) > 0,
+                string.format("set %d trap(s); no more good ground nearby", payload.placed or 0), "NO_TARGET"
+        end
+    end
+    local square = runtime.site
+    if now - runtime.siteAt > 45000 then
+        runtime.tried[World.point(square).x..":"..World.point(square).y] = true
+        runtime.site = nil
+        return false
+    end
+    if not Support.work(body, runtime, square, now, 3000, "LOOT", "setting a trap") then return false end
+    runtime.site, runtime.readyAt = nil, nil
+    local p = World.point(square)
+    runtime.tried[p.x..":"..p.y] = true
+    if not Life.Traps.siteValid(square) then return false end
+    local trap, why = Life.Traps.place(body, square, playerFor(payload.owner), Life.TRAP_TYPE)
+    if not trap then
+        runtime.failures = (runtime.failures or 0) + 1
+        if runtime.failures >= 3 then return true, (payload.placed or 0) > 0, why, "ENGINE_ERROR" end
+        return false
+    end
+    payload.placed = (payload.placed or 0) + 1
+    if bait(body, trap, payload.owner) then payload.baited = (payload.baited or 0) + 1 end
+    return false
+end
+
 function Life.Traps.update(body, payload, runtime, now)
     if not playerFor(payload.owner) then return true, false, "owner logged out; trap run stopped", "INTERRUPTED" end
+    if (payload.place or 0) > 0 then return placeUpdate(body, payload, runtime, now) end
     runtime.done = runtime.done or {}
     if not runtime.target then
         for _, entry in ipairs(trapsNear(payload.anchor)) do
@@ -240,7 +412,6 @@ function Life.Traps.update(body, payload, runtime, now)
     end
     if not Support.work(body, runtime, square, now, 2500, "LOOT", "checking a trap") then return false end
     runtime.done[runtime.key], runtime.target, runtime.readyAt = true, nil, nil
-    local actor = trapper(body, payload.owner)
     if type(trap.animal) == "table" and trap.animal.type then
         -- A live catch is dispatched: Goblin carries the native corpse/food item.
         -- The collector name never matches the trap owner, so the installed
@@ -259,16 +430,7 @@ function Life.Traps.update(body, payload, runtime, now)
             print("[GoblinSurvivor] TRAP_ERROR "..tostring(err))
         end
     end
-    if not trap.bait and not trap.destroyed then
-        local Provision = require("GoblinSurvivor/GoblinProvision")
-        local created = Provision.enabled() and Provision.create(body, Life.TRAP_BAIT, 1, "trap bait") or nil
-        local bait = created and created[1]
-        if bait then
-            local ok = pcall(trap.addBait, trap, Life.TRAP_BAIT, 0, -0.05, actor)
-            call(World.inventory(body), "DoRemoveItem", bait)
-            if ok and trap.bait then payload.baited = (payload.baited or 0) + 1 end
-        end
-    end
+    if bait(body, trap, payload.owner) then payload.baited = (payload.baited or 0) + 1 end
     payload.completed = (payload.completed or 0) + 1
     return false
 end
@@ -277,6 +439,8 @@ end
 
 Life.Cook = {}
 Life.COOK_TIMEOUT_MS = 900000
+Life.CAMPFIRE_FUEL = 120 -- game minutes of conjured firewood
+Life.POT_RECIPES = { soup="Soup", stew="Stew" }
 
 local function isStove(object)
     return type(instanceof) == "function" and instanceof(object, "IsoStove")
@@ -287,7 +451,21 @@ local function rawFood(item)
         and select(2, call(item, "isBurnt")) ~= true
 end
 
-local function nearestStove(body, anchor, radius)
+local function campfireSystem()
+    local system = rawget(_G, "SCampfireSystem")
+    return system and system.instance or nil
+end
+
+local function campfireSite(fire)
+    local _, square = call(fire, "getSquare")
+    local container = select(2, call(fire, "getContainer"))
+    local object = select(2, call(fire, "getIsoObject"))
+    if not square or not container or not object then return nil end
+    return { kind="campfire", fire=fire, object=object, square=square, container=container }
+end
+
+-- Nearest heat source: a stove/oven/microwave, else a campfire.
+local function nearestHeat(body, anchor, radius)
     local best, bestD
     for dx = -radius, radius do for dy = -radius, radius do
         local square = World.square({ x=anchor.x+dx, y=anchor.y+dy, z=anchor.z })
@@ -296,89 +474,260 @@ local function nearestStove(body, anchor, radius)
                 local _, container = call(object, "getContainer")
                 if isStove(object) and container and Policy.access(body, object) then
                     local d = dx*dx + dy*dy
-                    if not best or d < bestD then best, bestD = { stove=object, square=square, container=container }, d end
+                    if not best or d < bestD then
+                        best, bestD = { kind="stove", object=object, square=square, container=container }, d
+                    end
                 end
             end
         end
     end end
+    if best then return best end
+    local system = campfireSystem()
+    if system and type(system.getLuaObjectCount) == "function" then
+        local ok, total = pcall(system.getLuaObjectCount, system)
+        for index = 1, (ok and total or 0) do
+            local got, fire = pcall(system.getLuaObjectByIndex, system, index)
+            if got and type(fire) == "table" and fire.z == anchor.z then
+                local d = (fire.x - anchor.x)^2 + (fire.y - anchor.y)^2
+                if d <= radius*radius and (not best or d < bestD) then
+                    local site = campfireSite(fire)
+                    if site and Policy.access(body, site.object) then best, bestD = site, d end
+                end
+            end
+        end
+    end
     return best
+end
+
+-- Outdoor, free, floored square beside the owner for a new campfire.
+local function campfireGround(body, anchor)
+    for r = 1, 3 do
+        for dx = -r, r do for dy = -r, r do
+            if math.max(math.abs(dx), math.abs(dy)) == r then
+                local square = World.square({ x=anchor.x+dx, y=anchor.y+dy, z=anchor.z })
+                if square and select(2, call(square, "isOutside")) == true
+                    and select(2, call(square, "isFree", false)) == true
+                    and Policy.access(body, { getSquare=function() return square end }) then
+                    local _, objects = call(square, "getObjects")
+                    local _, n = call(objects, "size")
+                    if (n or 0) <= 1 then return square end
+                end
+            end
+        end end
+    end
+    return nil
+end
+
+local function heatOn(site)
+    if site.kind == "stove" then
+        return select(2, call(site.object, "Activated")) == true
+    end
+    return site.fire.isLit == true
+end
+
+-- Returns switchedOn, error.
+local function lightHeat(site)
+    if heatOn(site) then return false end
+    if site.kind == "stove" then
+        call(site.object, "Toggle")
+        if not heatOn(site) then return false, "the stove has no power or fuel" end
+        return true
+    end
+    -- Goblin brings his own firewood (conjured fuel, burned in the fire).
+    if (tonumber(site.fire.fuelAmt) or 0) < Life.CAMPFIRE_FUEL then
+        pcall(site.fire.addFuel, site.fire, Life.CAMPFIRE_FUEL)
+    end
+    pcall(site.fire.lightFire, site.fire)
+    if not heatOn(site) then return false, "the campfire would not light" end
+    return true
+end
+
+local function heatOff(site)
+    if not heatOn(site) then return end
+    if site.kind == "stove" then call(site.object, "Toggle")
+    else pcall(site.fire.putOut, site.fire) end
+end
+
+local function potRecipe(name)
+    local manager = rawget(_G, "ScriptManager")
+    local instance = manager and manager.instance
+    if not instance then return nil end
+    for _, key in ipairs({ name, "Base."..name }) do
+        local ok, recipe = pcall(function() return instance:getEvolvedRecipe(key) end)
+        if ok and recipe then return recipe end
+    end
+    local _, list = call(instance, "getAllEvolvedRecipesList")
+    for _, recipe in ipairs(World.values(list)) do
+        if select(2, call(recipe, "getOriginalname")) == name
+            or select(2, call(recipe, "getUntranslatedName")) == name then return recipe end
+    end
+    return nil
+end
+
+local function ingredientFor(recipe)
+    return function(item)
+        if select(2, call(item, "isRotten")) == true or select(2, call(item, "isBurnt")) == true then return false end
+        local ok, entry = call(recipe, "getItemRecipe", item)
+        return ok and entry ~= nil
+    end
 end
 
 function Life.Cook.prepare(body, owner, request)
     local name, why = ownerOrder(body, owner, request)
     if not name then return nil, why end
-    local n = count(request, 3, 5)
-    if not n then return nil, "cook 1 to 5 items per order" end
+    local dish = type(request) == "table" and type(request.dish) == "string" and string.lower(request.dish) or nil
+    if dish == "food" then dish = nil end
+    if dish and not Life.POT_RECIPES[dish] then return nil, "cook food, soup or stew" end
+    local n = count(request, dish and 4 or 3, dish and 6 or 5)
+    if not n then return nil, dish and "a pot takes 1 to 6 ingredients" or "cook 1 to 5 items per order" end
     local anchor = anchorFor(body, owner, false)
     if not anchor then return nil, "owner position unavailable" end
-    if not nearestStove(body, anchor, 10) then return nil, "no stove or oven within ten tiles of you" end
-    local carried = 0
-    for _, item in ipairs(World.items(World.inventory(body))) do if rawFood(item) then carried = carried + 1 end end
-    if carried == 0 and #World.sources(anchor, 8, rawFood, body) == 0 then
-        return nil, "no raw food to cook near you"
+    if not nearestHeat(body, anchor, 10) and not (campfireSystem() and campfireGround(body, anchor)) then
+        return nil, "no stove or campfire within ten tiles, and no open ground here for a campfire"
     end
-    return { owner=name, anchor=anchor, count=n, completed=0, phase="gather", cooking={} },
-        "cooking up to "..n.." item(s)"
+    local accept = rawFood
+    if dish then
+        local recipe = potRecipe(Life.POT_RECIPES[dish])
+        if not recipe then return nil, "the "..dish.." recipe is not installed" end
+        accept = ingredientFor(recipe)
+    end
+    local carried = 0
+    for _, item in ipairs(World.items(World.inventory(body))) do
+        if accept(item) and Transfer.movable(body, item) then carried = carried + 1 end
+    end
+    if carried == 0 and #World.sources(anchor, 8, accept, body) == 0 then
+        return nil, dish and ("no "..dish.." ingredients near you") or "no raw food to cook near you"
+    end
+    return { owner=name, anchor=anchor, count=n, dish=dish, completed=0, phase="gather", cooking={} },
+        dish and ("making a pot of "..dish.." with up to "..n.." ingredient(s)") or ("cooking up to "..n.." item(s)")
 end
 
-local function stoveHot(stove)
-    return select(2, call(stove, "Activated")) == true
+-- Fills a fresh result pot inside the heat container with the ingredients,
+-- through the installed EvolvedRecipe.addItem. The pot and water are Goblin's
+-- own (conjured); the ingredients are real food. Pot and ingredients sit in
+-- the world container, so native ItemStats packets have a valid address.
+local function fillPot(body, site, recipe, ingredients)
+    local ok, resultType = call(recipe, "getFullResultItem")
+    if not ok or type(resultType) ~= "string" or type(instanceItem) ~= "function" then
+        return nil, "the recipe has no result pot"
+    end
+    local made, pot = pcall(instanceItem, resultType)
+    if not made or not pot then return nil, "could not make the pot" end
+    call(pot, "setIsCookable", true)
+    local added, value = call(site.container, "AddItem", pot)
+    if not added or value ~= pot then return nil, "the heat source would not take the pot" end
+    if type(sendAddItemToContainer) == "function" then pcall(sendAddItemToContainer, site.container, pot) end
+    local used = 0
+    for _, item in ipairs(ingredients) do
+        if Transfer.deposit(body, item, site.container) then
+            local fine, err = pcall(recipe.addItem, recipe, pot, item, body)
+            if not fine then print("[GoblinSurvivor] POT_INGREDIENT_ERROR "..tostring(err)) end
+            local gone = World.containsExact(site.container, item) == false
+            if fine or gone then used = used + 1 end
+            if not gone then
+                -- Partly used or refused: take it back as cargo.
+                Transfer.pickup(body, { square=site.square, object=site.object, container=site.container, item=item })
+            end
+        end
+    end
+    if used == 0 then
+        call(site.container, "DoRemoveItem", pot)
+        if type(sendRemoveItemFromContainer) == "function" then
+            pcall(sendRemoveItemFromContainer, site.container, pot)
+        end
+        return nil, "none of the ingredients went into the pot"
+    end
+    return pot, used
 end
 
 function Life.Cook.update(body, payload, runtime, now)
     if not playerFor(payload.owner) then return true, false, "owner logged out; cooking stopped", "INTERRUPTED" end
     runtime.skipped = runtime.skipped or {}
     runtime.startedAt = runtime.startedAt or now
-    local site = runtime.site or nearestStove(body, payload.anchor, 10)
-    if not site then return true, false, "the stove is gone", "TARGET_CHANGED" end
+    local recipe = payload.dish and potRecipe(Life.POT_RECIPES[payload.dish]) or nil
+    if payload.dish and not recipe then return true, false, "the recipe is gone", "UNSUPPORTED" end
+    local accept = recipe and ingredientFor(recipe) or rawFood
+    local site = runtime.site or nearestHeat(body, payload.anchor, 10)
+    if not site and payload.phase == "gather" then
+        -- No stove or fire: Goblin builds a campfire beside the owner.
+        local ground = campfireGround(body, payload.anchor)
+        local system = campfireSystem()
+        if ground and system then
+            if not Support.work(body, runtime, ground, now, 3000, "BUILD", "building a campfire") then return false end
+            runtime.readyAt = nil
+            local ok, fire = pcall(system.addCampfire, system, ground)
+            site = ok and type(fire) == "table" and campfireSite(fire) or nil
+            if site then
+                runtime.builtFire = true
+                print("[GoblinSurvivor] CAMPFIRE_BUILT owner="..tostring(payload.owner))
+            end
+        end
+        if not site then return true, false, "could not build a campfire here", "BLOCKED" end
+    end
+    if not site then return true, false, "the stove or fire is gone", "TARGET_CHANGED" end
     runtime.site = site
     if payload.phase == "gather" then
         local inventory = World.inventory(body)
         local held = {}
         for _, item in ipairs(World.items(inventory)) do
-            if rawFood(item) and Transfer.movable(body, item) then held[#held+1] = item end
+            if accept(item) and Transfer.movable(body, item) then held[#held+1] = item end
         end
         runtime.gatherStarted = runtime.gatherStarted or now
         if #held < payload.count and now - runtime.gatherStarted < 60000 then
             local notCarried = function(item)
-                return rawFood(item) and World.containsExact(inventory, item) ~= true
+                return accept(item) and World.containsExact(inventory, item) ~= true
             end
             if runtime.supply or #World.sources(payload.anchor, 8, notCarried, body) > 0 then
-                Support.supply(body, runtime, payload.anchor, notCarried, now, "raw food")
+                Support.supply(body, runtime, payload.anchor, notCarried, now,
+                    payload.dish and (payload.dish.." ingredients") or "raw food")
                 return false
             end
         end
-        if #held == 0 then return true, false, "no raw food left to cook", "MISSING_MATERIAL" end
-        if not Support.work(body, runtime, site.square, now, 1500, "CRAFT", "loading the stove") then return false end
+        if #held == 0 then
+            return true, false, payload.dish and "no ingredients left" or "no raw food left to cook", "MISSING_MATERIAL"
+        end
+        local label = site.kind == "campfire" and "loading the campfire" or "loading the stove"
+        if not Support.work(body, runtime, site.square, now, 1500, "CRAFT", label) then return false end
         runtime.readyAt = nil
-        if not stoveHot(site.stove) then
-            call(site.stove, "Toggle")
-            runtime.switchedOn = stoveHot(site.stove)
-            if not runtime.switchedOn then
-                return true, false, "the stove has no power or fuel", "BLOCKED"
+        local switched, err = lightHeat(site)
+        if err then return true, false, err, "BLOCKED" end
+        runtime.switchedOn = switched
+        payload.cooking = {}
+        local chosen = {}
+        for i = 1, math.min(#held, payload.count) do chosen[i] = held[i] end
+        if recipe then
+            local pot, used = fillPot(body, site, recipe, chosen)
+            if not pot then
+                if runtime.switchedOn then heatOff(site) end
+                return true, false, used, "ENGINE_ERROR"
+            end
+            payload.ingredients = used
+            payload.cooking = { Transfer.itemId(pot) }
+            print("[GoblinSurvivor] POT_FILLED owner="..tostring(payload.owner).." dish="..payload.dish
+                .." ingredients="..tostring(used))
+        else
+            for _, item in ipairs(chosen) do
+                if Transfer.deposit(body, item, site.container) then
+                    payload.cooking[#payload.cooking+1] = Transfer.itemId(item)
+                end
             end
         end
-        payload.cooking = {}
-        for i = 1, math.min(#held, payload.count) do
-            local ok = Transfer.deposit(body, held[i], site.container)
-            if ok then payload.cooking[#payload.cooking+1] = Transfer.itemId(held[i]) end
-        end
-        if #payload.cooking == 0 then return true, false, "the stove would not take the food", "BLOCKED" end
+        if #payload.cooking == 0 then return true, false, "the heat source would not take the food", "BLOCKED" end
         payload.phase = "cooking"
         return false
     end
     -- Cooking: take each item out once cooked (or burnt) and keep watch.
-    Support.status(body, "watching the stove")
+    Support.status(body, site.kind == "campfire" and "watching the fire" or "watching the stove")
     if now - runtime.startedAt > Life.COOK_TIMEOUT_MS then
-        return true, (payload.completed or 0) > 0, "cooking took too long; I left the rest in the stove", "TIMEOUT"
+        return true, (payload.completed or 0) > 0, "cooking took too long; I left the rest on the heat", "TIMEOUT"
     end
+    if site.kind == "campfire" and not heatOn(site) then lightHeat(site) end
     local remaining = {}
     for _, id in ipairs(payload.cooking or {}) do
         local item = Transfer.findById(site.container, id)
         if item and (select(2, call(item, "isCooked")) == true or select(2, call(item, "isBurnt")) == true) then
-            local square = site.square
-            if World.approach(body, square, now) then
-                local moved = Transfer.pickup(body, { square=square, object=site.stove,
+            if World.approach(body, site.square, now) then
+                local moved = Transfer.pickup(body, { square=site.square, object=site.object,
                     container=site.container, item=item })
                 if moved then payload.completed = (payload.completed or 0) + 1 else remaining[#remaining+1] = id end
             else
@@ -390,10 +739,11 @@ function Life.Cook.update(body, payload, runtime, now)
     end
     payload.cooking = remaining
     if #remaining > 0 then return false end
-    if runtime.switchedOn and stoveHot(site.stove) then call(site.stove, "Toggle") end
-    print("[GoblinSurvivor] COOK owner="..tostring(payload.owner).." cooked="..tostring(payload.completed))
-    return true, (payload.completed or 0) > 0,
-        "cooked "..(payload.completed or 0).." item(s); I will bring them home", "COMPLETE"
+    if runtime.switchedOn or runtime.builtFire then heatOff(site) end
+    print("[GoblinSurvivor] COOK owner="..tostring(payload.owner).." dish="..tostring(payload.dish or "food")
+        .." cooked="..tostring(payload.completed).." heat="..site.kind)
+    local what = payload.dish and ("a pot of "..payload.dish) or ((payload.completed or 0).." item(s)")
+    return true, (payload.completed or 0) > 0, "cooked "..what.."; I will bring it home", "COMPLETE"
 end
 
 function Life.Cook.clear(body) end

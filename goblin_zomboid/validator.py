@@ -304,8 +304,15 @@ class IntentValidator:
             raise IntentError("CHOP_WOOD fells at most 5 trees")
         if intent == "FORAGE" and result.get("item", {}).get("count", 1) > 10:
             raise IntentError("FORAGE gathers at most 10 finds")
-        if intent == "COOK" and result.get("item", {}).get("count", 1) > 5:
-            raise IntentError("COOK cooks at most 5 items")
+        if intent == "COOK" and result.get("job", "food") not in {"food", "soup", "stew"}:
+            raise IntentError("COOK job must be food, soup or stew")
+        if intent == "COOK" and result.get("item", {}).get("count", 1) > (
+                5 if result.get("job", "food") == "food" else 6):
+            raise IntentError("COOK takes at most 5 foods or 6 pot ingredients")
+        if intent == "CHECK_TRAPS" and result.get("job", "check") not in {"check", "place"}:
+            raise IntentError("CHECK_TRAPS job must be check or place")
+        if intent == "CHECK_TRAPS" and result.get("item", {}).get("count", 1) > 5:
+            raise IntentError("CHECK_TRAPS places at most 5 traps")
         if intent == "ASSIGN_JOB" and "job" not in result:
             raise IntentError("ASSIGN_JOB requires job")
         if "formation" in raw:

@@ -69,7 +69,11 @@ Setup: set a base inside a house. Stand beside a crate and type
 | CHECK_TRAPS | Place a baited trap and an empty trap near the base; wait for a catch. `/goblin traps`. | `TRAP_COLLECT` for the full trap; the empty trap shows bait (carrots) on both clients; the catch reaches the base. No error in the server log. |
 | COOK | Put raw steak/eggs in the fridge next to a powered stove. `/goblin cook 2`. | The stove switches on, the food appears in the oven, then leaves it cooked; `COOK ... cooked=2`; the stove switches off; the food is delivered home. |
 
-Fishing, trap placement and campfire/pot cooking are not implemented.
+| Trap placement | Stand in a forest. `/goblin traps place 2`. | Two `TRAP_PLACED` lines; both clients see two box traps with bait; a later `/goblin traps` finds them. Save/restart: the traps and bait persist. |
+| Campfire | Stand outdoors with no stove within ten tiles, raw meat in your inventory dropped on the ground. `/goblin cook 1`. | `CAMPFIRE_BUILT`; both clients see a lit fire; the meat cooks and comes out; the fire goes out. |
+| Pot of soup | Carrots and potatoes in a nearby container. `/goblin cook soup 3`. | `POT_FILLED ... ingredients=3` (and no `POT_INGREDIENT_ERROR`); the pot cooks on the stove/fire and is delivered home; eating it gives the ingredients' nutrition. |
+
+Fishing is not implemented.
 
 ## 4. Milestone 6 — vehicle service
 

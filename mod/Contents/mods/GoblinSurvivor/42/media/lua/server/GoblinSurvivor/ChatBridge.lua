@@ -88,10 +88,12 @@ function ChatBridge.directIntent(text)
         return Constants.TASK.FORAGE
     end
     if (lower:match("^check%f[%A]") or lower:match("^empty%f[%A]") or lower:match("^rebait%f[%A]")
-        or lower:match("^bait%f[%A]")) and contains(lower,"trap") then
+        or lower:match("^bait%f[%A]") or lower:match("^set%f[%A]") or lower:match("^place%f[%A]")
+        or lower:match("^put%s+down%f[%A]") or lower:match("^lay%f[%A]")) and contains(lower,"trap") then
         return Constants.TASK.CHECK_TRAPS
     end
-    if lower:match("^cook%f[%A]") or lower:match("^make%s+dinner") or lower:match("^make%s+food") then
+    if lower:match("^cook%f[%A]") or lower:match("^make%s+dinner") or lower:match("^make%s+food")
+        or lower:match("^make%s+.*soup") or lower:match("^make%s+.*stew") then
         return Constants.TASK.COOK
     end
     if lower:match("^bandage%s+me") or lower:match("^patch%s+me%s+up") or lower:match("^heal%s+me")
@@ -236,7 +238,16 @@ local function applyDirect(player, speaker, task, text)
         payload = { explicit_owner_order = true }
         local count = tonumber(string.match(string.lower(text or ""), "(%d+)"))
         if count and task == Constants.TASK.FORAGE then payload.count = math.max(1, math.min(10, count)) end
-        if count and task == Constants.TASK.COOK then payload.count = math.max(1, math.min(5, count)) end
+        local lowered = string.lower(text or "")
+        if task == Constants.TASK.COOK then
+            if lowered:find("soup", 1, true) then payload.dish = "soup"
+            elseif lowered:find("stew", 1, true) then payload.dish = "stew" end
+            if count then payload.count = math.max(1, math.min(payload.dish and 6 or 5, count)) end
+        end
+        if task == Constants.TASK.CHECK_TRAPS and (lowered:match("^set%f[%A]") or lowered:match("^place%f[%A]")
+            or lowered:match("^put%s+down%f[%A]") or lowered:match("^lay%f[%A]")) then
+            payload.place = count and math.max(1, math.min(5, count)) or 2
+        end
     end
     if task == Constants.TASK.REFUEL_VEHICLE or task == Constants.TASK.VEHICLE_SERVICE
         or task == Constants.TASK.VEHICLE_INSPECT or task == Constants.TASK.CHANGE_TIRE

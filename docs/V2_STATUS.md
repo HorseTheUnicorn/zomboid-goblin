@@ -105,11 +105,21 @@ conjuring is switched off.
   30 tiles of the base (or owner) that holds a catch or lacks bait. Catches are
   collected with the native `removeAnimal` (live ones are dispatched, so he
   carries the corpse/food item). Empty traps are re-baited with conjured
-  carrots, owned by the player.
+  carrots, owned by the player. `/goblin traps place [1-5]` ("set some traps")
+  builds new box traps from conjured trap items on open outdoor ground in a
+  trapping zone within 12 tiles of the owner, the same way the vanilla placing
+  code does, owned by the player, and baits them.
 - `COOK` (`/goblin cook [1-5]`, "cook some food"): takes raw cookable food from
-  within eight tiles, loads the nearest stove/oven/microwave, switches it on if
-  needed (it must have power or fuel), and takes each item out once the engine
-  reports it cooked. The stove goes back off and the food goes home as cargo.
+  within eight tiles, loads the nearest stove/oven/microwave or campfire,
+  switches it on or lights it, and takes each item out once the engine reports
+  it cooked. The heat goes back off and the food goes home as cargo.
+  - `/goblin cook soup|stew [1-6]` ("make some stew"): Goblin fills a fresh pot
+    of water (his own) with real ingredients from nearby storage through the
+    installed evolved recipe, cooks the pot, and brings it home. The soup is
+    real food for the player.
+  - No stove or fire within ten tiles: he builds a campfire beside the owner
+    (outdoors), feeds it his own firewood, and puts it out when the food is
+    done. The fire pit stays.
 
 Qwen can start all three for the owner and choose them by free will.
 
@@ -195,7 +205,7 @@ server-built gate with `transmitAddObjectToSquare` before any lock packets.
 | --- | --- |
 | 3 — Tools and access | Live gates only: locked-gate two-client rerun, window breach, alternate entrance, fence/gate after restart, vehicle two-client, interruption/restart, safehouse. |
 | 4 — Base and logistics | Live: managed-actor custody for each new job, second-client item-ID agreement, save/restart reconciliation, native repair on IsoZombie. |
-| 5 — Survival | Live: chop, bandage, forage, traps and cook with the managed actor. Not implemented: fishing (B42 fishing is a client-side rod/bobber minigame), campfire/pot recipe cooking, trap placement, clothing patching (tailoring rips are hand-craft recipes via `CRAFT`), construction beyond crate/wall/fence. Farming covers plow/sow/water/harvest/tend. |
+| 5 — Survival | Live: chop, bandage, forage, traps and cook with the managed actor. Not implemented: fishing (B42 fishing is a client-side rod/bobber minigame), barbecue/fireplace cooking, picking traps back up, clothing patching (tailoring rips are hand-craft recipes via `CRAFT`), construction beyond crate/wall/fence. Farming covers plow/sow/water/harvest/tend. |
 | 6 — Vehicle service | Live: every adapter, `getSqlId` restart resolution, recipe-free brakes, in-place battery charging. |
 | 7 — Reflex Brain | The shipped Naive Bayes classifier and canned outage replies are only a routing/fallback scaffold, not the V2 tiny dialogue-generation model. The requested 3–15M encoder/decoder (or a justified replacement), 25–50K-pair training corpus, `.76` latency test and outage drill remain. Per owner direction, Qwen stays the primary Lenin/Stalin conversational voice, so this is optional; training the tiny model needs GPU hardware and a corpus build that were not available here. |
 | 8 — Goals | Live: interrupt/resume and restart. |

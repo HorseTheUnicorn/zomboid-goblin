@@ -5361,7 +5361,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "64770685b49acd5ac81319016b51a1f765deb960bbe7de954d49e0965becdedb"
+          "sha256": "272b2f7492908756a7782c6ab165a5171dd5325c36cf5c8a19a13e40976f7c6f"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -5418,7 +5418,8 @@
       },
       "id": "CHECK_TRAPS",
       "commands": [
-        "traps"
+        "traps",
+        "traps place [1-5]"
       ],
       "evidence": [
         "STATIC_INSTALLED",
@@ -5432,7 +5433,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "64770685b49acd5ac81319016b51a1f765deb960bbe7de954d49e0965becdedb"
+          "sha256": "272b2f7492908756a7782c6ab165a5171dd5325c36cf5c8a19a13e40976f7c6f"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinProvision.lua",
@@ -5447,10 +5448,16 @@
         },
         {
           "installed_path": "media/lua/server/Traps/trappingCommands.lua"
+        },
+        {
+          "installed_path": "media/lua/server/Traps/BuildingObjects/TrapBO.lua"
+        },
+        {
+          "installed_path": "media/lua/shared/Traps/TrapSystem.lua"
         }
       ],
       "native_api": {
-        "signature": "STrapGlobalObject:removeAnimal(character); STrapGlobalObject:addBait(type,age,multi,character)",
+        "signature": "STrapGlobalObject:removeAnimal(character); STrapGlobalObject:addBait(type,age,multi,character); IsoThumpable.new(cell,square,sprite,north,table); TrapSystem.initObjectModData(object,trapDef,north,player)",
         "evidence": "Installed server Lua; the character argument is a Goblin adapter table (position, inventory, username).",
         "compatibility": "LUA_API_CANDIDATE_NOT_PHYSICAL_PROOF"
       },
@@ -5458,12 +5465,13 @@
         "Base.Carrots"
       ],
       "reusable_inputs": "none",
-      "material_consumption": "one conjured bait per empty trap",
+      "material_consumption": "one conjured trap item per placed trap and one conjured bait per empty trap",
       "limitations": [
         "Live catches are dispatched (native corpse/food item), never carried alive",
-        "Trapping XP is not awarded"
+        "Trapping XP is not awarded",
+        "Placement uses Base.TrapBox only; picking traps back up is not implemented"
       ],
-      "implementation_2026_09_27": "Visits traps that hold a catch or no bait; collects catches as cargo and re-baits with conjured carrots owned by the player. Lua fixture tests only.",
+      "implementation_2026_09_27": "Check mode: visits traps that hold a catch or no bait; collects catches as cargo and re-baits with conjured carrots owned by the player. Place mode: server-side TrapBO:create replica from a conjured Base.TrapBox on valid outdoor trapping-zone ground near the owner, owned by the player, then baited. Lua fixture tests only.",
       "completion_evidence_required": [
         "Physical approach and animation",
         "Items appear on both clients",
@@ -5494,7 +5502,8 @@
       },
       "id": "COOK",
       "commands": [
-        "cook [1-5]"
+        "cook [1-5]",
+        "cook soup|stew [1-6]"
       ],
       "evidence": [
         "STATIC_INSTALLED",
@@ -5504,11 +5513,11 @@
       "semantic_arguments": {
         "count": "1-5 raw foods"
       },
-      "target_class": "zombie.iso.objects.IsoStove container; zombie.inventory.types.Food",
+      "target_class": "zombie.iso.objects.IsoStove container or SCampfireGlobalObject campfire container; zombie.inventory.types.Food; zombie.scripting.objects.EvolvedRecipe",
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "64770685b49acd5ac81319016b51a1f765deb960bbe7de954d49e0965becdedb"
+          "sha256": "272b2f7492908756a7782c6ab165a5171dd5325c36cf5c8a19a13e40976f7c6f"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -5517,21 +5526,31 @@
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
           "sha256": "339365f744e8e6080f70a9dc17a4fa76571226c8c68b0807a6c6e28e9d8fa279"
+        },
+        {
+          "installed_path": "media/lua/server/Camping/SCampfireSystem.lua"
+        },
+        {
+          "installed_path": "media/lua/server/Camping/SCampfireGlobalObject.lua"
+        },
+        {
+          "installed_path": "media/lua/shared/TimedActions/ISAddItemInRecipe.lua"
         }
       ],
       "native_api": {
-        "signature": "IsoStove.Activated()/Toggle(); InventoryItem.isCookable()/isCooked()/isBurnt()",
+        "signature": "IsoStove.Activated()/Toggle(); InventoryItem.isCookable()/isCooked()/isBurnt(); SCampfireSystem:addCampfire(square), SCampfireGlobalObject:addFuel/lightFire/putOut; EvolvedRecipe.addItem(pot, ingredient, character)",
         "evidence": "Installed projectzomboid.jar signatures; the engine cooks food in a hot stove container.",
         "compatibility": "NATIVE_ENTRYPOINT_CANDIDATE_NOT_PHYSICAL_PROOF"
       },
       "required_items": [],
       "reusable_inputs": "the stove",
-      "material_consumption": "the raw food items themselves (cooked in place)",
+      "material_consumption": "real raw food or real pot ingredients; the pot, water and campfire fuel are Goblin's own (conjured)",
       "limitations": [
-        "Campfires, barbecues and recipe cooking (pots, soups) are not handled",
-        "Power/fuel is not supplied by Goblin"
+        "Barbecues and fireplaces are not used",
+        "Spices and ingredient poisoning rules follow the installed addItem; cooking XP is not awarded",
+        "A built campfire stays where it was built (put out)"
       ],
-      "implementation_2026_09_27": "Gathers raw cookable food, loads a nearby stove, switches it on if needed, removes each item once cooked, switches the stove back off. Lua fixture tests only.",
+      "implementation_2026_09_27": "Food mode: raw food into a hot stove or campfire, taken out once cooked. Soup/stew mode: a fresh result pot in the heat container, filled through EvolvedRecipe.addItem with real ingredients, cooked and delivered. Builds and fuels a campfire beside the owner when no heat source is within ten tiles. Lua fixture tests only.",
       "completion_evidence_required": [
         "Physical approach and animation",
         "Items appear on both clients",
