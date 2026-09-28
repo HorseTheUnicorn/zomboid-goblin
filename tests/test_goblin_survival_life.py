@@ -261,6 +261,36 @@ class SurvivalLifeTests(unittest.TestCase):
             assert(not require('GoblinSurvivor/GoblinProvision').isConjured(pot))
         ''')
 
+    def test_cooked_item_replaced_by_the_engine_is_still_collected(self):
+        # Live: the soup pot is replaced by its cooked form (new item id);
+        # Goblin reported cooked=0 and the job crashed the result contract.
+        self.lua.execute('''
+            local f=item('Base.Steak','Food')
+            function f:isCookable() return true end
+            function f:isCooked() return false end
+            function f:isBurnt() return false end
+            body.inv.items={f}
+            local stove=furniture(3,3,{})
+            stove.class='IsoStove'; stove.on=false
+            function stove:Activated() return self.on end
+            function stove:Toggle() self.on=not self.on end
+            local payload=assert(Life.Cook.prepare(body,owner,{explicit_owner_order=true,count=1}))
+            local runtime,clock,done,success,detail,code={},1000
+            for i=1,60 do
+                clock=clock+1000
+                done,success,detail,code=Life.Cook.update(body,payload,runtime,clock)
+                if payload.phase=='cooking' and #stove.c.items==1 and stove.c.items[1]==f then
+                    local cooked=item('Base.SteakCooked','Food')
+                    function cooked:isCooked() return true end
+                    function cooked:isBurnt() return false end
+                    stove.c.items={cooked}
+                end
+                if done then break end
+            end
+            assert(done and success and code=='COMPLETE' and payload.completed==1, tostring(detail)..' '..tostring(code))
+            assert(count(body.inv,'Base.SteakCooked')==1 and #stove.c.items==0)
+        ''')
+
 
 if __name__ == "__main__":
     unittest.main()

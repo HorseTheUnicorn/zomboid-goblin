@@ -275,6 +275,6 @@ class SalvageIntentTests(unittest.TestCase):
 
     def test_brain_maps_salvage_job_to_salvage_payload(self):
         source = (LUA / "server/GoblinSurvivor/GoblinBrain.lua").read_text()
-        self.assertIn('if action == T.DISMANTLE and job == "salvage" then payload.salvage = true', source)
+        self.assertIn('if action == T.DISMANTLE and (job == "salvage" or message.freewill == true) then', source)
         autonomy = (LUA / "server/GoblinSurvivor/GoblinAutonomy.lua").read_text()
         self.assertIn('Brain.setTask(body,"DISMANTLE",{salvage=true,autonomous=true})', autonomy)

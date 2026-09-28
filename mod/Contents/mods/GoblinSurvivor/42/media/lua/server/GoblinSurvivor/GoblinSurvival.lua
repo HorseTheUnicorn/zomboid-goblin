@@ -222,7 +222,8 @@ function Survival.Treat.update(body, payload, runtime, now)
         end
         if not source then
             return true, (payload.treated or 0) > 0, "bandaged "..(payload.treated or 0)
-                .." wound(s); no clean bandages nearby", "MISSING_MATERIAL"
+                .." wound(s); no clean bandages nearby",
+                (payload.treated or 0) > 0 and "COMPLETE" or "MISSING_MATERIAL"
         end
         if World.approach(body, source.square, now) then
             runtime.source = nil

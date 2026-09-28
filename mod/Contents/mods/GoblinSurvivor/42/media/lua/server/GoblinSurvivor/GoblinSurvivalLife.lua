@@ -136,7 +136,8 @@ function Life.Forage.update(body, payload, runtime, now)
         if not square then
             runtime.misses = (runtime.misses or 0) + 1
             if runtime.misses > 10 then
-                return true, (payload.completed or 0) > 0, "found no more forageable ground nearby", "NO_TARGET"
+                return true, (payload.completed or 0) > 0, "found no more forageable ground nearby",
+                    (payload.completed or 0) > 0 and "COMPLETE" or "NO_TARGET"
             end
             return false
         end
@@ -150,7 +151,8 @@ function Life.Forage.update(body, payload, runtime, now)
     local itemType = Life.Forage.roll(zone)
     if not itemType or type(instanceItem) ~= "function" then
         if runtime.searches > payload.count * 4 then
-            return true, (payload.completed or 0) > 0, "the ground here is picked clean", "NO_TARGET"
+            return true, (payload.completed or 0) > 0, "the ground here is picked clean",
+                (payload.completed or 0) > 0 and "COMPLETE" or "NO_TARGET"
         end
         return false
     end
@@ -370,7 +372,8 @@ local function placeUpdate(body, payload, runtime, now)
         runtime.readyAt, runtime.siteAt = nil, now
         if not runtime.site then
             return true, (payload.placed or 0) > 0,
-                string.format("set %d trap(s); no more good ground nearby", payload.placed or 0), "NO_TARGET"
+                string.format("set %d trap(s); no more good ground nearby", payload.placed or 0),
+                (payload.placed or 0) > 0 and "COMPLETE" or "NO_TARGET"
         end
     end
     local square = runtime.site
@@ -387,7 +390,12 @@ local function placeUpdate(body, payload, runtime, now)
     local trap, why = Life.Traps.place(body, square, playerFor(payload.owner), Life.TRAP_TYPE)
     if not trap then
         runtime.failures = (runtime.failures or 0) + 1
-        if runtime.failures >= 3 then return true, (payload.placed or 0) > 0, why, "ENGINE_ERROR" end
+        if runtime.failures >= 3 then
+            if (payload.placed or 0) > 0 then
+                return true, true, string.format("set %d trap(s); %s", payload.placed, tostring(why)), "COMPLETE"
+            end
+            return true, false, why, "ENGINE_ERROR"
+        end
         return false
     end
     payload.placed = (payload.placed or 0) + 1
@@ -725,6 +733,13 @@ function Life.Cook.update(body, payload, runtime, now)
         if err then return true, false, err, "BLOCKED" end
         runtime.switchedOn = switched
         payload.cooking = {}
+        -- Items already on the heat; anything new that appears later is ours
+        -- (the engine replaces some foods on cooking, e.g. a soup pot).
+        payload.baseline = {}
+        for _, item in ipairs(World.items(site.container)) do
+            local id = Transfer.itemId(item)
+            if id then payload.baseline[#payload.baseline + 1] = id end
+        end
         local chosen = {}
         for i = 1, math.min(#held, payload.count) do chosen[i] = held[i] end
         if recipe then
@@ -751,7 +766,8 @@ function Life.Cook.update(body, payload, runtime, now)
     -- Cooking: take each item out once cooked (or burnt) and keep watch.
     Support.status(body, site.kind == "campfire" and "watching the fire" or "watching the stove")
     if now - runtime.startedAt > Life.COOK_TIMEOUT_MS then
-        return true, (payload.completed or 0) > 0, "cooking took too long; I left the rest on the heat", "TIMEOUT"
+        if runtime.switchedOn or runtime.builtFire then heatOff(site) end
+        return true, false, "cooking took too long; I left the rest on the heat", "TIMEOUT"
     end
     if site.kind == "campfire" and not heatOn(site) then lightHeat(site) end
     local remaining = {}
@@ -767,6 +783,31 @@ function Life.Cook.update(body, payload, runtime, now)
             end
         elseif item then
             remaining[#remaining+1] = id
+        else
+            payload.replaced = (payload.replaced or 0) + 1
+        end
+    end
+    -- A tracked item that vanished was replaced by its cooked form: collect
+    -- new cooked items that were not on the heat before we loaded it.
+    if (payload.replaced or 0) > 0 then
+        local known = {}
+        for _, id in ipairs(payload.baseline or {}) do known[id] = true end
+        for _, id in ipairs(remaining) do known[id] = true end
+        for _, item in ipairs(World.items(site.container)) do
+            local id = Transfer.itemId(item)
+            if payload.replaced > 0 and id and not known[id]
+                and (select(2, call(item, "isCooked")) == true or select(2, call(item, "isBurnt")) == true) then
+                if World.approach(body, site.square, now) and Transfer.pickup(body, { square=site.square,
+                    object=site.object, container=site.container, item=item }) then
+                    payload.completed = (payload.completed or 0) + 1
+                    payload.replaced = payload.replaced - 1
+                end
+            end
+        end
+        if payload.replaced > 0 then
+            runtime.replacedSince = runtime.replacedSince or now
+            -- Give the engine a moment to place the replacement item.
+            if now - runtime.replacedSince < 10000 then return false end
         end
     end
     payload.cooking = remaining
@@ -774,8 +815,11 @@ function Life.Cook.update(body, payload, runtime, now)
     if runtime.switchedOn or runtime.builtFire then heatOff(site) end
     print("[GoblinSurvivor] COOK owner="..tostring(payload.owner).." dish="..tostring(payload.dish or "food")
         .." cooked="..tostring(payload.completed).." heat="..site.kind)
-    local what = payload.dish and ("a pot of "..payload.dish) or ((payload.completed or 0).." item(s)")
-    return true, (payload.completed or 0) > 0, "cooked "..what.."; I will bring it home", "COMPLETE"
+    if (payload.completed or 0) == 0 then
+        return true, false, "the food left the heat before I could take it out", "TARGET_CHANGED"
+    end
+    local what = payload.dish and ("a pot of "..payload.dish) or (payload.completed.." item(s)")
+    return true, true, "cooked "..what.."; I will bring it home", "COMPLETE"
 end
 
 function Life.Cook.clear(body) end

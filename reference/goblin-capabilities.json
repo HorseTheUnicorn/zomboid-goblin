@@ -2572,7 +2572,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvival.lua",
-          "sha256": "35841ecc95a904223df20f46f3f4f6780b56e8a5b8986d43e94efa7bafe01c4e"
+          "sha256": "df4d21b3a6d611a5fea069a907f7c32c5425c4180f955c4bd07c980279dfd80b"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -2952,7 +2952,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvival.lua",
-          "sha256": "35841ecc95a904223df20f46f3f4f6780b56e8a5b8986d43e94efa7bafe01c4e"
+          "sha256": "df4d21b3a6d611a5fea069a907f7c32c5425c4180f955c4bd07c980279dfd80b"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -5361,7 +5361,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "41396c0d64e0705cf4dc5070e5afd044afecda9c3506f444d3eb28bbca1f17b6"
+          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -5433,7 +5433,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "41396c0d64e0705cf4dc5070e5afd044afecda9c3506f444d3eb28bbca1f17b6"
+          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinProvision.lua",
@@ -5517,7 +5517,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "41396c0d64e0705cf4dc5070e5afd044afecda9c3506f444d3eb28bbca1f17b6"
+          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
