@@ -4,7 +4,7 @@
 local Body = require("GoblinSurvivor/GoblinBody")
 local World = require("GoblinSurvivor/GoblinWorld")
 
-local Claim = { RADIUS = 30, NEAR_BASE = 12 }
+local Claim = { RADIUS = World.range and World.range() or 150, NEAR_BASE = 12 }
 
 -- Jobs that work on the base house itself.
 Claim.HOUSE_TASKS = { INSPECT_BASE = true, MAINTAIN_BASE = true, FORTIFY = true, FORTIFY_BASE = true,

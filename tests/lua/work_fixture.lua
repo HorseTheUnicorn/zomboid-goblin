@@ -112,3 +112,10 @@ end
 -- The power grid is still on (no generator duty) unless a test turns it off.
 gridOn=true
 getWorld=getWorld or function() return {isHydroPowerOn=function() return gridOn end} end
+
+-- This fixture world creates a square wherever it is asked, so keep the
+-- classic short ranges here; wide-range search has its own tests.
+do
+    local C=require('GoblinSurvivor/Config')
+    C.lootRadius=8; C.autonomyExploreRadius=24; C.salvageRadius=24; C.goblinRange=24
+end

@@ -42,19 +42,19 @@ function Support.supply(body,job,anchor,predicate,now,label,conjureType)
         end
     end
     if not job.supply and now>=(job.nextSupplyScan or 0) then
-        job.nextSupplyScan=now+3000
-        -- Self-sufficient: widen the search (8, 16, then 24 tiles) before
-        -- giving up, instead of asking the owner to bring anything.
-        job.searchRadius=job.searchRadius or 8
-        for _,source in ipairs(World.sources(anchor,job.searchRadius,predicate,body)) do
-            if not job.skipped[source.item] then job.supply=source;job.supplyAt=now;break end
-        end
-        if not job.supply and job.searchRadius<24 then
-            job.searchRadius=job.searchRadius+8
-            job.nextSupplyScan=now
-            Support.status(body,"no "..label.." close by; searching further out")
+        -- Self-sufficient: search nearest-first out to Goblin's full range
+        -- (spread over ticks) instead of asking the owner to bring anything.
+        job.supplySearch=job.supplySearch or {}
+        local found,done=World.search(anchor,World.range(),function(item)
+            return not job.skipped[item] and predicate(item)
+        end,body,job.supplySearch,3000)
+        if not done then
+            Support.status(body,"looking further out for "..label)
             return nil
         end
+        job.supplySearch=nil
+        job.nextSupplyScan=now+15000
+        if found[1] then job.supply=found[1];job.supplyAt=now end
     end
     local source=job.supply
     if not source then Support.status(body,"found no "..label.." anywhere near; I will scavenge for some later");return nil end

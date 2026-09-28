@@ -76,7 +76,7 @@ end
 -- -------------------------------------------------------------- FORAGE
 
 Life.Forage = {}
-Life.FORAGE_RADIUS = 14
+Life.FORAGE_RADIUS = World.range and World.range() or 150
 Life.FORAGE_MS = 5000
 
 local function forageZone(square)
@@ -93,8 +93,9 @@ local function forageZone(square)
 end
 
 local function forageSpot(body, anchor, tries)
-    for _ = 1, tries do
-        local r = Life.FORAGE_RADIUS
+    for attempt = 1, tries do
+        -- Close ground first; widen out to Goblin's full range on misses.
+        local r = math.min(Life.FORAGE_RADIUS, 14 + math.floor((attempt - 1) / 10) * 28)
         local point = { x=anchor.x + random(2*r+1) - r, y=anchor.y + random(2*r+1) - r, z=anchor.z }
         local square = World.square(point)
         if square and Policy.access(body, { getSquare=function() return square end }) then
@@ -173,7 +174,7 @@ end
 -- --------------------------------------------------------- CHECK_TRAPS
 
 Life.Traps = {}
-Life.TRAP_RADIUS = 30
+Life.TRAP_RADIUS = World.range and World.range() or 150
 Life.TRAP_PLACE_RADIUS = 12
 Life.TRAP_BAIT = "Base.Carrots"
 Life.TRAP_TYPE = "Base.TrapBox"
@@ -363,7 +364,7 @@ function Life.Traps.prepare(body, owner, request)
     local anchor = anchorFor(body, owner, true)
     if not anchor then return nil, "owner position unavailable" end
     local traps = trapsNear(anchor)
-    if #traps == 0 then return nil, "no traps within thirty tiles of the base or you; try traps place" end
+    if #traps == 0 then return nil, "no traps within 150 tiles of the base or you; try traps place" end
     return { owner=name, anchor=anchor, completed=0, caught=0, baited=0,
         caretaker=request.caretaker == true or nil }, "checking "..#traps.." trap(s)"
 end
@@ -493,20 +494,20 @@ local function siteKey(square) local p = tile(square); return p.x..":"..p.y..":"
 local function nearestHeat(body, anchor, radius, skip)
     skip = skip or {}
     local best, bestD
-    for dx = -radius, radius do for dy = -radius, radius do
-        local square = World.square({ x=anchor.x+dx, y=anchor.y+dy, z=anchor.z })
-        if square then
-            for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                local _, container = call(object, "getContainer")
-                if isStove(object) and container and not skip[siteKey(square)] and Policy.access(body, object) then
-                    local d = dx*dx + dy*dy
-                    if not best or d < bestD then
-                        best, bestD = { kind="stove", object=object, square=square, container=container }, d
-                    end
+    World.rings(anchor, radius, function(square, _, dx, dy)
+        local hit = false
+        for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+            local _, container = call(object, "getContainer")
+            if isStove(object) and container and not skip[siteKey(square)] and Policy.access(body, object) then
+                local d = dx*dx + dy*dy
+                if not best or d < bestD then
+                    best, bestD = { kind="stove", object=object, square=square, container=container }, d
                 end
+                hit = true
             end
         end
-    end end
+        return hit
+    end)
     if best then return best end
     local system = campfireSystem()
     if system and type(system.getLuaObjectCount) == "function" then
@@ -610,8 +611,8 @@ function Life.Cook.prepare(body, owner, request)
     if not n then return nil, dish and "a pot takes 1 to 6 ingredients" or "cook 1 to 5 items per order" end
     local anchor = anchorFor(body, owner, false)
     if not anchor then return nil, "owner position unavailable" end
-    if not nearestHeat(body, anchor, 10) and not (campfireSystem() and campfireGround(body, anchor)) then
-        return nil, "no stove or campfire within ten tiles, and no open ground here for a campfire"
+    if not nearestHeat(body, anchor, World.range()) and not (campfireSystem() and campfireGround(body, anchor)) then
+        return nil, "no stove or campfire within 150 tiles, and no open ground here for a campfire"
     end
     local accept = rawFood
     if dish then
@@ -623,7 +624,7 @@ function Life.Cook.prepare(body, owner, request)
     for _, item in ipairs(World.items(World.inventory(body))) do
         if accept(item) and Transfer.movable(body, item) then carried = carried + 1 end
     end
-    if carried == 0 and #World.sources(anchor, 8, accept, body) == 0 then
+    if carried == 0 and #World.sourcesNear(anchor, accept, body) == 0 then
         return nil, dish and ("no "..dish.." ingredients near you") or "no raw food to cook near you"
     end
     return { owner=name, anchor=anchor, count=n, dish=dish, completed=0, phase="gather", cooking={} },
@@ -676,7 +677,7 @@ function Life.Cook.update(body, payload, runtime, now)
     if payload.dish and not recipe then return true, false, "the recipe is gone", "UNSUPPORTED" end
     local accept = recipe and ingredientFor(recipe) or rawFood
     runtime.badSites = runtime.badSites or {}
-    local site = runtime.site or nearestHeat(body, payload.anchor, 10, runtime.badSites)
+    local site = runtime.site or nearestHeat(body, payload.anchor, World.range(), runtime.badSites)
     if site and site ~= runtime.site then runtime.siteAt = now end
     if not site and payload.phase == "gather" and not runtime.builtFire then
         -- No stove or fire: Goblin builds a campfire beside the owner.
@@ -710,7 +711,8 @@ function Life.Cook.update(body, payload, runtime, now)
             local notCarried = function(item)
                 return accept(item) and World.containsExact(inventory, item) ~= true
             end
-            if runtime.supply or #World.sources(payload.anchor, 8, notCarried, body) > 0 then
+            runtime.moreCache = runtime.moreCache or {}
+            if runtime.supply or #World.cachedNear(runtime.moreCache, payload.anchor, notCarried, body) > 0 then
                 Support.supply(body, runtime, payload.anchor, notCarried, now,
                     payload.dish and (payload.dish.." ingredients") or "raw food")
                 return false

@@ -265,40 +265,131 @@ function World.containerAccessible(body, object)
     return true -- Ordinary world containers have no native lock interface.
 end
 
-function World.sources(center, radius, accept, body)
-    local found = {}
-    for dx = -radius, radius do
-        for dy = -radius, radius do
-            local square = World.square({x=center.x+dx,y=center.y+dy,z=center.z})
-            if square then
-                local allowed = not body or Policy.access(body,
-                    { getSquare = function() return square end })
-                if allowed then
-                for _, object in ipairs(World.values(select(2, call(square, "getWorldObjects")))) do
-                    local _, item = call(object, "getItem")
-                    if item and accept(item) then
-                        found[#found+1]={square=square,world=object,item=item}
-                    end
-                end
-                for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                    local _, container = call(object, "getContainer")
-                    if container and World.containerAccessible(body,object) then
-                        for _, item in ipairs(World.items(container)) do
-                            if accept(item) then
-                                found[#found+1]={square=square,object=object,container=container,item=item}
-                            end
-                        end
-                    end
-                end
+-- Items on one square (floor and accessible containers) accepted by accept.
+local function squareSources(square, accept, body, found)
+    local allowed = not body or Policy.access(body, { getSquare = function() return square end })
+    if not allowed then return end
+    for _, object in ipairs(World.values(select(2, call(square, "getWorldObjects")))) do
+        local _, item = call(object, "getItem")
+        if item and accept(item) then
+            found[#found+1]={square=square,world=object,item=item}
+        end
+    end
+    for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+        local _, container = call(object, "getContainer")
+        if container and World.containerAccessible(body,object) then
+            for _, item in ipairs(World.items(container)) do
+                if accept(item) then
+                    found[#found+1]={square=square,object=object,container=container,item=item}
                 end
             end
         end
     end
+end
+
+local function nearestFirst(found, center)
     table.sort(found, function(a,b)
         local pa,pb=World.point(a.square),World.point(b.square)
         return (pa.x-center.x)^2+(pa.y-center.y)^2 < (pb.x-center.x)^2+(pb.y-center.y)^2
     end)
     return found
+end
+
+function World.sources(center, radius, accept, body)
+    local found = {}
+    for dx = -radius, radius do
+        for dy = -radius, radius do
+            local square = World.square({x=center.x+dx,y=center.y+dy,z=center.z})
+            if square then squareSources(square, accept, body, found) end
+        end
+    end
+    return nearestFirst(found, center)
+end
+
+-- Goblin's search range in tiles (Config.goblinRange, default 150).
+function World.range()
+    local ok, Config = pcall(require, "GoblinSurvivor/Config")
+    return math.floor(ok and tonumber(Config.goblinRange) or 150)
+end
+
+-- Offset of the i-th square (0-based) on the square ring of radius r.
+function World.ringOffset(r, i)
+    if r == 0 then return 0, 0 end
+    local side, pos = math.floor(i / (2 * r)), i % (2 * r)
+    if side == 0 then return -r + pos, -r end
+    if side == 1 then return r, -r + pos end
+    if side == 2 then return r - pos, r end
+    return -r, r - pos
+end
+
+World.BAND = 4 -- rings finished before nearest results are handed back
+
+-- Visit squares ring by ring outward from center up to maxRadius; visit
+-- returns true to stop once the current band of rings is finished (so the
+-- nearest hits are complete). state (optional) makes it resumable: at most
+-- budget squares per call, returning false while more work remains.
+function World.rings(center, maxRadius, visit, state, budget)
+    state = state or {}
+    state.r, state.i = state.r or 0, state.i or 0
+    budget = budget or math.huge
+    local cx, cy, cz = math.floor(center.x), math.floor(center.y), math.floor(center.z)
+    while state.r <= maxRadius do
+        local r = state.r
+        local perimeter = r == 0 and 1 or 8 * r
+        while state.i < perimeter do
+            local dx, dy = World.ringOffset(r, state.i)
+            state.i = state.i + 1
+            local square = World.square({x=cx+dx, y=cy+dy, z=cz})
+            if square and visit(square, r, dx, dy) then state.hit = true end
+            budget = budget - 1
+            if budget <= 0 and state.i < perimeter then return false end
+        end
+        state.r, state.i = r + 1, 0
+        if state.hit and (state.r % World.BAND == 0) then state.done = true; return true end
+        if budget <= 0 then return false end
+    end
+    state.done = true
+    return true
+end
+
+-- Nearest item sources out to maxRadius (default World.range()). With a state
+-- table the search is spread over calls: returns nil,false while searching,
+-- then the nearest band's sources (possibly empty) and true.
+function World.search(center, maxRadius, accept, body, state, budget)
+    maxRadius = maxRadius or World.range()
+    local found = state and state.found or {}
+    if state then state.found = found end
+    local skip = state and state.skipSquares
+    local finished = World.rings(center, maxRadius, function(square)
+        if skip and skip[square] then return false end
+        local before = #found
+        squareSources(square, accept, body, found)
+        return #found > before
+    end, state, budget)
+    if not finished then return nil, false end
+    return nearestFirst(found, center), true
+end
+
+-- One-shot nearest search (stops at the first band with a hit).
+function World.sourcesNear(center, accept, body, maxRadius)
+    local found = World.search(center, maxRadius, accept, body)
+    return found or {}
+end
+
+-- sourcesNear for code that asks every tick: the wide search runs at most
+-- every 10 s per cache table (kept in the job runtime).
+function World.cachedNear(cache, center, accept, body, maxRadius)
+    if type(cache) ~= "table" then return World.sourcesNear(center, accept, body, maxRadius) end
+    local now = type(getTimestampMs) == "function" and getTimestampMs() or 0
+    if cache.list and now < (cache.at or 0) + 10000 then
+        local live = {}
+        for _, source in ipairs(cache.list) do
+            if source.item and accept(source.item) then live[#live+1] = source end
+        end
+        return live
+    end
+    cache.list, cache.at = World.sourcesNear(center, accept, body, maxRadius), now
+    return cache.list
 end
 
 function World.has(container, item)

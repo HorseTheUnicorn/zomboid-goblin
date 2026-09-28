@@ -68,6 +68,14 @@ end
 SFarmingSystem={instance={}}
 function SFarmingSystem.instance:getLuaObjectOnSquare(sq) return plants[sq:getX()..':'..sq:getY()..':'..sq:getZ()] end
 function SFarmingSystem.instance:plow(sq) makePlant(sq:getX(),'plow') end
+-- SGlobalObjectSystem global list (1-based), as the installed game provides.
+function SFarmingSystem.instance:getLuaObjectCount()
+    local n=0; for _ in pairs(plants) do n=n+1 end; return n
+end
+function SFarmingSystem.instance:getLuaObjectByIndex(index)
+    local keys={}; for k in pairs(plants) do keys[#keys+1]=k end; table.sort(keys)
+    return plants[keys[index]]
+end
 function SFarmingSystem.instance:harvest(p,body)
     body:getInventory():AddItem('Base.Cabbage');p.hasVegetable=false;p.state='harvested';harvestCount=(harvestCount or 0)+1
 end

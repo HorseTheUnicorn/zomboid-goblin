@@ -246,12 +246,18 @@ server-built gate with `transmitAddObjectToSquare` before any lock packets.
 ### Caretaker: a Goblin with his own life (2026-09-28, PZ 42.21)
 
 - `GoblinCaretaker.lua`: with no orders, Goblin keeps the home going: base generator (missing when the grid is off, stopped, under 50% fuel or damaged -> RESTORE_POWER), crops by the base (thirsty or ripe -> FARM tend), curtains after dusk (CLOSE_CURTAINS), traps every 12 game hours (CHECK_TRAPS). Boarding windows, salvage and looting stay in GoblinAutonomy. Each duty has a game-hour interval and a 3-hour backoff after a failure.
-- Upkeep runs while the owner is idle within Goblin's roaming range of the base (`GoblinCaretakerRoamRadius`, default 500 tiles) and while the owner is offline; beyond that range Goblin stays a companion. With the owner offline he roams within that range and walks back only from beyond it.
+- Upkeep runs while the owner is idle within Goblin's roaming range of the base (`GoblinCaretakerRoamRadius`, default 150 tiles) and while the owner is offline; beyond that range Goblin stays a companion. With the owner offline he roams within that range and walks back only from beyond it.
 - Caretaker payloads (`caretaker=true`) are built only by the server; `Capabilities.prepare` lets exactly RESTORE_POWER, FARM, CLOSE_CURTAINS and CHECK_TRAPS prepare without an online owner when they carry it.
 - Catch-up: if Goblin's area was unloaded for 6+ game hours, his first tick back waters the base crops and tops up the base generator, and he tells his owner what he did.
 - No base yet: when the owner settles inside a house, Goblin claims it as home.
 - Sentience sees `situation.base.homestead` (power, crops, traps, curtains) and notices power going out or coming back, thirsty crops and ripe crops.
 - 42.21 spot check: the installed SPlantGlobalObject water/seed/isAlive, SFarmingSystem plow/harvest, Vehicles.JerryCanLitres/InstallTest and IsoGenerator/IsoWorld.isHydroPowerOn APIs used by the mod are unchanged. Lua fixtures only; not yet exercised live on 42.21.
+
+### Goblin range: 150 tiles (2026-09-28)
+
+- New `GoblinRange` option (default 150, 8-300) is how far Goblin looks for things: supplies and materials, loot (`GoblinLootRadius` 150), explore (`GoblinAutonomyExploreRadius` 150), salvage (`GoblinSalvageRadius` 150), crops, generators, stoves/campfires, trees, traps, forage ground, a house to claim, vehicles for vehicle jobs. Roaming range around the base (`GoblinCaretakerRoamRadius`) is 150 too.
+- Wide searches are nearest-first ring searches (`World.rings/search/sourcesNear/cachedNear`) that stop at the band holding the nearest hit, and the per-tick ones are spread over ticks (3000-12000 squares per tick) or cached for 10 s, so a 150-tile range never stalls the server. Crops come from the farming system's global object list; the base generator location is remembered.
+- Unchanged on purpose: follow spacing, combat/defense radius, recall distance (companion behaviour), placement spots (generator beside the house, campfire and new traps beside the owner), getting into your own car, and base-house scope for boarding windows and curtains.
 
 ## Remaining work
 

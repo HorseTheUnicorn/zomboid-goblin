@@ -9,7 +9,7 @@ local Config = require("GoblinSurvivor/Config")
 
 local Work = {}
 local call = World.call
-local SEARCH_RADIUS = 8
+local SEARCH_RADIUS = 150 -- Goblin range (World.range); reported in shortages
 local MAX_DELIVERIES = 20
 
 local function audit(payload, stage, item, square, before, after)
@@ -117,10 +117,16 @@ local function sourceKey(square)
     return math.floor(point.x)..":"..math.floor(point.y)..":"..math.floor(point.z)
 end
 
+-- Per job (keyed by its skipped table) and item type: wide searches are cached.
+local nearCache = setmetatable({}, { __mode = "k" })
+
 local function sourceFor(body, target, fullType, skipped, skippedSquares, anchor)
     local here = Body.position(body)
     local best, bestDistance
-    for _, source in ipairs(World.sources(anchor, SEARCH_RADIUS, function(item)
+    local caches = nearCache[skipped] or {}
+    nearCache[skipped] = caches
+    caches[fullType] = caches[fullType] or {}
+    for _, source in ipairs(World.cachedNear(caches[fullType], anchor, function(item)
         return World.fullType(item) == fullType and not skipped[item]
             and not protected(body, item)
     end, body)) do

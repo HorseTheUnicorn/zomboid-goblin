@@ -207,14 +207,16 @@ local function gatherOne(body, runtime, anchor, itemType, now)
     if not runtime.supply or runtime.supply.kind ~= itemType then
         runtime.supply = nil
         if now < (runtime.nextSupplyScan or 0) then return false end
-        runtime.nextSupplyScan = now + 3000
-        for _, source in ipairs(World.sources(anchor, 24, function(item)
-            return World.fullType(item) == itemType and not Tools.reserved(item) end, body)) do
-            if not runtime.supplySkipped[source.item] then
-                source.kind = itemType
-                runtime.supply, runtime.supplyAt = source, now
-                break
-            end
+        runtime.supplySearch = runtime.supplySearch or {}
+        local found, done = World.search(anchor, World.range(), function(item)
+            return World.fullType(item) == itemType and not Tools.reserved(item)
+                and not runtime.supplySkipped[item] end, body, runtime.supplySearch, 3000)
+        if not done then return false end
+        runtime.supplySearch = nil
+        runtime.nextSupplyScan = now + 10000
+        if found[1] then
+            found[1].kind = itemType
+            runtime.supply, runtime.supplyAt = found[1], now
         end
     end
     local source = runtime.supply

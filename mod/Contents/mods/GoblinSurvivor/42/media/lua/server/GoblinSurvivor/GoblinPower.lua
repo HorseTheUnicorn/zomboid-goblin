@@ -12,7 +12,8 @@ local World = require("GoblinSurvivor/GoblinWorld")
 local Support = require("GoblinSurvivor/GoblinJobSupport")
 local Policy = require("GoblinSurvivor/GoblinAccessPolicy")
 
-local Power = { SEARCH_RADIUS = 20, PLACE_RADIUS = 8, STEP_MS = 3000 }
+local Power = { SEARCH_RADIUS = World.range and World.range() or 150, PLACE_RADIUS = 8, STEP_MS = 3000,
+    known = setmetatable({}, { __mode = "k" }) }
 local call = World.call
 
 local function isGenerator(object)
@@ -54,23 +55,58 @@ local function allowed(body, square)
     return Policy.access(body, { getSquare = function() return square end }) == true
 end
 
-function Power.findGenerator(body, anchor, radius)
+local function generatorOn(square)
+    for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+        if isGenerator(object) then return object end
+    end
+    return nil
+end
+
+-- The generator Goblin last found or placed, if it is still there.
+function Power.knownGenerator(body)
+    local data = Body.data(body)
+    local x, y, z = data and tonumber(data.GoblinGeneratorX), data and tonumber(data.GoblinGeneratorY),
+        data and tonumber(data.GoblinGeneratorZ)
+    if not x or not y or not z then return nil end
+    local square = World.square({ x = x, y = y, z = z })
+    return square and generatorOn(square) or nil
+end
+
+-- Nearest generator to anchor. The last one found is remembered per Goblin
+-- (Body data) and checked first; otherwise a nearest-first ring search out to
+-- radius. With state/budget the ring search is spread over calls and returns
+-- nil,false while still searching.
+function Power.findGenerator(body, anchor, radius, state, budget)
     radius = radius or Power.SEARCH_RADIUS
+    local data = Body.data(body)
+    local known = data and tonumber(data.GoblinGeneratorX) and {
+        x = tonumber(data.GoblinGeneratorX), y = tonumber(data.GoblinGeneratorY), z = tonumber(data.GoblinGeneratorZ) }
+    if known and known.z == anchor.z and (known.x - anchor.x)^2 + (known.y - anchor.y)^2 <= radius * radius then
+        local square = World.square(known)
+        local generator = square and generatorOn(square)
+        if generator and allowed(body, square) then return generator, true end
+    end
     local best, bestDistance
-    for dx = -radius, radius do
-        for dy = -radius, radius do
-            local square = World.square({ x = anchor.x + dx, y = anchor.y + dy, z = anchor.z })
-            if square then
-                for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                    local distance = dx * dx + dy * dy
-                    if isGenerator(object) and (not best or distance < bestDistance) and allowed(body, square) then
-                        best, bestDistance = object, distance
-                    end
-                end
-            end
+    local finished = World.rings(anchor, radius, function(square, _, dx, dy)
+        local generator = generatorOn(square)
+        if not generator or not allowed(body, square) then return false end
+        local distance = dx * dx + dy * dy
+        if not best or distance < bestDistance then best, bestDistance = generator, distance end
+        return true
+    end, state, budget)
+    if state and not finished then
+        -- Keep the best hit so far across calls.
+        state.best = state.best or best
+        return nil, false
+    end
+    best = (state and state.best) or best
+    if best and data then
+        local square = select(2, call(best, "getSquare"))
+        if square then
+            data.GoblinGeneratorX, data.GoblinGeneratorY, data.GoblinGeneratorZ = square:getX(), square:getY(), square:getZ()
         end
     end
-    return best
+    return best, true
 end
 
 local function freeOutdoor(square)
@@ -116,6 +152,7 @@ function Power.place(square)
     if not made or not generator then return nil, "the generator could not be placed" end
     call(generator, "transmitCompleteItemToClients")
     local p = { x = square:getX(), y = square:getY(), z = square:getZ() }
+    Power.lastPlaced = p
     print("[GoblinSurvivor] GENERATOR_PLACED x=" .. p.x .. " y=" .. p.y .. " z=" .. p.z)
     return generator
 end
@@ -174,9 +211,17 @@ function Power.update(body, payload, runtime, now)
         local square = select(2, call(generator, "getSquare"))
         if not square then generator = nil; runtime.generator = nil end
     end
+    if not generator and not runtime.noneNear then
+        -- Nearest-first search out to Goblin's range, spread over ticks.
+        runtime.genSearch = runtime.genSearch or {}
+        local found, done = Power.findGenerator(body, payload.anchor, nil, runtime.genSearch, 4000)
+        if not done then Support.status(body, "looking for a generator"); return false end
+        runtime.genSearch = nil
+        generator = found
+        runtime.noneNear = generator == nil
+    end
     if not generator then
-        generator = Power.findGenerator(body, payload.anchor)
-        if not generator then
+        do
             local Provision = require("GoblinSurvivor/GoblinProvision")
             if not Provision.enabled() then
                 return true, false, "no generator near the base and conjuring is disabled", "NO_TARGET"
@@ -190,13 +235,18 @@ function Power.update(body, payload, runtime, now)
             end
             runtime.readyAt = nil
             local placed, why = Power.place(runtime.site)
+            if placed then
+                local data = Body.data(body)
+                data.GoblinGeneratorX, data.GoblinGeneratorY, data.GoblinGeneratorZ =
+                    runtime.site:getX(), runtime.site:getY(), runtime.site:getZ()
+            end
             runtime.site = nil
             if not placed then return true, false, why, "ENGINE_ERROR" end
             payload.placed = true
             generator = placed
         end
-        runtime.generator = generator
     end
+    runtime.generator = generator
     local square = select(2, call(generator, "getSquare"))
     if not Support.work(body, runtime, square, now, Power.STEP_MS, "LOOT", "working on the generator") then
         return false

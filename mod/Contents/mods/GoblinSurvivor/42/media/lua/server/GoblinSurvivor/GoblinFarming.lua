@@ -67,15 +67,31 @@ local function operation(plant,mode,crop)
         and (tonumber(plant.waterLvl) or 0)<desired then return "water" end
 end
 
+-- Every plant of the native farming system within radius of anchor (same
+-- floor), read from its global object list -- no square scan needed.
+function Farm.plantsNear(anchor,radius)
+    local found={}
+    local farm=system()
+    if not farm or not anchor or type(farm.getLuaObjectCount)~="function" then return found end
+    radius=radius or World.range()
+    local ok,total=pcall(farm.getLuaObjectCount,farm)
+    for index=1,(ok and tonumber(total) or 0) do
+        local got,plant=pcall(farm.getLuaObjectByIndex,farm,index)
+        if got and type(plant)=="table" and tonumber(plant.x) and tonumber(plant.z)==math.floor(anchor.z) then
+            local d=(plant.x-anchor.x)^2+(plant.y-anchor.y)^2
+            if d<=radius*radius then found[#found+1]={plant=plant,d=d} end
+        end
+    end
+    table.sort(found,function(a,b) return a.d<b.d end)
+    return found
+end
+
 -- Caretaker: count plants around anchor that need water or are ready to harvest.
 function Farm.needs(anchor,radius)
     local counts={plants=0,water=0,harvest=0}
-    if not system() or not anchor then return counts end
-    radius=radius or 8
-    for dx=-radius,radius do for dy=-radius,radius do
-        local square=World.square({x=anchor.x+dx,y=anchor.y+dy,z=anchor.z})
-        local plant=square and system():getLuaObjectOnSquare(square)
-        if plant and plant.state~="plow" then
+    for _,entry in ipairs(Farm.plantsNear(anchor,radius)) do
+        local plant=entry.plant
+        if plant.state~="plow" then
             local okAlive,alive=pcall(plant.isAlive,plant)
             if okAlive and alive then
                 counts.plants=counts.plants+1
@@ -83,40 +99,35 @@ function Farm.needs(anchor,radius)
                 if op then counts[op]=(counts[op] or 0)+1 end
             end
         end
-    end end
+    end
     return counts
 end
 
--- Offline catch-up: water every living plant around anchor (no body needed;
--- works on the global plant objects of loaded squares).
+-- Offline catch-up: water every thirsty living plant around anchor (works on
+-- the global plant objects, even where nobody has the squares loaded).
 function Farm.waterAll(anchor,radius)
     local watered=0
-    if not system() or not anchor then return 0 end
-    radius=radius or 8
-    for dx=-radius,radius do for dy=-radius,radius do
-        local square=World.square({x=anchor.x+dx,y=anchor.y+dy,z=anchor.z})
-        local plant=square and system():getLuaObjectOnSquare(square)
-        if plant and plant.state~="plow" and operation(plant,"water",nil)=="water" then
+    for _,entry in ipairs(Farm.plantsNear(anchor,radius)) do
+        local plant=entry.plant
+        if plant.state~="plow" and operation(plant,"water",nil)=="water" then
             pcall(plant.water,plant,nil,10);watered=watered+1
         end
-    end end
+    end
     return watered
 end
 
 local function target(payload,job)
     if payload.job=="plow" then return World.square(payload.anchor),"plow" end
-    local best,action,dist
-    for dx=-8,8 do for dy=-8,8 do
-        local square=World.square({x=payload.anchor.x+dx,y=payload.anchor.y+dy,z=payload.anchor.z})
+    for _,entry in ipairs(Farm.plantsNear(payload.anchor,World.range())) do
+        local plant=entry.plant
+        local square=World.square({x=plant.x,y=plant.y,z=plant.z})
         if square then
-            local plant=system():getLuaObjectOnSquare(square)
-            local op=operation(plant,payload.job,payload.crop)
+            local op=operation(system():getLuaObjectOnSquare(square) or plant,payload.job,payload.crop)
             local key=square:getX()..":"..square:getY()
-            local d=dx*dx+dy*dy
-            if op and not job.skipped[key] and (not dist or d<dist) then best,action,dist=square,op,d end
+            if op and not job.skipped[key] then return square,op end
         end
-    end end
-    return best,action
+    end
+    return nil
 end
 
 function Farm.update(body,payload,job,now)

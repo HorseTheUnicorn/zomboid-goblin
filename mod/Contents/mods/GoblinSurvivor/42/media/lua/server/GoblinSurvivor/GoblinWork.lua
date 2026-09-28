@@ -97,10 +97,14 @@ local function gather(body, requirements, job, now)
     job.missing=missing
     if not job.supply then
         if now < (job.nextSupplyScan or 0) then return nil end
-        job.nextSupplyScan=now+3000
-        for _,source in ipairs(World.sources(Body.position(body),24,function(item) return World.fullType(item)==missing end,body)) do
-            if not job.skipped[source.item] then job.supply=source; job.supplyAt=now; break end
-        end
+        -- Nearest-first out to Goblin's range, spread over ticks.
+        job.gatherSearch=job.gatherSearch or {center=Body.position(body)}
+        local found,done=World.search(job.gatherSearch.center,World.range(),function(item)
+            return World.fullType(item)==missing and not job.skipped[item] end,body,job.gatherSearch,3000)
+        if not done then return nil end
+        job.gatherSearch=nil
+        job.nextSupplyScan=now+10000
+        if found[1] then job.supply=found[1]; job.supplyAt=now end
     end
     local source=job.supply
     if not source then announce(body,"no "..missing.." around here; I will scavenge some myself."); return nil end

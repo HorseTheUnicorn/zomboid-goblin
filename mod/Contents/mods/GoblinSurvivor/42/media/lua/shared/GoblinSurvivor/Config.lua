@@ -56,7 +56,7 @@ local Config = {
     maxRecoveryAttempts = 4,
     navigationBlacklistSeconds = 30,
 
-    lootRadius = 8,
+    lootRadius = 150,
     lootScanSeconds = 2.0,
     lootMaxItemsPerTask = 8,
 
@@ -65,10 +65,13 @@ local Config = {
     autonomyEnabled = true,
     autonomyIdleSeconds = 30,
     autonomyDecisionSeconds = 8,
-    autonomyExploreRadius = 24,
+    autonomyExploreRadius = 150,
     autonomyWorkRadius = 10,
     -- How far from the base (tiles) Goblin roams as its caretaker.
-    caretakerRoamRadius = 500,
+    caretakerRoamRadius = 150,
+    -- How far Goblin looks for things (supplies, crops, generators, stoves,
+    -- traps, forage, salvage, a house to call home, vehicles).
+    goblinRange = 150,
     autonomyBarricadeRadius = 8,
 
     -- Free will: how long scripted chores wait for Qwen to choose a job, and
@@ -79,7 +82,7 @@ local Config = {
     -- Salvage: Goblin scraps empty wooden furniture in nearby non-base,
     -- non-safehouse buildings for planks when the base runs short.
     salvageEnabled = true,
-    salvageRadius = 24,
+    salvageRadius = 150,
     salvageBaseBuffer = 6,
 
     -- Goblin conjures the materials he needs for his own work (planks, nails,
@@ -209,20 +212,21 @@ function Config.refresh()
     Config.stuckTimeoutSeconds = boundedNumber(option("GoblinStuckTimeoutSeconds", Config.stuckTimeoutSeconds), Config.stuckTimeoutSeconds, 2, 60)
     Config.maxRecoveryAttempts = boundedInteger(option("GoblinMaxRecoveryAttempts", Config.maxRecoveryAttempts), Config.maxRecoveryAttempts, 0, 8)
     Config.navigationBlacklistSeconds = boundedNumber(option("GoblinNavigationBlacklistSeconds", Config.navigationBlacklistSeconds), Config.navigationBlacklistSeconds, 5, 300)
-    Config.lootRadius = boundedNumber(option("GoblinLootRadius", Config.lootRadius), Config.lootRadius, 1, 20)
+    Config.lootRadius = boundedNumber(option("GoblinLootRadius", Config.lootRadius), Config.lootRadius, 1, 300)
     Config.lootScanSeconds = boundedNumber(option("GoblinLootScanSeconds", Config.lootScanSeconds), Config.lootScanSeconds, 0.5, 30)
     Config.lootMaxItemsPerTask = boundedInteger(option("GoblinLootMaxItemsPerTask", Config.lootMaxItemsPerTask), Config.lootMaxItemsPerTask, 1, 32)
     Config.autonomyEnabled = parseBoolean(option("GoblinAutonomyEnabled", Config.autonomyEnabled), Config.autonomyEnabled)
     Config.autonomyIdleSeconds = boundedNumber(option("GoblinAutonomyIdleSeconds", Config.autonomyIdleSeconds), Config.autonomyIdleSeconds, 30, 3600)
     Config.autonomyDecisionSeconds = boundedNumber(option("GoblinAutonomyDecisionSeconds", Config.autonomyDecisionSeconds), Config.autonomyDecisionSeconds, 2, 120)
-    Config.autonomyExploreRadius = boundedNumber(option("GoblinAutonomyExploreRadius", Config.autonomyExploreRadius), Config.autonomyExploreRadius, 8, 40)
+    Config.autonomyExploreRadius = boundedNumber(option("GoblinAutonomyExploreRadius", Config.autonomyExploreRadius), Config.autonomyExploreRadius, 8, 300)
+    Config.goblinRange = boundedNumber(option("GoblinRange", Config.goblinRange), Config.goblinRange, 8, 300)
     Config.caretakerRoamRadius = boundedNumber(option("GoblinCaretakerRoamRadius", Config.caretakerRoamRadius), Config.caretakerRoamRadius, 10, 2000)
     Config.autonomyWorkRadius = boundedNumber(option("GoblinAutonomyWorkRadius", Config.autonomyWorkRadius), Config.autonomyWorkRadius, 3, 32)
     Config.autonomyBarricadeRadius = boundedNumber(option("GoblinAutonomyBarricadeRadius", Config.autonomyBarricadeRadius), Config.autonomyBarricadeRadius, 2, 20)
     Config.freewillGraceSeconds = boundedNumber(option("GoblinFreewillGraceSeconds", Config.freewillGraceSeconds), Config.freewillGraceSeconds, 10, 600)
     Config.goalRecallDistance = boundedNumber(option("GoblinGoalRecallDistance", Config.goalRecallDistance), Config.goalRecallDistance, 5, 60)
     Config.salvageEnabled = parseBoolean(option("GoblinSalvageEnabled", Config.salvageEnabled), Config.salvageEnabled)
-    Config.salvageRadius = boundedNumber(option("GoblinSalvageRadius", Config.salvageRadius), Config.salvageRadius, 3, 40)
+    Config.salvageRadius = boundedNumber(option("GoblinSalvageRadius", Config.salvageRadius), Config.salvageRadius, 3, 300)
     Config.salvageBaseBuffer = boundedNumber(option("GoblinSalvageBaseBuffer", Config.salvageBaseBuffer), Config.salvageBaseBuffer, 0, 100)
     Config.provisionEnabled = parseBoolean(option("GoblinProvisionEnabled", Config.provisionEnabled), Config.provisionEnabled)
     Config.provisionPerMinute = boundedInteger(option("GoblinProvisionPerMinute", Config.provisionPerMinute), Config.provisionPerMinute, 1, 600)

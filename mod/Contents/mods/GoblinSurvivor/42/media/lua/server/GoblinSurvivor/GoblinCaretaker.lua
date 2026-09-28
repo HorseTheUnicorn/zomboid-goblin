@@ -18,7 +18,8 @@
 local Body = require("GoblinSurvivor/GoblinBody")
 local World = require("GoblinSurvivor/GoblinWorld")
 
-local Caretaker = { state = setmetatable({}, { __mode = "k" }), CATCHUP_HOURS = 6, RADIUS = 10 }
+local Caretaker = { state = setmetatable({}, { __mode = "k" }), CATCHUP_HOURS = 6,
+    RADIUS = World.range and World.range() or 150, SEARCH_BUDGET = 12000, NONE_RECHECK_MS = 600000 }
 local call = World.call
 
 local function gameHours()
@@ -57,12 +58,26 @@ local function gridPowerOn()
 end
 
 -- Current needs of the homestead (also reported to Goblin's mind).
-function Caretaker.survey(body, base)
+function Caretaker.survey(body, base, state, now)
+    state = state or {}
+    now = now or 0
     local report = { power = "unknown", farm = {}, traps = 0, open_curtains = 0 }
     local okP, Power = pcall(require, "GoblinSurvivor/GoblinPower")
     if okP then
-        local generator = Power.findGenerator(body, base, Caretaker.RADIUS + 10)
-        if generator then
+        -- The wide generator search is spread over surveys; "none" is cached.
+        local generator, searched = Power.knownGenerator(body), true
+        if not generator and now >= (state.genNoneUntil or 0) then
+            state.genSearch = state.genSearch or {}
+            generator, searched = Power.findGenerator(body, base, Caretaker.RADIUS, state.genSearch,
+                Caretaker.SEARCH_BUDGET)
+            if searched then
+                state.genSearch = nil
+                if not generator then state.genNoneUntil = now + Caretaker.NONE_RECHECK_MS end
+            end
+        end
+        if not searched then
+            report.power = "checking"
+        elseif generator then
             local fuel, maximum = num(generator, "getFuel") or 0, num(generator, "getMaxFuel") or 100
             local running = select(2, call(generator, "isActivated")) == true
             local condition = num(generator, "getCondition") or 100
@@ -132,7 +147,7 @@ function Caretaker.tick(body, setTask, now)
     Caretaker.catchUp(body, base, hours)
     if now < (state.nextSurveyAt or 0) then return false end
     state.nextSurveyAt = now + 20000
-    local ok, report = pcall(Caretaker.survey, body, base)
+    local ok, report = pcall(Caretaker.survey, body, base, state, now)
     if not ok or type(report) ~= "table" then return false end
     data.GoblinHomestead = {
         power = report.power, generator = report.generator, plants = report.farm.plants or 0,
@@ -174,7 +189,7 @@ function Caretaker.catchUp(body, base, hours)
     local okP, Power = pcall(require, "GoblinSurvivor/GoblinPower")
     local okV, Provision = pcall(require, "GoblinSurvivor/GoblinProvision")
     if okP and okV and Provision.enabled() then
-        local generator = Power.findGenerator(body, base, Caretaker.RADIUS + 10)
+        local generator = Power.knownGenerator(body)
         if generator then
             local fuel, maximum = num(generator, "getFuel") or 0, num(generator, "getMaxFuel") or 100
             if fuel < maximum then

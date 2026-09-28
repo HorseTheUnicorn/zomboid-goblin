@@ -38,6 +38,13 @@ class DismantleTests(unittest.TestCase):
             end
             function World.point(square) return {x=square.x+0.5,y=square.y+0.5,z=square.z} end
             function World.fullType(item) return item:getFullType() end
+            function World.rings(center,radius,visit)
+                for dx=-radius,radius do for dy=-radius,radius do
+                    local sq=World.square({x=math.floor(center.x)+dx,y=math.floor(center.y)+dy,z=center.z})
+                    if sq then visit(sq,math.max(math.abs(dx),math.abs(dy)),dx,dy) end
+                end end
+                return true
+            end
             package.loaded['GoblinSurvivor/GoblinWorld']=World
             package.loaded['GoblinSurvivor/GoblinBody']={
                 data=function(b) return b.data end,

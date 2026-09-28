@@ -136,24 +136,23 @@ Dismantle.protectedSquare = protectedSquare
 function Dismantle.findSalvage(body)
     local origin = Body.position(body)
     if not Support.validPoint(origin) then return nil end
-    local radius = math.floor(tonumber(Config.salvageRadius) or 24)
+    local radius = math.floor(tonumber(Config.salvageRadius) or 150)
     local best
-    for dx = -radius, radius do for dy = -radius, radius do
-        if dx * dx + dy * dy <= radius * radius then
-            local square = World.square({x=math.floor(origin.x)+dx, y=math.floor(origin.y)+dy,
-                z=math.floor(origin.z)})
-            if square and not protectedSquare(body, square) then
-                for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                    local target = eligible(body, object, square, nil)
-                    if target then
-                        local point = World.point(square)
-                        target.distance = (point.x-origin.x)^2 + (point.y-origin.y)^2
-                        if not best or target.distance < best.distance then best = target end
-                    end
-                end
+    -- Nearest-first rings: stops once the band holding the nearest find is done.
+    World.rings(origin, radius, function(square, _, dx, dy)
+        if dx * dx + dy * dy > radius * radius or protectedSquare(body, square) then return false end
+        local hit = false
+        for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+            local target = eligible(body, object, square, nil)
+            if target then
+                local point = World.point(square)
+                target.distance = (point.x-origin.x)^2 + (point.y-origin.y)^2
+                if not best or target.distance < best.distance then best = target end
+                hit = true
             end
         end
-    end end
+        return hit
+    end)
     return best
 end
 

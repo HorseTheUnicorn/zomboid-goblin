@@ -21,12 +21,12 @@ end
 function Vehicles.prepare(body,owner,payload)
     if type(goblinServerRepair)~="function" then return nil,"repairs need the updated server-side Storm adapter" end
     local point=Support.anchor(body,owner,false)
-    if not point then return nil,"stand within five tiles of the vehicle to mark it" end
+    if not point then return nil,"owner position unavailable" end
     local chosen,distance
     for _,vehicle in ipairs(World.values(select(2,call(getCell(),"getVehicles")))) do
         local p=Body.position(vehicle)
         local d=(p.x-point.x)^2+(p.y-point.y)^2
-        if math.floor(p.z)==math.floor(point.z) and d<=25 and (not distance or d<distance) then chosen,distance=vehicle,d end
+        if math.floor(p.z)==math.floor(point.z) and d<=World.range()^2 and (not distance or d<distance) then chosen,distance=vehicle,d end
     end
     local ok,reason=safe(chosen)
     if not ok then return nil,reason end

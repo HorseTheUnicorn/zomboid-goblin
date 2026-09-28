@@ -118,12 +118,20 @@ function Loot.collect(body, payload, now)
         return true,detail,job.moved,false
     end
     if not job.sources then
-        local center=Body.position(body)
+        -- Nearest-first search out to lootRadius, spread over ticks so a wide
+        -- range never stalls the server.
+        job.search=job.search or {center=Body.position(body),skipSquares=job.skippedSquares}
+        local found,done=World.search(job.search.center,Config.lootRadius,function(item)
+            return not job.skipped[item] and matches(item,payload.loot_focus,payload.autonomous)
+        end,body,job.search,4000)
+        if not done then
+            data.GoblinLootStatus="looking around for supplies"
+            return true,data.GoblinLootStatus,job.moved,false
+        end
+        job.search=nil
         local anchor=payload.autonomous and Explore.anchor(body,payload)
         job.sources={}
-        for _,source in ipairs(World.sources(center,Config.lootRadius,function(item)
-            return not job.skipped[item] and matches(item,payload.loot_focus,payload.autonomous)
-        end,body)) do
+        for _,source in ipairs(found) do
             if not job.skippedSquares[source.square]
                 and (not anchor or Explore.within(World.point(source.square),anchor)) then
                 job.sources[#job.sources+1]=source

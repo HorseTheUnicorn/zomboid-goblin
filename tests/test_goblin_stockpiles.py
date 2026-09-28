@@ -40,6 +40,8 @@ class StockpileTests(unittest.TestCase):
                 return not object.isLocked or object:isLocked()==false
             end
             function World.fullType(item) return item:getFullType() end
+            -- Wide cached search delegates to this fixture's sources().
+            function World.cachedNear(_,center,accept,body) return World.sources(center,8,accept,body) end
             package.loaded['GoblinSurvivor/GoblinWorld']=World
             body={owner='horse'}
             owner={getUsername=function() return 'horse' end}

@@ -944,7 +944,7 @@
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "c1c0eccbe8ce4e6d334a6a77bb0dd99cf4f34786067d633f8f9b0a5be980c667"
+        "sha256": "0a388bf81eb28cec7f883f78a0bb9b40b2a355adad848f583d264ced8a9d617f"
       },
       {
         "path": "goblin_zomboid/service.py",

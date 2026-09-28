@@ -52,18 +52,19 @@ Survival.Chop = {}
 
 local function nearestTree(body, center, radius, skipped)
     local best, bestDistance
-    for dx = -radius, radius do for dy = -radius, radius do
-        local square = World.square({ x=center.x+dx, y=center.y+dy, z=center.z })
-        if square then
-            for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
-                if isTree(object) and objectIndex(object) >= 0 and not skipped[object]
-                    and Policy.access(body, object) then
-                    local d = dx*dx + dy*dy
-                    if not best or d < bestDistance then best, bestDistance = { tree=object, square=square }, d end
-                end
+    -- Nearest-first rings; stops once the band holding the nearest tree is done.
+    World.rings(center, radius, function(square, _, dx, dy)
+        local hit = false
+        for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
+            if isTree(object) and objectIndex(object) >= 0 and not skipped[object]
+                and Policy.access(body, object) then
+                local d = dx*dx + dy*dy
+                if not best or d < bestDistance then best, bestDistance = { tree=object, square=square }, d end
+                hit = true
             end
         end
-    end end
+        return hit
+    end)
     return best
 end
 
@@ -75,7 +76,7 @@ function Survival.Chop.prepare(body, owner, request)
     local count = tonumber(request.count) or 1
     if count ~= math.floor(count) or count < 1 or count > 5 then return nil, "chop 1 to 5 trees per order" end
     local anchor = { x=math.floor(point.x), y=math.floor(point.y), z=math.floor(point.z) }
-    if not nearestTree(body, anchor, 8, {}) then return nil, "no tree within eight tiles of you" end
+    if not nearestTree(body, anchor, World.range(), {}) then return nil, "no tree within "..World.range().." tiles of you" end
     if not Tools.ensure(body, "Base.Axe") then return nil, "the reusable axe is unavailable" end
     return { owner=name, anchor=anchor, count=count, felled=0, hits=0 },
         "felling "..count.." nearby tree(s); the logs stay where they fall"
@@ -95,7 +96,7 @@ function Survival.Chop.update(body, payload, runtime, now)
         return false
     end
     if not target then
-        target = nearestTree(body, payload.anchor, 8, runtime.skipped)
+        target = nearestTree(body, payload.anchor, World.range(), runtime.skipped)
         if not target then
             local felled = payload.felled or 0
             return true, felled > 0, "felled "..felled.." tree(s); no more trees nearby",
@@ -213,7 +214,8 @@ function Survival.Treat.update(body, payload, runtime, now)
         local center = Body.position(body)
         local source = runtime.source
         if not source then
-            for _, candidate in ipairs(World.sources(center, 8, function(item)
+            runtime.bandageCache = runtime.bandageCache or {}
+            for _, candidate in ipairs(World.cachedNear(runtime.bandageCache, center, function(item)
                 return bandagePower(item) ~= nil and not string.find(World.fullType(item) or "", "Dirty", 1, true)
             end, body)) do
                 if not (runtime.skippedItems and runtime.skippedItems[candidate.item]) then source = candidate; break end

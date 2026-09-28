@@ -18,7 +18,7 @@ local Policy = require("GoblinSurvivor/GoblinAccessPolicy")
 
 local Service = {}
 local call = World.call
-local SELECT_RADIUS2 = 25
+local SELECT_RADIUS2 = 150 * 150 -- Goblin range (Config.goblinRange)
 local MOVED_RADIUS2 = 64
 local TAG_TOOLS = {
     ["base:wrench"] = { "Base.Wrench", "Base.PipeWrench" },
@@ -414,7 +414,8 @@ end
 
 local function nearbyReplacement(body, p, anchor, runtime, excludeId)
     local types = itemTypes(p)
-    for _, source in ipairs(World.sources(anchor, 8, function(item)
+    runtime.partCache = runtime.partCache or {}
+    for _, source in ipairs(World.cachedNear(runtime.partCache, anchor, function(item)
         return types[World.fullType(item)] and not Transfer.protected(body, item)
             and (not excludeId or Transfer.itemId(item) ~= excludeId)
             and (num(item, "getCondition") or 0) > 0 end, body)) do
@@ -437,7 +438,7 @@ local function base(body, owner, request, destructive)
     local point = Body.position(owner)
     if not Support.validPoint(point) then return nil, "owner position unavailable" end
     local vehicle = Service.nearestVehicle(point)
-    if not vehicle then return nil, "stand within five tiles of the vehicle" end
+    if not vehicle then return nil, "no vehicle within "..World.range().." tiles" end
     if not Policy.access(body, vehicle) then return nil, "safehouse rules forbid working on that vehicle" end
     local ids = identity(vehicle)
     local p = position(vehicle)
@@ -584,7 +585,7 @@ function Service.Refuel.update(body, payload, runtime, now)
     if not can and not pump then
         local source = runtime.source
         if not source then
-            for _, candidate in ipairs(World.sources(payload.anchor, 8, function(item) return petrol(item) ~= nil end, body)) do
+            for _, candidate in ipairs(World.sourcesNear(payload.anchor, function(item) return petrol(item) ~= nil end, body)) do
                 if not (runtime.skippedItems and runtime.skippedItems[candidate.item]) then source = candidate; break end
             end
             runtime.source, runtime.sourceAt = source, now
@@ -807,7 +808,7 @@ function Service.Part.update(body, payload, runtime, now)
             local source = runtime.source or nearbyReplacement(body, p, payload.anchor, runtime, payload.removed_id)
             if not source then
                 return finishPart(payload, false, "MISSING_MATERIAL", "no usable "..payload.part
-                    .." replacement in Goblin supplies or within 8 tiles"
+                    .." replacement in Goblin supplies or within 150 tiles"
                     ..(payload.removed_id and "; the old part was removed and is with Goblin" or ""))
             end
             runtime.source, runtime.sourceAt = source, runtime.sourceAt or now

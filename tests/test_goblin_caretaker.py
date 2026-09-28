@@ -78,11 +78,11 @@ class CaretakerTests(unittest.TestCase):
             assert(watered==5 and a.data.GoblinCaretakerReport:find('watered 5 plant'))
         ''')
 
-    def test_goblin_roams_500_tiles_of_home_and_owner_far_away_keeps_companion(self):
+    def test_goblin_roams_150_tiles_of_home_and_owner_far_away_keeps_companion(self):
         self.lua.execute('''
             gridOn=true
-            -- Within 500 tiles of home he roams freely; beyond it he walks back.
-            a.data.GoblinBaseX=300; a.data.GoblinBaseY=300
+            -- Within 150 tiles of home he roams freely; beyond it he walks back.
+            a.data.GoblinBaseX=100; a.data.GoblinBaseY=100
             a.data.GoblinTask='FOLLOW'; online=list()
             Autonomy.update(a,clock)
             assert(a.data.GoblinTask~='RETURN_TO_BASE', a.data.GoblinTask)
