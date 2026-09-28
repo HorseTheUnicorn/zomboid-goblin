@@ -617,8 +617,11 @@ function Spawner.setTask(body, task, payload)
 end
 
 function Spawner.setBaseForPlayer(player, clear)
-    local owner = username(player)
-    local point = Body.position(player)
+    return Spawner.setBaseForOwnerAt(username(player), Body.position(player), clear)
+end
+
+-- Also used by a Goblin claiming a base on his own (GoblinBaseClaim).
+function Spawner.setBaseForOwnerAt(owner, point, clear)
     if owner == nil or point == nil then return false, "player position unavailable" end
     local record = recordFor(owner, true)
     local oldBase = record.base_set and { x = record.base_x, y = record.base_y, z = record.base_z }

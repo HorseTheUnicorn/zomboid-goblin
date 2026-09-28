@@ -72,6 +72,9 @@ local function setTaskInternal(body, task, payload)
         payload,jobDetail=Transport.prepare(body,playerForOwner(body),task,nowMs())
         if not payload then return false,jobDetail end
     end
+    -- Self-sufficient: a job that needs a base claims the nearest house
+    -- (never another player's safehouse) instead of refusing.
+    pcall(require("GoblinSurvivor/GoblinBaseClaim").ensure, body, task, playerForOwner(body))
     if Jobs.handles(task) then
         local ok,prepared,detail=pcall(Jobs.prepare,body,playerForOwner(body),task,payload)
         if not ok then return false,"job preparation failed; the existing order was kept" end
