@@ -13,7 +13,9 @@ local Motion = {
     requests = setmetatable({}, { __mode = "k" }),
     churn = setmetatable({}, { __mode = "k" }),
     followArrived = setmetatable({}, { __mode = "k" }),
-    followChasing = setmetatable({}, { __mode = "k" })
+    followChasing = setmetatable({}, { __mode = "k" }),
+    -- Door-aware grid routes (see Motion.planRoute).
+    routes = setmetatable({}, { __mode = "k" })
 }
 local rejoined = setmetatable({}, { __mode = "k" })
 
@@ -366,6 +368,260 @@ local function blockedFollowDetour(body, owner, actor, leader, timestamp, workRo
     return waypoint
 end
 
+-- ---------------------------------------------------------------------------
+-- Door-aware route planner.
+--
+-- Build 42 plans every IsoZombie path with canThump=true (PathFindRequest.init)
+-- and IsoGameCharacter.pathToAux walks a zombie straight at any target it has
+-- a "clear" line to, windows included. Both assume the actor will smash or
+-- climb through closed windows, which Goblin never does, so live Goblins stood
+-- at the outside wall of a house while its doors were wide open. This A* works
+-- on loaded squares: walls, closed windows and window climbs are blocked; open
+-- doorways cost nothing extra; a closed, unbarricaded door is allowed (the
+-- server opens it when Goblin is beside it). Goblin then walks the route in
+-- short straight hops that the native walker cannot cut through a window.
+-- ---------------------------------------------------------------------------
+Motion.ROUTE_MAX_EXPANSIONS = 5000
+Motion.ROUTE_MAX_DISTANCE = 60
+Motion.ROUTE_REPLAN_MS = 3000
+
+local function tileOf(point)
+    return math.floor(point.x), math.floor(point.y), math.floor(point.z)
+end
+
+-- Returns passable, extra cost.
+function Motion.routeEdge(from, to, goalSquare)
+    if not to then return false end
+    if to ~= goalSquare then
+        local okFree, free = call(to, "isFree", false)
+        if not okFree or free ~= true then
+            -- A doorway square with an open door can report not free.
+            local _, isDoor = call(from, "isDoorTo", to)
+            if isDoor ~= true then return false end
+        end
+    end
+    local checked, blocked = call(from, "isBlockedTo", to)
+    local _, window = call(from, "isWindowTo", to)
+    if window == true then return false end
+    if checked and blocked == false then return true, 0 end
+    local _, isDoor = call(from, "isDoorTo", to)
+    if isDoor == true then
+        local _, door = call(from, "getDoorTo", to)
+        local _, barricaded = call(door, "isBarricaded")
+        if barricaded == true then return false end
+        return true, 2
+    end
+    return false
+end
+
+local function heapPush(heap, node)
+    heap[#heap + 1] = node
+    local i = #heap
+    while i > 1 do
+        local parent = math.floor(i / 2)
+        if heap[parent].f <= heap[i].f then break end
+        heap[parent], heap[i] = heap[i], heap[parent]
+        i = parent
+    end
+end
+
+local function heapPop(heap)
+    local top = heap[1]
+    local last = table.remove(heap)
+    if #heap > 0 then
+        heap[1] = last
+        local i = 1
+        while true do
+            local l, r, smallest = i * 2, i * 2 + 1, i
+            if heap[l] and heap[l].f < heap[smallest].f then smallest = l end
+            if heap[r] and heap[r].f < heap[smallest].f then smallest = r end
+            if smallest == i then break end
+            heap[i], heap[smallest] = heap[smallest], heap[i]
+            i = smallest
+        end
+    end
+    return top
+end
+
+-- Returns an array of tile points from the square after the start to the goal
+-- square, or nil (unreachable in the loaded, same-floor area / over budget).
+function Motion.planRoute(start, goal, edge)
+    edge = edge or Motion.routeEdge
+    local sx, sy, sz = tileOf(start)
+    local gx, gy, gz = tileOf(goal)
+    if sz ~= gz then return nil, "different floor" end
+    if math.abs(sx - gx) + math.abs(sy - gy) > Motion.ROUTE_MAX_DISTANCE * 2 then return nil, "too far" end
+    local startSquare = squareAt({ x = sx + 0.5, y = sy + 0.5, z = sz })
+    local goalSquare = squareAt({ x = gx + 0.5, y = gy + 0.5, z = gz })
+    if not startSquare or not goalSquare then return nil, "unloaded" end
+    local minX, maxX = math.min(sx, gx) - 24, math.max(sx, gx) + 24
+    local minY, maxY = math.min(sy, gy) - 24, math.max(sy, gy) + 24
+    local function h(x, y) return math.abs(x - gx) + math.abs(y - gy) end
+    local heap = {}
+    local cost = { [sx .. ":" .. sy] = 0 }
+    local parent = {}
+    local squares = { [sx .. ":" .. sy] = startSquare }
+    heapPush(heap, { x = sx, y = sy, g = 0, f = h(sx, sy) })
+    local expanded = 0
+    local offsets = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+    while #heap > 0 and expanded < Motion.ROUTE_MAX_EXPANSIONS do
+        local node = heapPop(heap)
+        local key = node.x .. ":" .. node.y
+        if node.g <= (cost[key] or math.huge) then
+            expanded = expanded + 1
+            if node.x == gx and node.y == gy then
+                local route, cursor = {}, key
+                while parent[cursor] do
+                    local x, y = cursor:match("^(-?%d+):(-?%d+)$")
+                    table.insert(route, 1, { x = tonumber(x) + 0.5, y = tonumber(y) + 0.5, z = sz })
+                    cursor = parent[cursor]
+                end
+                return route, expanded
+            end
+            local here = squares[key]
+            for _, offset in ipairs(offsets) do
+                local nx, ny = node.x + offset[1], node.y + offset[2]
+                if nx >= minX and nx <= maxX and ny >= minY and ny <= maxY then
+                    local nkey = nx .. ":" .. ny
+                    local nextSquare = squares[nkey]
+                    if nextSquare == nil then
+                        nextSquare = squareAt({ x = nx + 0.5, y = ny + 0.5, z = sz }) or false
+                        squares[nkey] = nextSquare
+                    end
+                    if nextSquare then
+                        local ok, extra = edge(here, nextSquare, goalSquare)
+                        if ok then
+                            local g = node.g + 1 + (extra or 0)
+                            if g < (cost[nkey] or math.huge) then
+                                cost[nkey] = g
+                                parent[nkey] = key
+                                heapPush(heap, { x = nx, y = ny, g = g, f = g + h(nx, ny) })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil, expanded >= Motion.ROUTE_MAX_EXPANSIONS and "search budget exhausted" or "no route"
+end
+
+local function indoors(square)
+    local _, room = call(square, "getRoom")
+    return room ~= nil
+end
+
+-- Straight-line check used to shorten a route: every grid step open, no
+-- doors or windows crossed (a closed door must be reached, not cut past).
+local function hopClear(fromSquare, destination)
+    local target = squareAt(destination)
+    if not fromSquare or not target then return false end
+    local _, x = call(fromSquare, "getX")
+    local _, y = call(fromSquare, "getY")
+    local _, z = call(fromSquare, "getZ")
+    local _, tx = call(target, "getX")
+    local _, ty = call(target, "getY")
+    if type(x) ~= "number" or type(tx) ~= "number" then return false end
+    local current = fromSquare
+    local function step(a, b)
+        local ok, extra = Motion.routeEdge(a, b, target)
+        return ok and (extra or 0) == 0
+    end
+    for _ = 1, 12 do
+        if x == tx and y == ty then return true end
+        local sx = tx == x and 0 or (tx > x and 1 or -1)
+        local sy = ty == y and 0 or (ty > y and 1 or -1)
+        local nextSquare = squareAt({ x = x + sx + 0.5, y = y + sy + 0.5, z = z })
+        if not nextSquare then return false end
+        if sx ~= 0 and sy ~= 0 then
+            -- Diagonal: both L-shaped side steps must be open (no corner cut).
+            local sideX = squareAt({ x = x + sx + 0.5, y = y + 0.5, z = z })
+            local sideY = squareAt({ x = x + 0.5, y = y + sy + 0.5, z = z })
+            if not (sideX and sideY and step(current, sideX) and step(sideX, nextSquare)
+                and step(current, sideY) and step(sideY, nextSquare)) then return false end
+        elseif not step(current, nextSquare) then
+            return false
+        end
+        current, x, y = nextSquare, x + sx, y + sy
+    end
+    return false
+end
+
+-- Replaces a far/indoor goal with the next straight hop on a door-aware route.
+-- Returns goal, options unchanged when no route is needed or none exists.
+function Motion.routeWaypoint(body, goal, options, timestamp)
+    local actor = Motion.position(body)
+    if not actor or not goal or math.floor(actor.z) ~= math.floor(goal.z) then return goal, options end
+    local gap = Motion.distance(actor, goal)
+    if gap < 1.5 or gap > Motion.ROUTE_MAX_DISTANCE then
+        Motion.routes[body] = nil
+        return goal, options
+    end
+    local actorSquare, goalSquare = squareAt(actor), squareAt(goal)
+    if not actorSquare or not goalSquare then return goal, options end
+    local previous = Motion.routes[body]
+    -- A clear short line needs no plan. Outdoors-to-outdoors the native
+    -- pathfinder is fine; plan whenever a building is involved or the native
+    -- route has already stalled.
+    if gap <= 12 and localRouteClear(actorSquare, goal) then
+        Motion.routes[body] = nil
+        return goal, options
+    end
+    local md = data(body)
+    local stalled = md and md.GoblinPathState == "blocked"
+    if not previous and not stalled and not indoors(actorSquare) and not indoors(goalSquare) then
+        return goal, options
+    end
+    local gx, gy = tileOf(goal)
+    if previous and previous.failedWhy and timestamp - previous.at < Motion.ROUTE_REPLAN_MS
+        and math.abs(previous.gx - gx) + math.abs(previous.gy - gy) <= 2 then
+        return goal, options
+    end
+    local route = previous and previous.route
+    local fresh = previous and timestamp - previous.at < Motion.ROUTE_REPLAN_MS
+        and math.abs(previous.gx - gx) + math.abs(previous.gy - gy) <= 2
+    -- Find where the actor is on the saved route.
+    local index
+    if route and fresh then
+        local ax, ay = tileOf(actor)
+        for i = 1, #route do
+            if math.abs(math.floor(route[i].x) - ax) + math.abs(math.floor(route[i].y) - ay) <= 1 then index = i end
+        end
+        if not index and previous.progress then index = previous.progress end
+    end
+    if not route or not fresh or not index then
+        local planned, why = Motion.planRoute(actor, goal)
+        if not planned then
+            if not previous or previous.failedWhy ~= why then
+                print("[GoblinSurvivor] ROUTE_UNAVAILABLE from=" .. pointKey(actor) .. " goal=" .. pointKey(goal)
+                    .. " reason=" .. tostring(why))
+            end
+            Motion.routes[body] = { at = timestamp, gx = gx, gy = gy, failedWhy = why }
+            return goal, options
+        end
+        if not previous or previous.gx ~= gx or previous.gy ~= gy or not previous.route then
+            print("[GoblinSurvivor] ROUTE_PLANNED from=" .. pointKey(actor) .. " goal=" .. pointKey(goal)
+                .. " steps=" .. #planned .. " expanded=" .. tostring(why))
+        end
+        route, index = planned, 0
+    end
+    -- Farthest straight hop within ten steps.
+    local waypoint, reached = route[math.min(#route, index + 1)], index + 1
+    for i = math.min(#route, index + 10), index + 1, -1 do
+        if i == index + 1 or hopClear(actorSquare, route[i]) then
+            waypoint, reached = route[i], i
+            break
+        end
+    end
+    Motion.routes[body] = { at = fresh and previous.at or timestamp, gx = gx, gy = gy, route = route,
+        progress = math.max(0, reached - 1) }
+    return waypoint, {
+        goal_type = "route", goal_key = "route:" .. pointKey(waypoint),
+        blacklist_kind = "approach", obstruction_cleared = options and options.obstruction_cleared,
+        current_task = options and options.current_task
+    }
+end
+
 function Motion.clearFollowSlot(body)
     Motion.followSlots[body] = nil
     Motion.followDetours[body] = nil
@@ -701,6 +957,10 @@ function Motion.drive(body, goal, moveType, timestamp, options)
         return true, "delegated"
     end
     if not goal then Motion.stop(body); return true, "arrived" end
+    if options.goal_type ~= "route" then
+        local routed, routedOptions = Motion.routeWaypoint(body, goal, options, timestamp)
+        if routed ~= goal then goal, options = routed, routedOptions end
+    end
     -- Work orders use coordinate goals too. Previously only FOLLOW consumed
     -- the loaded-edge detour search; a work goal kept retrying the same wall
     -- after each blacklist expired. Keep its exact destination, but service

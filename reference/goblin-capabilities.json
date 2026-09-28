@@ -1624,7 +1624,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua",
-          "sha256": "1769f49574610cadb87d0a155f2fd9b026f5cc2e807a3e8260905de5133f6455"
+          "sha256": "0b87afa0b77c7e3f1619174fc85f81452ccd09a2280c67ac7f498e45469a6dc8"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinAccess.lua",
@@ -1732,7 +1732,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/GoblinLocomotion.lua",
-          "sha256": "1769f49574610cadb87d0a155f2fd9b026f5cc2e807a3e8260905de5133f6455"
+          "sha256": "0b87afa0b77c7e3f1619174fc85f81452ccd09a2280c67ac7f498e45469a6dc8"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua",

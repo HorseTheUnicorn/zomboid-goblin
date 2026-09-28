@@ -157,6 +157,81 @@ class GoblinLuaTests(unittest.TestCase):
             assert(a.pathCalls == 2)
         ''')
 
+    HOUSE = '''
+        -- House interior x 5..9, y 0..4. West wall has a closed window at y=2;
+        -- the south wall has a doorway at x=7 (doorOpen toggles it).
+        doorOpen=true
+        local function inside(x,y) return x>=5 and x<=9 and y>=0 and y<=4 end
+        local cache={}
+        function cell:getGridSquare(x,y,z)
+            local k=x..':'..y..':'..z
+            if cache[k] then return cache[k] end
+            local s={x=x,y=y,z=z}
+            function s:getX() return self.x end
+            function s:getY() return self.y end
+            function s:getZ() return self.z end
+            function s:isFree() return true end
+            function s:getMovingObjects() return list() end
+            function s:haveFire() return false end
+            function s:getRoom() if inside(self.x,self.y) then return {} end end
+            local function crossing(a,b)
+                return inside(a.x,a.y)~=inside(b.x,b.y)
+            end
+            local function isDoorEdge(a,b)
+                return crossing(a,b) and a.x==7 and b.x==7 and ((a.y==4 and b.y==5) or (a.y==5 and b.y==4))
+            end
+            local function isWindowEdge(a,b)
+                return crossing(a,b) and a.y==2 and b.y==2 and ((a.x==4 and b.x==5) or (a.x==5 and b.x==4))
+            end
+            function s:isDoorTo(o) return isDoorEdge(self,o) end
+            function s:getDoorTo(o) if isDoorEdge(self,o) then return {isBarricaded=function() return false end} end end
+            function s:isWindowTo(o) return isWindowEdge(self,o) end
+            function s:isBlockedTo(o)
+                if isDoorEdge(self,o) then return not doorOpen end
+                return crossing(self,o)
+            end
+            cache[k]=s
+            return s
+        end
+    '''
+
+    def test_route_enters_a_house_by_its_door_not_the_window(self):
+        # Live: Goblins stood at a closed window outside the owner's house
+        # (IsoZombie paths assume windows can be smashed) while doors were open.
+        self.lua.execute(self.HOUSE)
+        self.lua.execute('''
+            local route=assert(Motion.planRoute({x=2.5,y=2.5,z=0},{x=7.5,y=2.5,z=0}))
+            local seen=false
+            for i,p in ipairs(route) do
+                if math.floor(p.x)==7 and math.floor(p.y)==4 then seen=true end
+                assert(not (math.floor(p.x)==5 and math.floor(p.y)==2 and i==1), 'went through the window')
+            end
+            assert(seen, 'route did not use the door')
+            doorOpen=false  -- a closed door is still a way in (the server opens it)
+            local closed=assert(Motion.planRoute({x=2.5,y=2.5,z=0},{x=7.5,y=2.5,z=0}))
+            assert(#closed==#route)
+        ''')
+
+    def test_route_waypoints_never_cut_through_the_window(self):
+        self.lua.execute(self.HOUSE)
+        self.lua.execute('''
+            a=actor(2.5,2.5,0)
+            local goal={x=7.5,y=2.5,z=0}
+            for i=1,40 do
+                local waypoint,options=Motion.routeWaypoint(a,goal,{},clock+i*100)
+                if waypoint==goal then break end
+                assert(options.goal_type=='route')
+                -- One hop never crosses the wall except through the doorway.
+                local ax,ay=math.floor(a.x),math.floor(a.y)
+                local wx,wy=math.floor(waypoint.x),math.floor(waypoint.y)
+                local inA=ax>=5 and ax<=9 and ay>=0 and ay<=4
+                local inW=wx>=5 and wx<=9 and wy>=0 and wy<=4
+                if inA~=inW then assert(wx==7 and (wy==4 or wy==5) and ax==7, 'hop crossed a wall') end
+                a.x,a.y=waypoint.x,waypoint.y
+            end
+            assert(math.floor(a.x)>=5 and math.floor(a.x)<=9, 'never got inside')
+        ''')
+
     def test_jittering_goal_does_not_restart_the_route_every_frame(self):
         # Live: ~150 native re-requests in 15 s while Goblin stood still,
         # because a goal re-rounded across a tile edge reset the route.
