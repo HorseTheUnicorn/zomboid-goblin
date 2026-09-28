@@ -928,11 +928,11 @@
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "47b2e69ca9232d012393c14e9cab16635d1a06b6587c07ed816c8f6c2736d954"
+        "sha256": "48b3b7712fa43b19b7e414f08798d300318b31a6964f02a65d5a608da0924eb9"
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "7962944450e950e76af15298402e9d853ad9170b020a3386ec8513ddfca53819"
+        "sha256": "64b1c35f54be230ffc74d7dbef74e86e1a5089e6f8d193864fbd54d18bcb4940"
       }
     ],
     "chat_generation_actions": [

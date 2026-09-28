@@ -96,6 +96,15 @@ class SentienceTests(unittest.TestCase):
         self.assertTrue(wants)
         self.assertGreaterEqual(priority, 0.5)
 
+    def test_a_step_that_keeps_failing_is_skipped_not_retried_forever(self):
+        self.sentience.apply_reflection("g1", {"mood": "ok", "thought": "t", "decision": "new", "goal": "g",
+                                               "plan": [{"intent": "FETCH_ITEM", "note": "nails"},
+                                                        {"intent": "SECURE_BASE", "note": "board"}]})
+        self.sentience.step_result("g1", "FETCH_ITEM", False)
+        self.assertEqual(self.sentience.current_step("g1")["intent"], "FETCH_ITEM")
+        self.sentience.step_result("g1", "FETCH_ITEM", False)
+        self.assertEqual(self.sentience.current_step("g1")["intent"], "SECURE_BASE")
+
     def test_opinions_drift_and_self_survives_restart(self):
         for _ in range(3):
             self.sentience.apply_reflection("g1", {"mood": "fond", "thought": "He is alright.",
@@ -218,6 +227,32 @@ class SentienceServiceTests(unittest.TestCase):
             self._state(service, alice={"situation": done}, bob={"situation": situation()})
             service.run_once()
             self.assertEqual(service.sentience.current_step(npc)["intent"], "SECURE_BASE")
+        finally:
+            service.close()
+
+    def test_a_failed_freewill_command_counts_as_a_failed_step(self):
+        qwen = ReflectingQwen()
+        service = self._service(qwen)
+        try:
+            npc = "goblin.primary.alice"
+            self._state(service, bob={"situation": situation()})
+            service.run_once(); self._drain(service); service.run_once()
+            service.freewill_requests["req-1"] = (npc, "SORT_STORAGE")
+
+            class Message:
+                request_id = "req-1"
+                fields = {"status": "failed", "detail": "no storage"}
+                timestamp_ms = 1
+
+            class Response:
+                message = Message()
+
+            service.response_consumer.poll = lambda **_: [Response()]
+            service.response_consumer.finalize = lambda *a, **k: None
+            service._poll_responses()
+            service._poll_responses()
+            self.assertEqual(service.sentience.current_step(npc)["intent"], "SORT_STORAGE")
+            self.assertEqual(service.sentience.current_step(npc).get("failures"), 1)
         finally:
             service.close()
 

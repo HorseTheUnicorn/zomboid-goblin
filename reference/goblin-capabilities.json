@@ -1372,7 +1372,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWork.lua",
-          "sha256": "c281f2cb642365f05749ad198fbb73f1ec8af48e29aba77b7e12d3d35854a1f9"
+          "sha256": "454822e1ff1dbaf20c388509c2edae2cc0ffa7eec93dc85be87e4da76e73f655"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISBarricadeAction.lua",
@@ -1475,7 +1475,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWork.lua",
-          "sha256": "c281f2cb642365f05749ad198fbb73f1ec8af48e29aba77b7e12d3d35854a1f9"
+          "sha256": "454822e1ff1dbaf20c388509c2edae2cc0ffa7eec93dc85be87e4da76e73f655"
         },
         {
           "installed_path": "media/lua/server/BuildingObjects/ISWoodenWall.lua",
@@ -4931,7 +4931,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinStructureRepair.lua",
-          "sha256": "f747d7591ce66ad44ab979947711abeb1bb0b546e14139c99c67ffc2da420c27"
+          "sha256": "9e161f7104fbf81c8bc501fb2fac939b6d2fc9324100f7a8468119cf746efdfd"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinBaseMaintain.lua",

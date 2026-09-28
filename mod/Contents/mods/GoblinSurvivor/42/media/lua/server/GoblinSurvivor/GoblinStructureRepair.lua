@@ -208,7 +208,7 @@ local function gatherOne(body, runtime, anchor, itemType, now)
         runtime.supply = nil
         if now < (runtime.nextSupplyScan or 0) then return false end
         runtime.nextSupplyScan = now + 3000
-        for _, source in ipairs(World.sources(anchor, 8, function(item)
+        for _, source in ipairs(World.sources(anchor, 24, function(item)
             return World.fullType(item) == itemType and not Tools.reserved(item) end, body)) do
             if not runtime.supplySkipped[source.item] then
                 source.kind = itemType
@@ -219,7 +219,7 @@ local function gatherOne(body, runtime, anchor, itemType, now)
     end
     local source = runtime.supply
     if not source then
-        Support.status(body, "I need "..itemType.." in my supplies or near the job.")
+        Support.status(body, "no "..itemType.." around here; I will scavenge some myself.")
         return false
     end
     Body.data(body).GoblinAction = ""

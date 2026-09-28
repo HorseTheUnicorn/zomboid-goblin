@@ -43,12 +43,21 @@ function Support.supply(body,job,anchor,predicate,now,label,conjureType)
     end
     if not job.supply and now>=(job.nextSupplyScan or 0) then
         job.nextSupplyScan=now+3000
-        for _,source in ipairs(World.sources(anchor,8,predicate,body)) do
+        -- Self-sufficient: widen the search (8, 16, then 24 tiles) before
+        -- giving up, instead of asking the owner to bring anything.
+        job.searchRadius=job.searchRadius or 8
+        for _,source in ipairs(World.sources(anchor,job.searchRadius,predicate,body)) do
             if not job.skipped[source.item] then job.supply=source;job.supplyAt=now;break end
+        end
+        if not job.supply and job.searchRadius<24 then
+            job.searchRadius=job.searchRadius+8
+            job.nextSupplyScan=now
+            Support.status(body,"no "..label.." close by; searching further out")
+            return nil
         end
     end
     local source=job.supply
-    if not source then Support.status(body,"I need "..label.." in my supplies or near the job.");return nil end
+    if not source then Support.status(body,"found no "..label.." anywhere near; I will scavenge for some later");return nil end
     Body.data(body).GoblinAction=""
     job.readyAt=nil
     if World.approach(body,source.square,now) then

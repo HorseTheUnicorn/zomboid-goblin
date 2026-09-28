@@ -152,8 +152,8 @@ class FreewillServiceTests(unittest.TestCase):
 
     @staticmethod
     def _drain(service):
-        if service.think_future is not None:
-            service.think_future.result(timeout=5)
+        for future, _selected in list(service.think_jobs.values()):
+            future.result(timeout=5)
 
     def test_free_will_picks_a_job_with_the_companion_grant(self):
         qwen = ThinkingQwen()
@@ -217,17 +217,22 @@ class FreewillServiceTests(unittest.TestCase):
         finally:
             service.close()
 
-    def test_meetup_goes_before_a_due_think_turn(self):
-        # Live: with both Goblins thinking every ~40 s the banter slot never came up.
+    def test_meetup_and_every_goblins_thinking_run_at_the_same_time(self):
+        # Live: Goblins took turns; now banter and each Goblin's own thought
+        # are in flight together, whatever the number of Goblins.
         qwen = ThinkingQwen()
         service = self._service(qwen)
         try:
             self._state(service, together=True, bob={"freewill": True, "companion_authority_token": "companion-bob"})
+            service.run_once()
+            self.assertEqual(sorted(service.think_jobs),
+                             ["banter", "npc:goblin.primary.alice", "npc:goblin.primary.bob"])
+            self._drain(service)
+            service.run_once()
+            self.assertEqual(len(qwen.think_contexts), 2)
+            self.assertEqual(len(qwen.banter_contexts), 1)
+            self.assertEqual(service.think_stats["think_acted"], 2)
             service.run_once(); self._drain(service)
-            self.assertEqual(service.run_once().status, "banter_scheduled")
-            self.assertEqual(qwen.think_contexts, [])
-            service.run_once(); self._drain(service)
-            self.assertEqual(len(qwen.think_contexts), 1)  # thinking resumes next
             self.assertEqual(len(qwen.banter_contexts), 1)  # pair cooldown holds
         finally:
             service.close()

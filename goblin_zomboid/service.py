@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import os
 import logging
 from pathlib import Path
 import threading
@@ -68,8 +69,13 @@ class GoblinService:
         # Long-term memory and the free-will loop (Qwen picks Goblin's own jobs).
         self.mind = GoblinMind(Path(memory_path).with_suffix(".mind.sqlite3"), clock=clock)
         self.think_executor: ThreadPoolExecutor | None = None
-        self.think_future = None
-        self.think_selected: dict[str, object] | None = None
+        # Every Goblin thinks in its own lane: one in-flight model call per
+        # Goblin (plus banter/journal lanes), all running at the same time.
+        self.think_jobs: dict[str, tuple[object, dict[str, object]]] = {}
+        self.think_parallel = max(1, int(os.environ.get("GOBLIN_THINK_PARALLEL", "6") or 6))
+        # Free-will command request_id -> (npc_id, intent) so a refused or
+        # failed command counts as a failed plan step.
+        self.freewill_requests: dict[str, tuple[str, str]] = {}
         self.next_think: dict[str, float] = {}
         self.banter_until: dict[tuple[str, str], float] = {}
         self.scheduled_says: list[tuple[float, str, str]] = []  # (due, npc_id, text)
@@ -133,10 +139,25 @@ class GoblinService:
         self.tracker.close()
         self.memory.close()
 
+    @property
+    def think_future(self):
+        """Any in-flight background thought (compat for callers/tests)."""
+        for future, _selected in self.think_jobs.values():
+            return future
+        return None
+
     def _poll_responses(self) -> None:
         now_ms = int(self.clock() * 1000)
         for response in self.response_consumer.poll(limit=32, now=now_ms):
             fields = response.message.fields
+            mapped = self.freewill_requests.pop(str(response.message.request_id), None)
+            status = str(fields.get("status") or "").lower()
+            if mapped is not None and status in {"failed", "rejected", "refused", "error", "invalid", "denied",
+                                                 "expired", "stale"}:
+                npc_id, intent = mapped
+                self.sentience.step_result(npc_id, intent, False)
+                self.mind.record(npc_id, "job", f"{intent} failed: {str(fields.get('detail', ''))[:80]}", None,
+                                 importance=0.3, valence=-0.2)
             self.last_response = {
                 "request_id": response.message.request_id,
                 "status": fields.get("status"),
@@ -716,55 +737,78 @@ class GoblinService:
             clone = getattr(self.qwen, "background", None)
             if callable(clone):
                 try:
-                    client = clone(timeout_seconds=25.0)
+                    client = clone(timeout_seconds=40.0)
                 except TypeError:
                     client = clone()
         if self.think_executor is None:
-            self.think_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="goblin-think")
-        self.think_selected = dict(selected, kind=kind)
-        self.think_future = self.think_executor.submit(getattr(client, method), context)
+            self.think_executor = ThreadPoolExecutor(max_workers=self.think_parallel,
+                                                     thread_name_prefix="goblin-think")
+        lane = self._lane(kind, selected)
+        self.think_jobs[lane] = (self.think_executor.submit(getattr(client, method), context),
+                                 dict(selected, kind=kind))
+
+    @staticmethod
+    def _lane(kind: str, selected: Mapping[str, object]) -> str:
+        if kind in {"think", "reflect"}:
+            return f"npc:{selected.get('npc_id')}"
+        return kind
+
+    def _lane_free(self, lane: str) -> bool:
+        return lane not in self.think_jobs and len(self.think_jobs) < self.think_parallel
 
     def _count(self, key: str) -> None:
         self.think_stats[key] = self.think_stats.get(key, 0) + 1
 
     def _think_tick(self, fields: Mapping[str, object]) -> ServiceResult | None:
-        if self.think_future is not None:
-            if not self.think_future.done():
-                return None
-            future, selected = self.think_future, self.think_selected or {}
-            self.think_future, self.think_selected = None, None
+        outcome: ServiceResult | None = None
+        finished: set[str] = set()
+        for lane, (future, selected) in list(self.think_jobs.items()):
+            if not future.done():
+                continue
+            del self.think_jobs[lane]
+            finished.add(lane)
             try:
                 value = future.result()
             except Exception as exc:
                 self._count(f"{selected.get('kind')}_failed")
-                LOG.warning("THINK_FAILED kind=%s detail=%s", selected.get("kind"), str(exc)[:200])
-                return None
+                LOG.warning("THINK_FAILED kind=%s npc=%s detail=%s", selected.get("kind"),
+                            selected.get("npc_id"), str(exc)[:200])
+                continue
             handler = {"think": self._finish_think, "banter": self._finish_banter,
                        "journal": self._finish_journal,
                        "reflect": self._finish_reflect}.get(str(selected.get("kind")))
-            return handler(fields, selected, value) if handler else None
-        if self.qwen is None or self.pending_chats:
-            return None
+            result = handler(fields, selected, value) if handler else None
+            if result is not None:
+                outcome = result
+        if finished or self.qwen is None or self.pending_chats:
+            # A lane that just finished starts its next thought on the next tick.
+            return outcome
+        self._start_thoughts(fields)
+        return outcome
+
+    def _start_thoughts(self, fields: Mapping[str, object]) -> None:
         now = self.clock()
         companions = self._companions(fields)
         reflects = callable(getattr(self.qwen, "propose_reflect", None))
         if reflects:
             # Something important just happened: think about it before anything else.
-            urgent = self._reflect_candidate(companions, urgent=True)
-            if urgent is not None:
+            while True:
+                pool = [c for c in companions if self._lane_free(f"npc:{c.get('npc_id')}")]
+                urgent = self._reflect_candidate(pool, urgent=True)
+                if urgent is None:
+                    break
                 self._submit_reflect(*urgent)
-                return None
-        if self.journal_queue and callable(getattr(self.qwen, "propose_journal", None)):
+        if (self.journal_queue and self._lane_free("journal")
+                and callable(getattr(self.qwen, "propose_journal", None))):
             npc_id, day = self.journal_queue.pop(0)
             context = {"day": day, "events": self.mind.episodes(npc_id, 20, day=day),
                        "memory": {"trust_in_owner": self.mind.digest(npc_id)["trust_in_owner"],
                                   "remembered_places": self.mind.places(npc_id)}}
             self._submit_think("journal", {"npc_id": npc_id, "day": day}, "propose_journal", context)
-            return None
         eligible = [c for c in companions if self._think_eligible(c) and isinstance(c.get("npc_id"), str)]
         # Meetups are rare (10 min per pair) and time-sensitive: they go before
         # the next think turn, which would otherwise always be due.
-        if callable(getattr(self.qwen, "propose_banter", None)):
+        if self._lane_free("banter") and callable(getattr(self.qwen, "propose_banter", None)):
             pair = self._banter_pair(companions, now)
             if pair is not None:
                 goblins = []
@@ -780,14 +824,16 @@ class GoblinService:
                                                "recent_memories": digest["recent_memories"][-5:]}})
                 self._submit_think("banter", {"pair": [(c.get("npc_id"), c.get("name")) for c in pair]},
                                    "propose_banter", {"goblins": goblins})
-                return None
         if callable(getattr(self.qwen, "propose_think", None)):
-            interval = max(40.0, 15.0 * len(eligible))
+            interval = 40.0
             for companion in eligible:
                 self.next_think.setdefault(str(companion["npc_id"]), now + self.think_initial_delay)
-            due = [c for c in eligible if now >= self.next_think[str(c["npc_id"])]]
-            if due:
-                companion = min(due, key=lambda c: self.next_think[str(c["npc_id"])])
+            due = sorted((c for c in eligible if now >= self.next_think[str(c["npc_id"])]
+                          and self._lane_free(f"npc:{c['npc_id']}")),
+                         key=lambda c: self.next_think[str(c["npc_id"])])
+            for companion in due:
+                if not self._lane_free(f"npc:{companion['npc_id']}"):
+                    break
                 npc_id = str(companion["npc_id"])
                 self.next_think[npc_id] = now + interval
                 body = self._configure_driver(companion)
@@ -806,13 +852,14 @@ class GoblinService:
                            "conversation": list(self.dialogue.get(str(owner), [])),
                            "persistent_goblins": self._roster_context()}
                 self._submit_think("think", {"npc_id": npc_id, "owner": owner}, "propose_think", context)
-                return None
         if reflects:
             # Quiet moment: slow background reflection (also while following).
-            background = self._reflect_candidate(companions, urgent=False)
-            if background is not None:
+            while True:
+                pool = [c for c in companions if self._lane_free(f"npc:{c.get('npc_id')}")]
+                background = self._reflect_candidate(pool, urgent=False)
+                if background is None:
+                    break
                 self._submit_reflect(*background)
-        return None
 
     def _banter_pair(self, companions: list[Mapping[str, object]], now: float):
         ready = {c.get("npc_id"): c for c in companions if self._social_ready(c)
@@ -891,6 +938,10 @@ class GoblinService:
         self.last_think_talk[str(npc_id)] = False
         self.mind.record(str(npc_id), "choice", f"decided to {action.value}" + (f": {spoken}" if spoken else ""), day)
         self._count("think_acted" if result.accepted else "think_refused")
+        if result.accepted and result.detail:
+            self.freewill_requests[str(result.detail)] = (str(npc_id), action.value)
+            if len(self.freewill_requests) > 256:
+                self.freewill_requests.pop(next(iter(self.freewill_requests)))
         LOG.info("FREEWILL_ACTION owner=%s action=%s status=%s detail=%s", owner, action.value,
                  result.status, str(result.detail)[:160])
         return ServiceResult("freewill_command_published" if result.accepted else result.status,
@@ -1119,7 +1170,8 @@ class GoblinService:
             "companion_count": len(self._companions(self.last_state)),
             "reflex": {"available": self.reflex.available, "error": self.reflex.error,
                        "routes": dict(self.reflex_stats)},
-            "free_will": {"stats": dict(self.think_stats), "busy": self.think_future is not None,
+            "free_will": {"stats": dict(self.think_stats), "busy": bool(self.think_jobs),
+                          "in_flight": sorted(self.think_jobs),
                           "scheduled_lines": len(self.scheduled_says)},
             "sentience": self.sentience.snapshot(),
         }

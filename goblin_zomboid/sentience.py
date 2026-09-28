@@ -388,11 +388,18 @@ class Sentience:
             return
         if step.get("intent") != intent:
             return  # an owner order or another job; the plan waits
+        if not success:
+            # Never hammer the same failing step: after two failures skip it.
+            step["failures"] = int(step.get("failures") or 0) + 1
+            if step["failures"] >= 2:
+                success = True
+                self.mind.record(npc_id, "gave_up", f"gave up on {intent} for now", self._day(npc_id),
+                                 importance=0.35, valence=-0.3)
         if success:
             state["current_step"] = int(state.get("current_step") or 0) + 1
             if state["current_step"] >= len(state.get("plan") or []):
                 self._finish_goal(npc_id, state, "complete")
-        else:
+        if not success or step.get("failures"):
             importance, valence = EVENT_WEIGHTS["job_failed"]
             self.inbox.setdefault(npc_id, []).append(
                 {"kind": "job_failed", "text": f"{intent} did not work out", "importance": importance,

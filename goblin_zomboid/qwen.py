@@ -54,10 +54,10 @@ class QwenClient:
     def set_wait_callback(self, callback: Callable[[], None]) -> None:
         self.wait_callback = callback
 
-    def background(self, timeout_seconds: float = 12.0) -> "QwenClient":
+    def background(self, timeout_seconds: float = 30.0) -> "QwenClient":
         """A twin client for worker threads: no wait callback into the service."""
         return QwenClient(base_url=self.base_url, model=self.model,
-                          timeout_seconds=min(timeout_seconds, self.timeout_seconds), validator=self.validator)
+                          timeout_seconds=max(timeout_seconds, self.timeout_seconds), validator=self.validator)
 
     @staticmethod
     def _system_prompt() -> str:
@@ -390,7 +390,11 @@ class QwenClient:
         "scavenge, or stay near the owner when threats are close. Never repeat a job that just failed with "
         "the same result; choose something else. Owner-facing text narrates what you are about to do and "
         "why, and you may bitch and grumble about the work, the weather or the owner's choices while doing "
-        "it. Now and then ask the owner a real question or raise a problem instead of (or as well as) "
+        "it. You are self-sufficient: never ask your comrade to bring, find or give you items. Your own work "
+        "supplies (planks, nails, parts, petrol, bait, bandages) appear as you work; for real goods go and "
+        "get them yourself (LOOT_AREA, FORAGE, DISMANTLE salvage, CHECK_TRAPS, CHOP_WOOD). FETCH_ITEM only "
+        "brings base stock TO your comrade when they need it. "
+        "Now and then ask the owner a real question or raise a problem instead of (or as well as) "
         "working. SAY is only for when talking really is the best move. Never claim work is finished. "
         "If event.last_turn_was_talk is true you already talked last time: pick a real job now, not SAY. "
         "FOLLOW is not a job; choose it only when threats are close. "
@@ -425,6 +429,8 @@ class QwenClient:
         "expectation is what you expect next from someone. say is usually empty: most thoughts stay "
         "private. Only say something when it matters (danger, your comrade hurt, a real opinion or a "
         "memory worth bringing up, a plan change they should know about), in your crude Lenin voice, "
+        "never asking them to fetch or hand you anything: you are self-sufficient and get what you need "
+        "yourself (your own work supplies appear as you work; real goods you loot, forage, salvage or trap), "
         "under 180 characters, never repeating context.self.private_thoughts word for word."
     )
 
@@ -462,7 +468,7 @@ class QwenClient:
         identity = {"name": context.get("companion", {}).get("name"), "owner": context.get("controlled_owner")}
         prompt = (FeralPersonality.system_prompt() + self.REFLECT_RULES
                   + " Your identity data: " + json.dumps(identity) + ".")
-        content = self._request_json(prompt, brain_view(context), max_tokens=420, schema=self._reflect_schema())
+        content = self._request_json(prompt, brain_view(context), max_tokens=800, schema=self._reflect_schema())
         try:
             value = json.loads(content)
         except ValueError as exc:

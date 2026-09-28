@@ -98,12 +98,12 @@ local function gather(body, requirements, job, now)
     if not job.supply then
         if now < (job.nextSupplyScan or 0) then return nil end
         job.nextSupplyScan=now+3000
-        for _,source in ipairs(World.sources(Body.position(body),8,function(item) return World.fullType(item)==missing end,body)) do
+        for _,source in ipairs(World.sources(Body.position(body),24,function(item) return World.fullType(item)==missing end,body)) do
             if not job.skipped[source.item] then job.supply=source; job.supplyAt=now; break end
         end
     end
     local source=job.supply
-    if not source then announce(body,"I need "..missing.." nearby or in my supplies."); return nil end
+    if not source then announce(body,"no "..missing.." around here; I will scavenge some myself."); return nil end
     if World.approach(body,source.square,now) then
         if not World.take(body,source) then job.skipped[source.item]=true end
         job.supply=nil;job.nextSupplyScan=0

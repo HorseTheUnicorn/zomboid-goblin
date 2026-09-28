@@ -232,6 +232,12 @@ native online ID, and the observer matches on that, or on the client-side
 missing. The probe also waits for a coherent actor square and sends the
 server-built gate with `transmitAddObjectToSquare` before any lock packets.
 
+### Self-sufficiency and concurrent minds (2026-09-28)
+
+- Goblins never ask the owner for items. Work supplies are conjured; missing materials are searched for out to 24 tiles, then the Goblin says he will scavenge them himself. Think, reflect and chat prompts forbid asking the owner to bring things; FETCH_ITEM is only for bringing stock to the owner.
+- Every Goblin now thinks in its own lane: free will, reflection, banter and journals run concurrently (`GOBLIN_THINK_PARALLEL`, default 6) instead of one Goblin at a time. The per-Goblin think interval is a flat 40 s no matter how many Goblins exist. `ops/goblin-llama-8b.service` now serves `--parallel 4 --ctx-size 32768` so the model answers several Goblins at once.
+- A free-will command the server rejects or fails now counts as a failed plan step; a step that fails twice is skipped. Reflection output limit raised to 800 tokens; background model calls time out after 30-40 s.
+
 ## Remaining work
 
 | Milestone | What remains |
