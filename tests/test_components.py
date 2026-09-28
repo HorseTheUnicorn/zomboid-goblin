@@ -39,6 +39,15 @@ class ControllerTests(unittest.TestCase):
         safe = SafeAction(Action.NOOP, 1, "test")
         self.assertEqual(SensorOnlyBodyDriver().execute(safe).status, "sensor_only")
 
+    def test_body_gate_admits_gain_access_semantic_kinds(self) -> None:
+        # Free will picking "gain access to a building" was rejected as an
+        # unknown target kind before the access kinds were listed.
+        gate = DeterministicActionGate()
+        for kind in ("building", "room", "yard", "vehicle", "container"):
+            result = gate.admit(SafeAction(Action.GAIN_ACCESS, 1, "test",
+                                           target_kind=kind, target_label="that house"))
+            self.assertTrue(result.accepted, (kind, result.detail))
+
     def test_events_are_structured_and_deduplicated(self) -> None:
         events = EventGate(duplicate_window_seconds=10)
         first = events.make(

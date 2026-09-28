@@ -39,6 +39,7 @@ end
 
 local function protected(body, item)
     if not item or Tools.reserved(item) then return true end
+    if require("GoblinSurvivor/GoblinProvision").isConjured(item) then return true end
     local kind = World.fullType(item)
     if not kind or kind == Config.weaponType or kind == Config.npcVisualItemType then return true end
     for _, uniform in ipairs(Config.npcOutfitItems or {}) do

@@ -47,13 +47,7 @@ local function doorAccessible(body,vehicle,part,door)
     if not door then return true end
     local inspected,locked=call(door,"isLocked")
     if not inspected then return false,"passenger door lock state unavailable" end
-    if locked~=true then return true end
-    -- Exact installed BaseVehicle.canOpenDoor/canUnlockDoor accept an
-    -- IsoGameCharacter and inspect its inventory for the vehicle key without
-    -- casting to IsoPlayer. Do not clear a lock merely because Goblin owns a
-    -- generic toolkit.
-    local checked,allowed=call(vehicle,"canOpenDoor",part,body)
-    if not checked or allowed~=true then return false,"passenger door locked without Goblin's matching key" end
+    -- Goblin picks any vehicle door lock himself; no key needed.
     return true
 end
 local function available(body,vehicle,seat)
@@ -78,8 +72,13 @@ local function unlockWithNativeKey(body,vehicle,seat)
     if not inspected then return false,part,door end
     if locked~=true then return true,part,door end
     local checked,allowed=call(vehicle,"canUnlockDoor",part,body)
-    if not checked or allowed~=true then return false,part,door end
-    local invoked=call(vehicle,"toggleLockedDoor",part,body,false)
+    local invoked
+    if checked and allowed==true then
+        invoked=call(vehicle,"toggleLockedDoor",part,body,false)
+    else
+        -- No matching key: Goblin picks the lock.
+        invoked=call(door,"setLocked",false)
+    end
     local verified,newLocked=call(door,"isLocked")
     if not invoked or not verified or newLocked==true then return false,part,door end
     call(vehicle,"transmitPartDoor",part)
@@ -270,7 +269,7 @@ function Transport.board(body,payload,now)
     if not available(body,vehicle,payload.seat) then return false,false,"seat changed; checking again" end
     Movement.clear(body)
     local unlocked,part,door=unlockWithNativeKey(body,vehicle,payload.seat)
-    if not unlocked then return true,false,"passenger door is locked and Goblin has no matching key" end
+    if not unlocked then return true,false,"passenger door lock would not open" end
     if door then call(door,"setOpen",true);call(vehicle,"transmitPartDoor",part) end
     local ok,entered=call(vehicle,"enterRSync",payload.seat,body,vehicle)
     if not ok or entered~=true then return true,false,"native passenger entry failed" end

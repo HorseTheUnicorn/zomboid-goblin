@@ -63,12 +63,15 @@ class PadlockTests(unittest.TestCase):
             assert(not Padlocks.remove(a,gate) and created==1)
         ''')
 
-    def test_missing_key_and_client_authority_do_not_create_items(self):
+    def test_missing_key_is_picked_and_client_authority_is_refused(self):
         self.lua.execute('''
             key.id=99
-            assert(not Access.open(a,gate,false) and created==0 and gate.padlocked)
-            key.id=42;isClient=function() return true end
-            assert(not Padlocks.remove(a,gate) and created==0 and gate.padlocked)
+            assert(Access.open(a,gate,false) and created==0 and not gate.padlocked)
+            assert(a.inv:contains(key)) -- the unrelated key is untouched
+        ''')
+        self.lua.execute('''
+            gate.padlocked=true;gate.id=42;key.id=42;isClient=function() return true end
+            assert(not Padlocks.remove(a,gate) and not Padlocks.pick(a,gate) and created==0 and gate.padlocked)
         ''')
 
     def test_failed_key_consumption_compensates_and_blocks_replay(self):

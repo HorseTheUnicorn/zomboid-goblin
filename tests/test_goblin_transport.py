@@ -27,11 +27,11 @@ class PassengerTests(unittest.TestCase):
             assert(a.data.GoblinRide.seat>0 and not v.doorOpen)
         ''')
 
-    def test_moving_locked_full_missing_and_blocked_vehicles_are_refused(self):
+    def test_moving_full_missing_and_blocked_vehicles_are_refused(self):
         self.lua.execute('''
             player.vehicle=v;v.seats[0]=player
             v.speed=10;assert(not Transport.prepare(a,player,'ENTER_VEHICLE',clock));v.speed=0
-            for _,field in ipairs({'locked','missing','blocked','cargo'}) do
+            for _,field in ipairs({'missing','blocked','cargo'}) do
                 v[field]=true
                 local p,reason=Transport.prepare(a,player,'ENTER_VEHICLE',clock)
                 assert(not p and reason:find('seat 1:',1,true),reason)
@@ -41,7 +41,7 @@ class PassengerTests(unittest.TestCase):
             assert(v.entries==0)
         ''')
 
-    def test_nearest_locked_vehicle_does_not_hide_accessible_car(self):
+    def test_nearest_blocked_vehicle_does_not_hide_accessible_car(self):
         self.lua.execute('''
             v.x=3
             local nearer={x=0.2,y=0,z=0}
@@ -58,9 +58,21 @@ class PassengerTests(unittest.TestCase):
                 end}
             end
             function nearer:canOpenDoor() return false end
+            function nearer:isEnterBlocked() return true end
             function cell:getVehicles() return list({nearer,v}) end
             local p,detail=Transport.prepare(a,player,'ENTER_VEHICLE',clock)
             assert(p and p.vehicle_id==v.id and p.seat>0,detail)
+        ''')
+
+    def test_locked_vehicle_without_key_is_picked_before_entry(self):
+        self.lua.execute('''
+            v.locked=true;v.hasKey=false
+            local p,detail=Transport.prepare(a,player,'ENTER_VEHICLE',clock);assert(p,detail)
+            local point=Passenger.point(v,p.seat,'outside');a.x=point.x;a.y=point.y
+            local done,ok,result=Transport.board(a,p,clock+1)
+            assert(done and ok,result)
+            assert(not v.locked and v.picks==1 and (v.nativeUnlocks or 0)==0)
+            assert(a.vehicle==v)
         ''')
 
     def test_matching_vehicle_key_uses_native_isogamecharacter_unlock_before_entry(self):

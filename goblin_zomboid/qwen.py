@@ -31,7 +31,7 @@ class QwenClient:
         "INSPECT_BASE", "MAINTAIN_BASE", "REPAIR_STRUCTURE", "DISMANTLE", "STOCKPILE",
         "SORT_STORAGE", "FETCH_ITEM", "DELIVER", "VEHICLE_INSPECT", "REFUEL_VEHICLE",
         "VEHICLE_SERVICE", "INSTALL_PART", "REMOVE_PART", "REPLACE_PART", "CHANGE_TIRE",
-        "CHOP_WOOD", "TREAT_PLAYER",
+        "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK",
     )
 
     def __init__(
@@ -77,8 +77,8 @@ class QwenClient:
             "GO_HOME, RETURN_TO_BASE, SET_BASE, SECURE_BASE, BUILD, ATTACK, DEFEND_PLAYER, DEFEND_AREA, GUARD, PATROL, "
             "CLEAR_BUILDING, FLEE, HELP, and TRADE, plus the owner-requested jobs INSPECT_BASE, MAINTAIN_BASE, "
             "REPAIR_STRUCTURE, DISMANTLE, STOCKPILE, SORT_STORAGE, FETCH_ITEM, DELIVER, VEHICLE_INSPECT, "
-            "REFUEL_VEHICLE, VEHICLE_SERVICE, INSTALL_PART, REMOVE_PART, REPLACE_PART, CHANGE_TIRE, CHOP_WOOD "
-            "and TREAT_PLAYER (never as offline chores). Interpret direct player requests naturally: "
+            "REFUEL_VEHICLE, VEHICLE_SERVICE, INSTALL_PART, REMOVE_PART, REPLACE_PART, CHANGE_TIRE, CHOP_WOOD, "
+            "TREAT_PLAYER, FORAGE, CHECK_TRAPS and COOK (never as offline chores). Interpret direct player requests naturally: "
             "'follow/come with me' means FOLLOW the speaking player; 'stay/wait/hold here' means HOLD_POSITION; "
             "'loot/scavenge/find supplies' means LOOT_AREA with current_position and an optional focus food, "
             "medical, tools, ammo, or surprise; 'go home/take it back/bring it to base' means RETURN_TO_BASE; "
@@ -177,9 +177,9 @@ class QwenClient:
                                  "required": ["name"], "additionalProperties": False}
                 if action in {"FETCH_ITEM", "STOCKPILE"}:
                     required.append("item")
-            if action == "CHOP_WOOD":
+            if action in {"CHOP_WOOD", "FORAGE", "COOK"}:
                 props["item"] = {"type": "object", "properties": {
-                    "count": {"type": "integer", "minimum": 1, "maximum": 5}},
+                    "count": {"type": "integer", "minimum": 1, "maximum": 10 if action == "FORAGE" else 5}},
                     "required": ["count"], "additionalProperties": False}
             if action in {"INSTALL_PART", "REMOVE_PART", "REPLACE_PART"}:
                 props["job"] = {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"}
@@ -223,8 +223,8 @@ class QwenClient:
             "route into a building/room/yard/vehicle/container, CLOSE_CURTAINS to close/shut "
             "curtains or blinds (never open the window), BUILD with item.name "
             "crate/wall/fence, or EQUIP with item.name Base.DoubleBarrelShotgun. OPEN_DOOR/OPEN_WINDOW have "
-            "no target: the server resolves the nearest one within three tiles of the speaker. Locked or "
-            "barricaded targets are refused with a reason. GAIN_ACCESS requires a semantic target kind and label, "
+            "no target: the server resolves the nearest one within three tiles of the speaker. Goblin picks "
+            "any door lock himself (key, padlock or code); barricaded targets and other players' safehouses are refused with a reason. GAIN_ACCESS requires a semantic target kind and label, "
             "never coordinates; the server chooses the physical method. Model output can never authorize breach. "
             "CLOSE_CURTAINS has no target: it closes all accessible "
             "curtains across the owner's current house, including other rooms/floors, and handles doors while walking. "
@@ -251,13 +251,17 @@ class QwenClient:
             "category like food, medical, tools, materials) with item.count 1-20 from the base to the owner; "
             "DELIVER puts Goblin's carried cargo away (optional item.name filter; job floor only if the owner "
             "said the floor is fine); CHOP_WOOD fells item.count 1-5 trees near the owner; TREAT_PLAYER bandages "
-            "the owner's wounds with real bandages. Vehicle jobs use the nearest parked vehicle within five tiles "
+            "the owner's wounds; FORAGE searches forest/field ground near the owner for item.count 1-10 real "
+            "finds and brings them home; CHECK_TRAPS empties and re-baits the traps around the base; COOK puts "
+            "item.count 1-5 raw foods from nearby storage in a nearby stove and takes them out cooked. Vehicle jobs use the nearest parked vehicle within five tiles "
             "of the owner: VEHICLE_INSPECT reports, REFUEL_VEHICLE adds real petrol, VEHICLE_SERVICE inspects, "
-            "inflates tires and refuels, INSTALL_PART/REMOVE_PART/REPLACE_PART need job as the part id in lower "
+            "inflates tires, charges the battery and refuels, INSTALL_PART/REMOVE_PART/REPLACE_PART need job as the part id in lower "
             "case (battery, tirefrontleft, headlightleft, ...) and optional item.name, CHANGE_TIRE takes an "
             "optional job tire id. Map the player's words onto these jobs when they ask for them. "
-            "All consumables and materials must be real existing game items. Goblin may fetch them, but never "
-            "invent them; shortages must be reported honestly. "
+            "For his own jobs Goblin conjures the supplies he needs (planks, nails, parts, tires, seeds, water, "
+            "petrol, bandages, recipe ingredients) straight into his own pack and uses them up on the job; "
+            "conjured supplies can never be handed to the player, stored or dropped, and FETCH_ITEM only "
+            "brings real items from the base. Never offer to give the player conjured things. "
             "Acknowledge requested plans, never claim completion. Driving and workstation-only recipes are unsupported. "
             "Game code runs beside the owner at 3 tiles, defends against zombies within 5 tiles of the owner, "
             "then scavenges/explores after 30 seconds stationary. Moving recalls autonomous chores. Explicit "

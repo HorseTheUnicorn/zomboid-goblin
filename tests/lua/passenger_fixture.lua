@@ -41,6 +41,7 @@ function v:isEnterBlocked(who,seat) return self.blocked end
 function v:isExitBlocked(who,seat) return self.exitBlocked end
 function v:getPassengerDoor(seat)
     return {getDoor=function() return {isLocked=function() return v.locked end,
+        setLocked=function(_,value) v.locked=value;v.picks=(v.picks or 0)+1 end,
         setOpen=function(_,value) v.doorOpen=value end} end}
 end
 function v:canOpenDoor(part,who) return not self.locked or self.hasKey==true end

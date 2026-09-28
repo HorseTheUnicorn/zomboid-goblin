@@ -105,10 +105,20 @@ function Farm.update(body,payload,job,now)
         local props=properties()[payload.crop]
         local accepted={}
         for _,kind in ipairs(props.seedTypes or {props.seedName}) do accepted[kind]=true end
-        supply=Support.supply(body,job,payload.anchor,function(i) return accepted[World.fullType(i)]==true end,now,payload.crop.." seeds")
+        local seedType=(props.seedTypes and props.seedTypes[1]) or props.seedName
+        if type(seedType)=="string" and not seedType:find("%.") then seedType="Base."..seedType end
+        supply=Support.supply(body,job,payload.anchor,function(i) return accepted[World.fullType(i)]==true end,now,payload.crop.." seeds",seedType)
         if not supply then return false,true,"waiting for "..payload.crop.." seeds","WAITING_FOR_MATERIAL" end
     elseif op=="water" then
         supply=Support.supply(body,job,payload.anchor,function(i) return Farm.waterUses(i)>0 end,now,"a container of water")
+        if not supply then
+            -- Conjure a filled water bottle for Goblin's own watering.
+            local Provision=require("GoblinSurvivor/GoblinProvision")
+            if Provision.enabled() then
+                local bottle=Provision.fluid(body,"Base.WaterBottle","Water","farm watering")
+                if bottle and Farm.waterUses(bottle)>0 then supply=bottle end
+            end
+        end
         if not supply then return false,true,"waiting for a container of water","WAITING_FOR_MATERIAL" end
     end
     if now-job.targetAt>60000 and not World.reachable(body,square) then

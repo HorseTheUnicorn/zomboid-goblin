@@ -146,6 +146,23 @@ class VehicleServiceTests(unittest.TestCase):
             assert(#transmits==0 and tank.content==20)
         ''')
 
+    def test_battery_is_charged_in_place_with_goblins_own_charger(self):
+        self.lua.execute('''
+            local battery=item('Base.CarBattery1','VehicleMaintenance')
+            battery.uses=0.2
+            function battery:getCurrentUsesFloat() return self.uses end
+            function battery:setCurrentUsesFloat(v) self.uses=v end
+            local p=makePart(car,'Battery',{item=battery,types={'Base.CarBattery1'}})
+            local runtime,payload={}, {owner='horse'}
+            assert(Service.chargeBattery(body,car,runtime,1000,payload)==false) -- charging takes time
+            local done,ok=Service.chargeBattery(body,car,runtime,9001,payload)
+            assert(done and ok and payload.battery_charged==true and battery.uses==1.0)
+            -- A full battery is left alone.
+            payload={owner='horse'}
+            done,ok=Service.chargeBattery(body,car,{},1,payload)
+            assert(done and ok and payload.battery_charged==false)
+        ''')
+
     def test_refuel_moves_real_petrol_from_carried_can(self):
         self.lua.execute('''
             local tank=makePart(car,'GasTank',{item=item('Base.NormalGasTank1','VehicleMaintenance'),
@@ -210,18 +227,18 @@ class VehicleServiceTests(unittest.TestCase):
             assert(tire.item==nil)
         ''')
 
-    def test_recipe_gated_part_is_refused_unless_actually_known(self):
+    def test_recipe_gated_part_needs_no_learned_recipe(self):
+        # Goblin knows every recipe: Basic Mechanics never blocks brakes.
         self.lua.execute('''
             withTire(100,35)
             local tire=car.byId.TireFrontLeft
             tire.item=nil
-            local payload,detail=Service.Remove.prepare(body,owner,{explicit_owner_order=true,part='BrakeFrontLeft'})
-            assert(payload==nil and detail:find('Basic Mechanics'), detail)
-            body.recipes={['Basic Mechanics']=true}
-            payload=assert(Service.Remove.prepare(body,owner,{explicit_owner_order=true,part='BrakeFrontLeft'}))
+            body.recipes={}
+            assert(Service.Remove.prepare(body,owner,{explicit_owner_order=true,part='BrakeFrontLeft'}))
         ''')
 
-    def test_mechanic_key_rule_blocks_locked_vehicle(self):
+    def test_mechanic_key_rule_never_blocks_goblin(self):
+        # Goblin opens any lock himself; no key is needed for a locked car.
         self.lua.execute('''
             local door={open=false,locked=true}
             function door:isOpen() return self.open end
@@ -231,10 +248,6 @@ class VehicleServiceTests(unittest.TestCase):
             local battery=item('Base.CarBattery1','VehicleMaintenance')
             makePart(car,'Battery',{item=battery,types={'Base.CarBattery1'},requireKey=true,
                 tables={uninstall={items={[1]={tags='base:screwdriver',equip='primary'}},time='100'}}})
-            local payload,detail=Service.Remove.prepare(body,owner,{explicit_owner_order=true,part='Battery'})
-            assert(payload==nil and detail:find('locked'), detail)
-            local key=item('Base.CarKey','Security'); key.keyId=99
-            body.inv.items[#body.inv.items+1]=key
             assert(Service.Remove.prepare(body,owner,{explicit_owner_order=true,part='Battery'}))
         ''')
 

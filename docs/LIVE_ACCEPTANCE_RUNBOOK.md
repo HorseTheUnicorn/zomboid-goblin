@@ -14,10 +14,11 @@ record `complete` only after its physical-evidence review.
    for the server copy and for both copies in each client cache. The file count
    is now 180 gameplay files (171 + 9 new server modules).
 2. Run `python -m unittest discover -s tests -p 'test_*.py'`. The current
-   baseline is 633 passing tests with two declared expected failures.
+   baseline is 685 tests: two declared expected failures and one art-asset
+   error (custom mesh/texture not in this repo checkout).
 3. Run `python -m tools.check_goblin_inventory` and `python -m tools.check_pz_catalog`.
 4. Confirm the server log shows
-   `CAPABILITY_REGISTRY_READY count=22 tasks=CHANGE_TIRE,CHOP_WOOD,CLOSE_CURTAINS,...`.
+   `CAPABILITY_REGISTRY_READY count=25 tasks=CHANGE_TIRE,CHOP_WOOD,CLOSE_CURTAINS,...`.
 5. Stage the read-only witness `tools/probes/Milestone4To6Witness.lua` on the
    second client, with `Lua/goblin-m46-witness.flag` containing the witness
    account name. Remove both after the session.
@@ -36,6 +37,8 @@ only). Capture the server stdout log and both client `console.txt` files.
 | Vehicle two-client | `enter`/`exit`/`unlock vehicle`/`start vehicle` with the witness watching. | The witness sees seat occupancy, the lock flag and the engine state change. |
 | Access interruption | Start `access building`, then disconnect the owner mid-route. Reconnect. | The job reports `INTERRUPTED` and does not repeat a toggle. After a restart during the route, the restored job completes or reports `TARGET_CHANGED`. |
 | Safehouse rules | Repeat the locked-door order inside another player's safehouse and inside your own. | Other safehouse: `PERMISSION_DENIED`. Own house: the locked door still opens (intended behavior). |
+| Any lock | With no key: a key-locked house door from outside, a padlocked gate, a combination-locked door, a locked car door (`/goblin enter vehicle`). | Each opens; the server logs `LOCK_PICKED` for padlock/combination. Both clients see the lock cleared and the door open. |
+| Free-will access | Enable free will and idle beside a locked house. | If Qwen picks GAIN_ACCESS, the server logs `QWEN_COMMAND ... action=GAIN_ACCESS status=accepted`, not "unknown target kind". |
 
 ## 2. Milestone 4 — base and logistics
 
@@ -61,15 +64,17 @@ Setup: set a base inside a house. Stand beside a crate and type
 | Capability | Procedure | Pass criteria |
 | --- | --- | --- |
 | CHOP_WOOD | `/goblin chop` near a tree. | Server `CHOP_WOOD felled`. The witness sees the tree removed and logs on the ground. **This is the first managed-actor `IsoTree.WeaponHit` call.** If it throws or does no damage, the job reports `UNSUPPORTED`/`ENGINE_ERROR`. Record that result either way. |
-| TREAT_PLAYER | Get scratched. Put a bandage in base. `/goblin bandage me`. | The owner's health panel shows the wound bandaged. The bandage ID leaves storage. `syncBodyPart` must reach the owner client: check the panel on the owner's own screen. |
+| TREAT_PLAYER | Get scratched. Remove all bandages. `/goblin bandage me`. | Server `PROVISION item=Base.Bandage`. The owner's health panel shows the wound bandaged (check the owner's own screen). |
+| FORAGE | Stand at a forest edge. `/goblin forage 3`. | Three `FORAGE ... item=` lines; Goblin walks between spots with the loot animation, then delivers the finds to the base container. |
+| CHECK_TRAPS | Place a baited trap and an empty trap near the base; wait for a catch. `/goblin traps`. | `TRAP_COLLECT` for the full trap; the empty trap shows bait (carrots) on both clients; the catch reaches the base. No error in the server log. |
+| COOK | Put raw steak/eggs in the fridge next to a powered stove. `/goblin cook 2`. | The stove switches on, the food appears in the oven, then leaves it cooked; `COOK ... cooked=2`; the stove switches off; the food is delivered home. |
 
-Cooking, tailoring, fishing, trapping and foraging are **not registered**.
-They stay proposed until a managed-IsoZombie native path is identified.
+Fishing, trap placement and campfire/pot cooking are not implemented.
 
 ## 4. Milestone 6 — vehicle service
 
-Park a car and switch the engine off. Put a petrol can, a spare tire and a
-charged battery nearby.
+Park a car and switch the engine off. Parts, tires, petrol and batteries are
+conjured when Goblin has none, so nothing needs to be staged.
 
 | Capability | Procedure | Pass criteria |
 | --- | --- | --- |
@@ -77,8 +82,9 @@ charged battery nearby.
 | REFUEL_VEHICLE | `/goblin vehicle refuel` | The can's fluid drops by exactly the tank increase. The witness `GasTank` amount rises. Repeat at a pump with piped fuel. |
 | CHANGE_TIRE | Deflate one tire. `/goblin change tire TireFrontLeft`. | The witness shows the part item ID swap (old ID now in Goblin inventory) and pressure at capacity. Installation respects the Jack and LugWrench requirements. |
 | REPLACE_PART Battery | `/goblin replace Battery` | The engine door opens, the battery ID swaps, and the door closes. The witness sees `battery=` change. |
-| Recipe gate | `/goblin remove BrakeFrontLeft` | Expected refusal: needs the 'Basic Mechanics' recipe. **Decision needed:** keep the refusal, or have Goblin learn Basic Mechanics. |
-| Key gate | Lock the car, give Goblin no key, and try `remove Battery`. | `LOCKED` until the car is unlocked (`/goblin unlock vehicle`) or a key is carried. |
+| Brakes (no recipe gate) | `/goblin replace BrakeFrontLeft` | Works without Basic Mechanics; a conjured brake is installed (`PROVISION item=Base.NormalBrake...`). |
+| No key needed | Lock the car, give Goblin no key, `/goblin remove Battery`. | Proceeds; no `LOCKED` refusal. |
+| Battery charge | Drain the battery (leave the headlights on). `/goblin vehicle charge`. | `VEHICLE_BATTERY_CHARGED`; the witness sees battery 100%. |
 | Rollback | Force a failed install roll (low-skill part). | The item stays with Goblin with reduced condition. The part slot stays empty on both clients. |
 | Restart | Restart mid-`change tire`. | No second install. The restored job completes from the installed item ID. |
 
@@ -122,16 +128,15 @@ falls back to `TARGET_UNLOADED`.
 5. Remove all planks and run `goal repair`. Expect `MISSING_MATERIAL` →
    WAITING (10 min) and FAILED after 3 attempts.
 
-## 6b. Real-material conservation
+## 6b. Conjured supplies
 
-1. With no planks nearby, `/goblin fortify base` must report a shortage and must
-   not change any window.
-2. Add known planks and nails, retry, and verify exact before/after counts on the
-   server and both clients.
-3. Repeat for bandages, vehicle parts and petrol. Missing materials must produce
-   `MISSING_MATERIAL`; successful work must consume or transfer the exact real item.
-4. Save/restart between acquisition and use, then verify identity and counts are
-   reconciled without duplicates or lost items.
+1. With no planks nearby, `/goblin fortify base`. The server logs `PROVISION item=Base.Plank`
+   and `PROVISION item=Base.Nails`, and the windows get boarded. Check on the
+   server and both clients that no conjured item shows up in any container or on the floor.
+2. `/goblin deliver` and `/goblin sort all` while Goblin carries conjured leftovers:
+   they stay in his inventory.
+3. Kill the Goblin while he carries conjured items: his corpse must hold none.
+4. Check that the per-minute budget stops a stuck job (`conjuring limit reached`).
 
 ## 6c. Free will, memory and meetups
 

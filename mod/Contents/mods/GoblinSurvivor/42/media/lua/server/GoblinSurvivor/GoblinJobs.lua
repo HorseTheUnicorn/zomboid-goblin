@@ -3,14 +3,17 @@ local Movement=require("GoblinSurvivor/GoblinMovement")
 local Support=require("GoblinSurvivor/GoblinJobSupport")
 local Capabilities=require("GoblinSurvivor/GoblinCapabilities")
 
+-- Conjured supplies (GoblinProvision) feed every job Goblin does for himself;
+-- they are quarantined inside Goblin's inventory.
 local Jobs={active=Capabilities.active}
 local VehicleService=require("GoblinSurvivor/GoblinVehicleService")
 local Survival=require("GoblinSurvivor/GoblinSurvival")
+local Life=require("GoblinSurvivor/GoblinSurvivalLife")
 local vehicleTools={"Base.Wrench","Base.Screwdriver","Base.LugWrench","Base.Jack","Base.TirePump"}
 local definitions={
     FARM={handler=require("GoblinSurvivor/GoblinFarming"),destructive=true,
         requirements={reusable_tools={"Base.HandShovel","Base.Scythe"},
-            consumables={"installed crop seed types when sowing","real water carried or found nearby"}}},
+            consumables={"installed crop seed types when sowing","water (carried, nearby, or conjured for Goblin's own use)"}}},
     CRAFT={handler=require("GoblinSurvivor/GoblinCrafting"),destructive=true,
         requirements={recipe="exact installed hand-crafting recipe",
             consumables={"native recipe inputs"},reusable_tools={"installed keep-input tools"}}},
@@ -23,7 +26,7 @@ local definitions={
         requirements={target="saved base's bounded loaded BuildingDef",consumables={}}},
     MAINTAIN_BASE={handler=require("GoblinSurvivor/GoblinBaseMaintain"),destructive=true,
         requirements={target="saved base's bounded loaded BuildingDef",
-            consumables={"real Base.Plank and Base.Nails for window work"},
+            consumables={"Base.Plank and Base.Nails for window work (carried, conjured, or salvaged)"},
             unsupported={"generic structure repair","missing-stock replenishment"}}},
     DISMANTLE={handler=require("GoblinSurvivor/GoblinDismantle"),destructive=true,
         requirements={target="one explicitly ordered empty, single-tile wooden furniture object in the owner's saved base; "
@@ -57,29 +60,39 @@ local definitions={
         requirements={target="nearest loaded vehicle within five tiles of the owner",consumables={}}},
     REFUEL_VEHICLE={handler=VehicleService.Refuel,destructive=true,
         requirements={target="parked vehicle with an installed gas tank",
-            consumables={"real petrol from a carried can or a pump with piped fuel"}}},
+            consumables={"petrol from a carried can, a pump with piped fuel, or a conjured can (discarded when empty)"}}},
     INSTALL_PART={handler=VehicleService.Install,destructive=true,
         requirements={target="empty vehicle part slot",reusable_tools=vehicleTools,
-            material="a real carried matching part, else one within eight tiles",
-            gates={"script install table","recipes/professions/traits the Goblin really has","mechanic key or unlocked access"}}},
+            material="a carried or conjured matching part, else one within eight tiles",
+            gates={"script install table","none: Goblin has every recipe, profession, trait and opens any lock"}}},
     REMOVE_PART={handler=VehicleService.Remove,destructive=true,
         requirements={target="installed vehicle part",reusable_tools=vehicleTools,
             gates={"script uninstall table","requireEmpty","mechanic key or unlocked access"}}},
     REPLACE_PART={handler=VehicleService.Replace,destructive=true,
         requirements={target="installed or empty vehicle part slot",reusable_tools=vehicleTools,
-            material="a real carried matching part, else one within eight tiles"}},
+            material="a carried or conjured matching part, else one within eight tiles"}},
     CHANGE_TIRE={handler=VehicleService.Tire,destructive=true,
         requirements={target="named or worst tire",reusable_tools={"Base.Jack","Base.LugWrench","Base.TirePump"},
-            material="a real carried matching tire, else one within eight tiles"}},
+            material="a carried or conjured matching tire, else one within eight tiles"}},
     VEHICLE_SERVICE={handler=VehicleService.Full,destructive=true,timeout_ms=600000,
         requirements={target="parked vehicle",reusable_tools={"Base.TirePump"},
-            consumables={"real petrol from a carried can or nearby pump"},steps={"inspect","inflate tires","refuel"}}},
+            consumables={"petrol (conjured when none is carried)"},steps={"inspect","inflate tires","charge battery (Goblin's own charger)","refuel"}}},
     CHOP_WOOD={handler=Survival.Chop,destructive=true,
         requirements={target="1-5 loaded trees within eight tiles of the owner",
             reusable_tools={"Base.Axe"},output="native IsoTree.WeaponHit log drops only"}},
     TREAT_PLAYER={handler=Survival.Treat,destructive=true,
         requirements={target="the online owner's unbandaged wounds, bleeding first",
-            consumables={"real clean bandages carried or within eight tiles"}}},
+            consumables={"clean bandages carried, conjured, or within eight tiles"}}},
+    FORAGE={handler=Life.Forage,destructive=false,timeout_ms=600000,
+        requirements={target="outdoor forage-zone ground within fourteen tiles of the owner",
+            output="1-10 real items rolled by the installed forageSystem; delivered as cargo"}},
+    CHECK_TRAPS={handler=Life.Traps,destructive=false,timeout_ms=600000,
+        requirements={target="STrapSystem traps within thirty tiles of the base or owner",
+            output="native trap catches (corpse/food items) as cargo",consumables={"bait (conjured)"}}},
+    COOK={handler=Life.Cook,destructive=false,timeout_ms=960000,
+        requirements={target="a loaded IsoStove (stove, oven, microwave) within ten tiles of the owner",
+            consumables={"1-5 raw cookable foods carried or within eight tiles"},
+            output="the same food items, cooked by the engine, delivered as cargo"}},
     GAIN_ACCESS={handler=require("GoblinSurvivor/GoblinGainAccess"),destructive=true,
         requirements={target_kinds={"BUILDING","ROOM","YARD","VEHICLE","CONTAINER"},
             reusable_tools={"Base.Crowbar"},

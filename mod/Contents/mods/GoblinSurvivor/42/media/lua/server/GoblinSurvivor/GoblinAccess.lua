@@ -374,30 +374,6 @@ end
 
 local doorLocked, matchingDoorKey
 
-local function canUnlockFromInside(body, object)
-    -- Installed ISLockDoor:isValid permits a keyless unlock from a
-    -- non-exterior square. Require this actor to stand on the actual door
-    -- edge so a different indoor room cannot authorize a remote unlock.
-    -- ISLockDoor rejects CustomLock without the matching key, even indoors.
-    -- Key authorization is handled separately by the caller.
-    local _,lockData=result(object,"getModData")
-    if lockData and lockData.CustomLock then return false end
-    local flags = rawget(_G, "IsoFlagType")
-    local exterior = flags and flags.exterior
-    local okHere, here = result(body, "getCurrentSquare")
-    local okDoor, square = result(object, "getSquare")
-    local okNorth, north = result(object, "getNorth")
-    if not exterior or not okHere or not here or not okDoor or not square or not okNorth then return false end
-    local hx, hy, hz = squarePoint(here)
-    local ox, oy, oz = squarePoint(square)
-    if not hx or not ox or hz ~= oz then return false end
-    local otherX, otherY = north == true and ox or ox - 1,
-        north == true and oy - 1 or oy
-    if not ((hx == ox and hy == oy) or (hx == otherX and hy == otherY)) then return false end
-    local checked, outside = result(here, "has", exterior)
-    return checked and outside == false
-end
-
 local function specialLockReason(object,body)
     -- Installed ISPadlockAction/ISPadlockByCodeAction transfer real lock/key
     -- items. Ordinary ISLockDoor authorization cannot substitute for either.
@@ -413,21 +389,24 @@ local function specialLockReason(object,body)
 end
 
 local function unlockDoor(object, body)
-    -- Match the installed ISLockDoor validity boundary: a key-locked door may
-    -- be changed only when this actor's real inventory contains the matching
-    -- key ID. A crowbar or permanent toolkit never becomes an invented
-    -- lock-pick mechanic. Keep the player-free state/sync adapter because the
-    -- installed actor-taking door toggle has an unsafe IsoPlayer tail cast.
+    -- Goblin opens any door, locked or not: he picks key locks, padlocks and
+    -- combination locks himself (a matching padlock key is still used the
+    -- native way when he carries one). Callers run the safehouse check first,
+    -- so another player's safehouse lock is never touched. Keep the
+    -- player-free state/sync adapter because the installed actor-taking door
+    -- toggle has an unsafe IsoPlayer tail cast.
     local group=doorGroup(object)
     local needsUnlock=false
     for _,member in ipairs(group) do if doorLocked(member) then needsUnlock=true end end
     if not needsUnlock then return true end
-    if not matchingDoorKey(body, object) and not canUnlockFromInside(body, object) then return false end
-    -- Preflight all panels before the first mutation, not halfway through a
-    -- double/garage door after one panel has already been unlocked.
-    for _,member in ipairs(group) do if specialLockReason(member,body) then return false end end
-    if select(2,result(object,"isLockedByPadlock"))==true
-        and not require("GoblinSurvivor/GoblinPadlocks").remove(body,object) then return false end
+    local Padlocks=require("GoblinSurvivor/GoblinPadlocks")
+    for _,member in ipairs(group) do
+        if select(2,result(member,"isLockedByPadlock"))==true
+            or (tonumber(select(2,result(member,"getLockedByCode"))) or 0)~=0 then
+            local removed=Padlocks.key(body,member) and Padlocks.remove(body,member)
+            if not removed and not Padlocks.pick(body,member) then return false end
+        end
+    end
     local verifiedUnlocked = true
     for _, member in ipairs(group) do
         local changed = false
@@ -501,17 +480,16 @@ function Access.blockReason(object, window, allowUnlock, actor)
     if not ok then ok, isOpen = result(object, "IsOpen") end
     if not ok then return "cannot inspect this target safely" end
     if isOpen then return "already open" end
-    if not window then
+    if not window and allowUnlock ~= true then
         local special=specialLockReason(object,actor)
         if special then return special end
     end
     for _, method in ipairs({ "isLocked", "isBarricaded", "isDestroyed", window and "isPermaLocked" or "isLockedByKey" }) do
         local checked, blocked = result(object, method)
         if not checked then return "cannot inspect this target safely" end
+        -- Goblin picks any door lock himself; only barricades and wreckage stop him.
         if blocked and not (allowUnlock == true and window ~= true
-            and (method == "isLocked" or method == "isLockedByKey")
-            and (matchingDoorKey(actor, object) ~= nil
-                or canUnlockFromInside(actor, object))) then
+            and (method == "isLocked" or method == "isLockedByKey")) then
             if method == "isBarricaded" then return "barricaded; remove the barricade first" end
             if method == "isDestroyed" then return "destroyed; it cannot be opened" end
             return "locked; unlock it first"

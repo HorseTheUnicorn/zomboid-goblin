@@ -10,13 +10,15 @@ local Autonomy={owners={}}
 
 local function fortifySuppliesAvailable(body)
     if not require("GoblinSurvivor/GoblinTools").ensure(body,"Base.Hammer") then return false end
+    -- Goblin conjures his own planks and nails (GoblinProvision).
+    if require("GoblinSurvivor/GoblinProvision").enabled() then return true end
     local missing={["Base.Plank"]=1,["Base.Nails"]=2}
     local function count(item)
         local kind=World.fullType(item)
         if missing[kind] then missing[kind]=math.max(0,missing[kind]-1) end
     end
     for _,item in ipairs(World.items(World.inventory(body))) do count(item) end
-    -- Match Work's loaded, nearby material search; no fabricated supplies.
+    -- Conjuring off: match Work's loaded, nearby material search.
     for _,source in ipairs(World.sources(Body.position(body),8,function(item)
         return (missing[World.fullType(item)] or 0)>0
     end,body)) do count(source.item) end

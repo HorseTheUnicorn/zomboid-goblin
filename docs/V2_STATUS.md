@@ -28,13 +28,13 @@ record is not a substitute for fresh per-ability multiplayer/reload testing.
 
 The following capabilities are now implemented and registered. Each has Lua
 fixture tests. **None is live-verified.** The live gates are listed in
-`LIVE_ACCEPTANCE_RUNBOOK.md`. Registry: 22 capabilities.
+`LIVE_ACCEPTANCE_RUNBOOK.md`. Registry: 25 capabilities.
 
 | Milestone | Added | Key design points |
 | --- | --- | --- |
 | 4 | Storage categories (`storage CATEGORY`), `SORT_STORAGE`, `FETCH_ITEM`, `DELIVER`, `REPAIR_STRUCTURE`; `MAINTAIN_BASE` now chains native repairs after boarding | A primitive per-item ledger (native item ID) is persisted in the task payload and reconciled after interruption or restart. Full-container fallback: same category, then OVERFLOW, then back to source. Cold-storage food is never removed. Repair uses the installed `ISMoveableSpriteProps` eligibility, parts and chance. Parts leave through server custody (no actor-inventory packet). |
-| 5 | `CHOP_WOOD` (IsoTree.WeaponHit), `TREAT_PLAYER` (BodyDamage.SetBandaged) | Real axe and real bandages only. Cooking, tailoring, fishing, trapping and foraging stay unregistered. |
-| 6 | `VEHICLE_INSPECT`, `REFUEL_VEHICLE`, `INSTALL_PART`, `REMOVE_PART`, `REPLACE_PART`, `CHANGE_TIRE`, `VEHICLE_SERVICE` | Vanilla install tests need `getPlayerNum`, so they are re-evaluated server-side. The mechanic key rule, `requireInstalled/Uninstalled`, the engine-door open/close and recipe/profession/trait gates are enforced. Recipe-gated parts (for example brakes) are refused because Goblin has not learned Basic Mechanics; this needs a product decision. Battery charging via a charger is not implemented; use `replace Battery`. |
+| 5 | `CHOP_WOOD` (IsoTree.WeaponHit), `TREAT_PLAYER` (BodyDamage.SetBandaged), `FORAGE`, `CHECK_TRAPS`, `COOK` | Toolkit axe; bandages carried, nearby or conjured. Foraging, trap runs and stove cooking: see "Survival life" below. Tailoring is covered by hand-craft recipes (`CRAFT`); fishing is not implemented. |
+| 6 | `VEHICLE_INSPECT`, `REFUEL_VEHICLE`, `INSTALL_PART`, `REMOVE_PART`, `REPLACE_PART`, `CHANGE_TIRE`, `VEHICLE_SERVICE` | Vanilla install tests need `getPlayerNum`, so they are re-evaluated server-side. `requireInstalled/Uninstalled` and the engine-door open/close are enforced. Goblin knows every recipe, profession and trait (brakes and other Basic Mechanics parts work) and ignores the mechanic key rule. `VEHICLE_SERVICE` now charges a flat battery in place with his own charger (`vehicle charge`, "charge the car battery"). |
 | 7 | `goblin_zomboid/reflex.py`, dataset generator, trainer, shipped `reflex_model.json`; `goblin_zomboid/quotes.py` | Per the latest owner direction, Qwen remains the primary conversational voice and combines Lenin/Stalin flavor. It sees the last 12 lines of that player's conversation, a Reflex `social_hint`, and 1-2 sourced quotes. Known misattributions are forbidden, and real atrocities are off-limits for jokes. The small Reflex classifier routes and supplies safe canned lines only when Qwen is offline or fails. Orders always bypass canned replies. |
 | 8 | `GoblinGoals` (`goal secure/organize/repair/vehicle/nails [every N]`, `goal list`, `cancel`) | Persistent step records. Priority selection. Maintenance cycles. Combat and recall interrupts do not consume attempts. Replanning is driven only by the capability result code. |
 | 3/9/10 | No gameplay change | M3 remains live verification only (runbook §1). M9 needs zero-player proof first. M10 stays deferred. |
@@ -49,9 +49,69 @@ service drives every player's Goblin: it answers each owner's chat in turn,
 with that Goblin's own context, and can only control the Goblin whose chat it
 is answering.
 
-Reusable tools come from Goblin's persistent toolkit. Consumables and building,
-crafting, medical, farming and vehicle materials are never fabricated: jobs must
-find and consume real installed items or report `MISSING_MATERIAL`.
+Reusable tools come from Goblin's persistent toolkit. Consumables and materials
+for Goblin's own work are conjured when he has none (next section).
+
+### Conjured supplies (GoblinProvision), restored 2026-09-27
+
+Owner direction: Goblin spawns all his own parts and supplies. Codex had removed
+this; it is back. `GoblinProvision.create` makes the item straight in Goblin's
+inventory, marks it `GoblinConjured`, and has a per-minute budget
+(`GoblinProvisionEnabled`, `GoblinProvisionPerMinute`). These jobs conjure what
+they lack before touching base stock:
+
+- planks and nails for fortifying (explicit orders, free will and idle chores
+  alike) and structure repair
+- missing recipe inputs for hand crafting
+- seeds and a filled water bottle for farming
+- replacement vehicle parts and tires, petrol (an emptied conjured can is
+  discarded), and bandages
+- bait for trap runs
+
+Quarantine rules keep the player economy intact:
+
+- Conjured items are refused by every container, floor and hand-over path, and by sort, fetch, deliver, loot and stockpile.
+- Crafted outputs made from conjured inputs are marked too, and are discarded rather than dropped if Goblin's inventory is full.
+- Conjured items are destroyed if Goblin dies.
+
+Consuming or installing them is the point: a conjured tire in the car, a
+conjured plank on the window. Salvage still exists but now only runs when
+conjuring is switched off.
+
+### Skills, recipes and locks, 2026-09-27
+
+- **Skills and recipes:** every perk is 10 (GoblinIdentity) and Goblin now also
+  knows every recipe (`setKnowAllRecipes`). Vehicle recipe, profession and
+  trait gates always pass.
+- **Doors:** Goblin opens any door, locked or not. He picks key locks from
+  either side, custom locks, padlocks and combination locks (a matching
+  padlock key is still used the native way when he has one). Locked vehicle
+  doors are picked the same way, and the vehicle mechanic-key rule is gone.
+  Barricades and destroyed doors still stop him. **Other players' safehouses
+  stay protected**: Goblin will not unlock or open anything inside a safehouse
+  his owner is not a member of.
+- **Free-will access:** "gain access to a building/room/yard/container" chosen
+  by free will was rejected by the Python action gate ("unknown target kind").
+  Those semantic kinds are now accepted. Breaching (smashing) still needs the
+  explicit `/goblin breach` command.
+
+### Survival life, 2026-09-27
+
+- `FORAGE` (`/goblin forage [1-10]`, "go foraging"): walks to outdoor
+  forage-zone ground within 14 tiles of the owner and searches 5 s per spot. The
+  installed `forageSystem` rolls a real item for the zone, month, time and
+  weather. Finds are ordinary cargo and go to the base with his next delivery.
+- `CHECK_TRAPS` (`/goblin traps`, "check the traps"): visits every trap within
+  30 tiles of the base (or owner) that holds a catch or lacks bait. Catches are
+  collected with the native `removeAnimal` (live ones are dispatched, so he
+  carries the corpse/food item). Empty traps are re-baited with conjured
+  carrots, owned by the player.
+- `COOK` (`/goblin cook [1-5]`, "cook some food"): takes raw cookable food from
+  within eight tiles, loads the nearest stove/oven/microwave, switches it on if
+  needed (it must have power or fuel), and takes each item out once the engine
+  reports it cooked. The stove goes back off and the food goes home as cargo.
+
+Qwen can start all three for the owner and choose them by free will.
 
 ### Free will, memory and social life
 
@@ -135,19 +195,19 @@ server-built gate with `transmitAddObjectToSquare` before any lock packets.
 | --- | --- |
 | 3 — Tools and access | Live gates only: locked-gate two-client rerun, window breach, alternate entrance, fence/gate after restart, vehicle two-client, interruption/restart, safehouse. |
 | 4 — Base and logistics | Live: managed-actor custody for each new job, second-client item-ID agreement, save/restart reconciliation, native repair on IsoZombie. |
-| 5 — Survival | Live: `IsoTree.WeaponHit` and `SetBandaged/syncBodyPart` with the managed actor. Remaining adapters (cooking, tailoring, fishing, trapping, foraging, broader construction, full farming lifecycle) are not implemented. |
-| 6 — Vehicle service | Live: every adapter, `getSqlId` restart resolution, recipe-gate decision, charger-based battery charging. |
-| 7 — Reflex Brain | The shipped Naive Bayes classifier and canned outage replies are only a routing/fallback scaffold, not the V2 tiny dialogue-generation model. The requested 3–15M encoder/decoder (or a justified replacement), 25–50K-pair training corpus, `.76` latency test and outage drill remain. Per owner direction, Qwen stays the primary Lenin/Stalin conversational voice. |
+| 5 — Survival | Live: chop, bandage, forage, traps and cook with the managed actor. Not implemented: fishing (B42 fishing is a client-side rod/bobber minigame), campfire/pot recipe cooking, trap placement, clothing patching (tailoring rips are hand-craft recipes via `CRAFT`), construction beyond crate/wall/fence. Farming covers plow/sow/water/harvest/tend. |
+| 6 — Vehicle service | Live: every adapter, `getSqlId` restart resolution, recipe-free brakes, in-place battery charging. |
+| 7 — Reflex Brain | The shipped Naive Bayes classifier and canned outage replies are only a routing/fallback scaffold, not the V2 tiny dialogue-generation model. The requested 3–15M encoder/decoder (or a justified replacement), 25–50K-pair training corpus, `.76` latency test and outage drill remain. Per owner direction, Qwen stays the primary Lenin/Stalin conversational voice, so this is optional; training the tiny model needs GPU hardware and a corpus build that were not available here. |
 | 8 — Goals | Live: interrupt/resume and restart. |
-| 9 — Offline Life | Prove zero-player simulation, then design bounded offline chores. |
+| 9 — Offline Life | Blocked by the engine: with no player online, the cells around the base unload and zombie actors (Goblin included) are not simulated. Offline chores need a zero-player simulation proof first. Existing bounded offline grants (WAIT, LOOT_AREA, RETURN_TO_BASE, SECURE_BASE, EQUIP) are unchanged. |
 | 10 — Experimental driving | Deferred. |
 
 ## Latest validation
 
-September 27 source review: 633 automated tests pass with two expected failures;
-Python compilation, JSON parsing and the 64-record catalog consistency check all
-pass. The review removed a candidate supply-fabrication path so every material
-adapter again requires real items. These results validate code and fixtures,
+September 27 (later): 685 automated tests; two expected failures and one
+art-asset error. Python compilation, JSON parsing and the catalog consistency
+check pass. Conjured supplies are restored by owner direction (the earlier
+review had removed them). These results validate code and fixtures,
 not the live gates listed above.
 
 September 26 container checkpoint: ordinary-container approach was observed

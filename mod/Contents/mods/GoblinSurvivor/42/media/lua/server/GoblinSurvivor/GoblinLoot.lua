@@ -12,6 +12,8 @@ local call = World.call
 
 local function protected(item)
     if Tools.reserved(item) then return true end
+    -- Conjured supplies are for Goblin's own work; never delivered or dropped.
+    if require("GoblinSurvivor/GoblinProvision").isConjured(item) then return true end
     local kind = World.fullType(item)
     if not kind or kind == Config.weaponType or kind == Config.npcVisualItemType then return true end
     for _, uniform in ipairs(Config.npcOutfitItems) do if kind == uniform then return true end end

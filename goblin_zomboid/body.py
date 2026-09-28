@@ -23,6 +23,11 @@ _TARGET_KINDS = {
     "base",
     "vehicle",
     "job",
+    # GAIN_ACCESS semantic targets.
+    "building",
+    "room",
+    "yard",
+    "container",
 }
 _COORDINATE_RE = re.compile(
     r"(?:\bcoordinates?\b|\b(?:x|y|z)\s*[:=]|\bcell\s*[:=]|\bchunk\s*[:=])",

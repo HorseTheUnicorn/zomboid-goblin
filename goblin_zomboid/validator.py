@@ -26,7 +26,7 @@ JOB_INTENTS = {
     "INSPECT_BASE", "MAINTAIN_BASE", "REPAIR_STRUCTURE", "DISMANTLE", "STOCKPILE",
     "SORT_STORAGE", "FETCH_ITEM", "DELIVER",
     "VEHICLE_INSPECT", "REFUEL_VEHICLE", "VEHICLE_SERVICE", "INSTALL_PART", "REMOVE_PART",
-    "REPLACE_PART", "CHANGE_TIRE", "CHOP_WOOD", "TREAT_PLAYER",
+    "REPLACE_PART", "CHANGE_TIRE", "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK",
 }
 INTENTS = INTENTS | JOB_INTENTS
 PART_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
@@ -302,6 +302,10 @@ class IntentValidator:
             raise IntentError("DELIVER job must be storage or floor")
         if intent == "CHOP_WOOD" and result.get("item", {}).get("count", 1) > 5:
             raise IntentError("CHOP_WOOD fells at most 5 trees")
+        if intent == "FORAGE" and result.get("item", {}).get("count", 1) > 10:
+            raise IntentError("FORAGE gathers at most 10 finds")
+        if intent == "COOK" and result.get("item", {}).get("count", 1) > 5:
+            raise IntentError("COOK cooks at most 5 items")
         if intent == "ASSIGN_JOB" and "job" not in result:
             raise IntentError("ASSIGN_JOB requires job")
         if "formation" in raw:

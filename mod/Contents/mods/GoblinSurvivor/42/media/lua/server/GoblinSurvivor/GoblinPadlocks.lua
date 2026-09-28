@@ -72,4 +72,27 @@ function Padlocks.remove(body,target)
     return true
 end
 
+-- Goblin picks a padlock or combination lock without a key or code. The lock
+-- is spent (no padlock item is produced); callers run the safehouse policy.
+function Padlocks.pick(body,target)
+    if type(isServer)~="function" or not isServer()
+        or (type(isClient)=="function" and isClient()) then return false end
+    local Body=require("GoblinSurvivor/GoblinBody")
+    if not Body.isGoblin(body) then return false end
+    if not require("GoblinSurvivor/GoblinAccessPolicy").access(body,target) then return false end
+    local padlocked=select(2,call(target,"isLockedByPadlock"))==true
+    local _,code=call(target,"getLockedByCode")
+    local coded=tonumber(code) and tonumber(code)~=0
+    if not padlocked and not coded then return true end
+    if padlocked then call(target,"setLockedByPadlock",false); call(target,"setKeyId",-1) end
+    if coded then call(target,"setLockedByCode",0) end
+    call(target,"sync")
+    local stillPad=select(2,call(target,"isLockedByPadlock"))==true
+    local _,after=call(target,"getLockedByCode")
+    if stillPad or (tonumber(after) and tonumber(after)~=0) then return false end
+    print("[GoblinSurvivor] LOCK_PICKED owner="..tostring(Body.owner(body))
+        .." padlock="..tostring(padlocked).." combination="..tostring(coded==true))
+    return true
+end
+
 return Padlocks

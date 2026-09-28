@@ -24,6 +24,9 @@ function Identity.train(body)
                 assert(body:getPerkLevel(perk)==10,"skill level was not applied")
             end
         end
+        -- Goblin knows every recipe, including magazine/profession ones
+        -- (Basic Mechanics, Advanced Mechanics, ...).
+        if body.setKnowAllRecipes then body:setKnowAllRecipes(true) end
     end)
     if ok then Identity.trained[body]=true
     elseif Identity.trained[body]~=false then

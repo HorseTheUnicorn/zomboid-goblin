@@ -9,6 +9,7 @@
 local World = require("GoblinSurvivor/GoblinWorld")
 local Tools = require("GoblinSurvivor/GoblinTools")
 local Config = require("GoblinSurvivor/Config")
+local Provision = require("GoblinSurvivor/GoblinProvision")
 
 local Transfer = {}
 local call = World.call
@@ -40,8 +41,9 @@ function Transfer.protected(body, item)
     return false
 end
 
+-- Conjured supplies stay in Goblin custody; everything protected stays too.
 function Transfer.movable(body, item)
-    return not Transfer.protected(body, item)
+    return not Transfer.protected(body, item) and not Provision.isConjured(item)
 end
 
 -- Finds an item by persistent native ID in a container; nil means unreadable.
@@ -83,6 +85,9 @@ end
 -- code is nil on success, BLOCKED when the destination refused the item, or
 -- ENGINE_ERROR when custody cannot be proven either way.
 function Transfer.deposit(body, item, container)
+    if Provision.isConjured(item) then
+        return false, "BLOCKED", "conjured supplies never leave Goblin's inventory"
+    end
     local inventory = World.inventory(body)
     if World.containsExact(inventory, item) ~= true then
         return false, "TARGET_CHANGED", "carried item is no longer in Goblin inventory"
@@ -117,6 +122,9 @@ end
 -- have a valid packet address). Falls back to the owner's square only when
 -- allowFloor is true and the player's inventory has no room.
 function Transfer.handOver(body, item, player, allowFloor)
+    if Provision.isConjured(item) then
+        return false, "BLOCKED", "conjured supplies are for Goblin's own work only"
+    end
     local destination = select(2, call(player, "getInventory"))
     if not destination then return false, "TARGET_UNLOADED", "owner inventory unavailable" end
     local checked, room = call(destination, "hasRoomFor", player, item)
@@ -148,6 +156,9 @@ end
 
 -- Goblin inventory -> world floor on an exact loaded square.
 function Transfer.drop(body, item, square)
+    if Provision.isConjured(item) then
+        return false, "BLOCKED", "conjured supplies never leave Goblin's inventory"
+    end
     if not square then return false, "TARGET_UNLOADED", "drop square unloaded" end
     if not Transfer.detach(body, item) then
         return false, "ENGINE_ERROR", "could not detach the exact carried item"

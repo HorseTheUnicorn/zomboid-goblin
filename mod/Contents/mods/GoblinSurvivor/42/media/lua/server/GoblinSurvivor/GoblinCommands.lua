@@ -44,7 +44,7 @@ local function ownBody(player, spawn)
 end
 
 local function usage(player)
-    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | storage CATEGORY/clear | sort [all] | fetch Item/category [count] | deliver [item/category] [floor] | repair base | vehicle inspect/service/refuel | install/remove/replace Part [Item] | change tire [Part] | chop [1-5] | bandage me | freewill on/off | goal secure/organize/repair/vehicle/nails [every N] | goal list | cancel [goal] | dismantle furniture | salvage | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
+    reply(player, "follow | wait | enter/exit/start/unlock vehicle | open door/window | access [building/room/yard/vehicle] | breach [building/room/yard] | close curtains | inspect/maintain base | track Item.FullType minimum | stockpile Base.Nails | storage CATEGORY/clear | sort [all] | fetch Item/category [count] | deliver [item/category] [floor] | repair base | vehicle inspect/service/charge/refuel | install/remove/replace Part [Item] | change tire [Part] | chop [1-5] | forage [1-10] | traps | cook [1-5] | bandage me | freewill on/off | goal secure/organize/repair/vehicle/nails [every N] | goal list | cancel [goal] | dismantle furniture | salvage | loot | base [clear] | home | fortify | build crate/wall/fence | farm plow/sow/water/harvest/tend [crop] | craft recipe [1-10] | repair all/engine/bodywork | attack | state")
 end
 
 local function handle(player, rawText)
@@ -172,6 +172,13 @@ local function handle(player, rawText)
         reply(player,result)
         return
     end
+    if command=="forage" or command=="traps" or command=="cook" then
+        local task=({forage=Constants.TASK.FORAGE,traps=Constants.TASK.CHECK_TRAPS,cook=Constants.TASK.COOK})[command]
+        local count=tonumber(parts[2])
+        local ok,result=Brain.setTask(body,task,{explicit_owner_order=true,count=count})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
     if command=="chop" then
         local count=tonumber(parts[2]) or tonumber(parts[3]) or 1
         local ok,result=Brain.setTask(body,Constants.TASK.CHOP_WOOD,{explicit_owner_order=true,count=count})
@@ -187,8 +194,8 @@ local function handle(player, rawText)
         local what=string.lower(parts[2] or "")
         local tasks={inspect=Constants.TASK.VEHICLE_INSPECT,check=Constants.TASK.VEHICLE_INSPECT,
             service=Constants.TASK.VEHICLE_SERVICE,refuel=Constants.TASK.REFUEL_VEHICLE,
-            fuel=Constants.TASK.REFUEL_VEHICLE}
-        if not tasks[what] or parts[3] then reply(player,"use vehicle inspect, vehicle service, or vehicle refuel");return end
+            fuel=Constants.TASK.REFUEL_VEHICLE,charge=Constants.TASK.VEHICLE_SERVICE}
+        if not tasks[what] or parts[3] then reply(player,"use vehicle inspect, vehicle service, vehicle charge, or vehicle refuel");return end
         local ok,result=Brain.setTask(body,tasks[what],{explicit_owner_order=true})
         Body.say(body,"Comrade, "..tostring(result)..".")
         return

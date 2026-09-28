@@ -387,6 +387,13 @@ function Repair.update(body, payload, runtime, now)
     for _, part in ipairs(plan) do
         if string.sub(part.itemType, 1, 4) ~= "Tag." and carriedCount(body, part.itemType) < part.amount then
             runtime.lastMissing = part.itemType
+            -- Conjure Goblin's own repair parts before touching base stock.
+            local Provision = require("GoblinSurvivor/GoblinProvision")
+            if Provision.enabled() and Provision.ensure(body, part.itemType, part.amount,
+                "structure repair", function(item)
+                    return World.fullType(item) == part.itemType and not Tools.reserved(item) end) then
+                return false
+            end
             gatherOne(body, runtime, point, part.itemType, now)
             if now - (runtime.targetAt or now) > SUPPLY_TIMEOUT then
                 runtime.skipped[target.key] = true

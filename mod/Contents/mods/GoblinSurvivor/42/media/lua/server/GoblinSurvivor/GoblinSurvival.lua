@@ -202,6 +202,14 @@ function Survival.Treat.update(body, payload, runtime, now)
     end
     local bandage = carriedBandage(body)
     if not bandage then
+        local Provision = require("GoblinSurvivor/GoblinProvision")
+        if Provision.enabled() then
+            local created = Provision.create(body, "Base.Bandage", 1, "treating the owner")
+            bandage = created and created[1] or nil
+            if bandage and not bandagePower(bandage) then bandage = nil end
+        end
+    end
+    if not bandage then
         local center = Body.position(body)
         local source = runtime.source
         if not source then

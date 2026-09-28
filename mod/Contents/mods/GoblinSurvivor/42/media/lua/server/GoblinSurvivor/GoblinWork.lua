@@ -84,6 +84,15 @@ end
 local function gather(body, requirements, job, now)
     local selected,missing=World.materials(body,requirements)
     if selected then job.supply=nil;job.missingSince=nil; return selected end
+    -- Goblin conjures his own planks/nails for any construction job.
+    if job.conjure then
+        local Provision=require("GoblinSurvivor/GoblinProvision")
+        if Provision.enabled() then
+            for kind,count in pairs(requirements) do Provision.ensure(body,kind,count,"construction") end
+            selected,missing=World.materials(body,requirements)
+            if selected then job.supply=nil;job.missingSince=nil; return selected end
+        end
+    end
     job.missingSince=job.missingSince or now
     job.missing=missing
     if not job.supply then
@@ -158,6 +167,7 @@ end
 function Work.update(body,task,payload,now)
     local data,job=Body.data(body),Work.jobs[body]
     if not job then job={skipped={},nextScan=0}; Work.jobs[body]=job end
+    job.conjure = true
     if job.missingSince and now-job.missingSince>=90000 then
         announce(body,"I could not find "..tostring(job.missing).." in 90 seconds. Resuming follow; bring materials and order the work again.")
         return true, "MISSING_MATERIAL"

@@ -4,12 +4,11 @@
 -- tools through getPlayerNum()/inventory UI panes, which a managed IsoZombie
 -- does not have. This module re-evaluates the same script tables server-side
 -- against the Goblin's own inventory: requireInstalled/requireUninstalled,
--- tool items/tags, recipes/professions/traits (refused unless the actor
--- really has them), requireEmpty, the engine-door ("door") requirement and
--- the mechanic key rule. Mutations then follow the vanilla complete()
+-- tool items/tags and requireEmpty. Recipe/profession/trait gates and the
+-- mechanic key rule always pass: Goblin knows every skill and opens any lock. Mutations then follow the vanilla complete()
 -- bodies: skill roll from calculateInstallationSuccess, setInventoryItem,
 -- install/uninstall complete callbacks, transmitPartItem/ModData.
--- Fuel is moved only from real petrol containers or a pump with piped fuel.
+-- Fuel comes from carried or conjured petrol cans, or a pump with piped fuel.
 local Body = require("GoblinSurvivor/GoblinBody")
 local World = require("GoblinSurvivor/GoblinWorld")
 local Tools = require("GoblinSurvivor/GoblinTools")
@@ -217,34 +216,9 @@ function Service.chances(body, skills)
     return math.min(math.max(success, 0), 100), math.min(math.max(failure, 0), 100)
 end
 
-local function unlockedAccess(vehicle)
-    local count = num(vehicle, "getPartCount") or 0
-    for index = 0, count - 1 do
-        local p = select(2, call(vehicle, "getPartByIndex", index))
-        if p then
-            local door = select(2, call(p, "getDoor"))
-            if select(2, call(p, "getId")) ~= "EngineDoor" and door
-                and (select(2, call(door, "isOpen")) == true or select(2, call(door, "isLocked")) == false
-                    or not installed(p)) then return true end
-            local window = select(2, call(p, "getWindow"))
-            if window and (select(2, call(window, "isOpen")) == true
-                or select(2, call(window, "isDestroyed")) == true or not installed(p)) then return true end
-        end
-    end
-    return false
-end
-
--- VehicleUtils.RequiredKeyNotFound for the Goblin's own inventory.
-local function keyMissing(body, vehicle, p)
-    local scriptPart = select(2, call(p, "getScriptPart"))
-    if select(2, call(scriptPart, "isMechanicRequireKey")) ~= true then return false end
-    local sandbox = rawget(_G, "SandboxVars")
-    if type(sandbox) == "table" and sandbox.VehicleEasyUse then return false end
-    if unlockedAccess(vehicle) then return false end
-    local keyId = num(vehicle, "getKeyId")
-    if keyId and select(2, call(World.inventory(body), "haveThisKeyId", keyId)) == true then return false end
-    return true
-end
+-- Goblin opens any lock himself (locked hoods and doors included), so the
+-- vanilla mechanic-key rule never blocks him.
+local function keyMissing() return false end
 
 -- Server-side equivalent of Vehicles.InstallTest/UninstallTest.Default.
 function Service.eligible(body, vehicle, p, mode, item)
@@ -266,18 +240,9 @@ function Service.eligible(body, vehicle, p, mode, item)
     if tbl.requireUninstalled and installed(part(vehicle, tbl.requireUninstalled)) then
         return nil, tostring(tbl.requireUninstalled).." must be removed first", "BLOCKED"
     end
-    if type(tbl.professions) == "string" and tbl.professions ~= "" then
-        return nil, "this job needs a mechanic profession Goblin does not have", "UNSUPPORTED"
-    end
-    if type(tbl.traits) == "string" and tbl.traits ~= "" then
-        return nil, "this job needs traits Goblin does not have", "UNSUPPORTED"
-    end
-    for _, recipe in ipairs(splitList(tbl.recipes)) do
-        local ok, known = call(body, "isRecipeActuallyKnown", recipe)
-        if not ok or known ~= true then
-            return nil, "this part needs the '"..recipe.."' recipe, which Goblin has not learned", "UNSUPPORTED"
-        end
-    end
+    -- Goblin is a master mechanic: every skill at 10 and every recipe,
+    -- profession and trait gate (Basic/Advanced Mechanics, Mechanics
+    -- profession) counts as met.
     if mode == "uninstall" and tbl.requireEmpty then
         local amount = num(p, "getContainerContentAmount") or 0
         local container = select(2, call(p, "getItemContainer"))
@@ -610,6 +575,13 @@ function Service.Refuel.update(body, payload, runtime, now)
         if petrol(item) then can = item; break end
     end
     if not can and not pump then
+        local Provision = require("GoblinSurvivor/GoblinProvision")
+        if Provision.enabled() then
+            local conjured = Provision.fluid(body, "Base.PetrolCan", "Petrol", "refuelling")
+            if conjured and petrol(conjured) then can = conjured end
+        end
+    end
+    if not can and not pump then
         local source = runtime.source
         if not source then
             for _, candidate in ipairs(World.sources(payload.anchor, 8, function(item) return petrol(item) ~= nil end, body)) do
@@ -666,6 +638,12 @@ function Service.Refuel.update(body, payload, runtime, now)
         payload.added = (payload.added or 0) + take
         print("[GoblinSurvivor] VEHICLE_REFUEL source=can owner="..tostring(payload.owner)
             .." litres="..tostring(take).." item_id="..tostring(Transfer.itemId(can)))
+        -- An emptied conjured can is discarded, never kept or handed over.
+        local Provision = require("GoblinSurvivor/GoblinProvision")
+        if Provision.isConjured(can) and (num(fluid, "getAmount") or 0) <= 0.001 then
+            if select(2, call(body, "getPrimaryHandItem")) == can then call(body, "setPrimaryHandItem", nil) end
+            call(World.inventory(body), "DoRemoveItem", can)
+        end
         return false
     end
     -- Pump: 8 pump units = one 10 L jerry can (ISRefuelFromGasPump).
@@ -806,6 +784,26 @@ function Service.Part.update(body, payload, runtime, now)
         item = carriedFor(body, p, payload.installing_id, payload.removed_id)
         if payload.item and item and World.fullType(item) ~= payload.item then item = nil end
         if not item then
+            -- Conjure the replacement part for Goblin's own install.
+            local Provision = require("GoblinSurvivor/GoblinProvision")
+            local types = itemTypes(p)
+            local choices = {}
+            if payload.item and types[payload.item] then choices[1] = payload.item end
+            -- Script order lists the basic variant first; take the first installed one.
+            for _, value in ipairs(World.values(select(2, call(p, "getItemType")))) do
+                choices[#choices+1] = tostring(value)
+            end
+            if Provision.enabled() then
+                for _, wanted in ipairs(choices) do
+                    if Provision.validType(wanted) then
+                        local created = Provision.create(body, wanted, 1, "vehicle part "..tostring(payload.part))
+                        if created and created[1] then return false end
+                        break
+                    end
+                end
+            end
+        end
+        if not item then
             local source = runtime.source or nearbyReplacement(body, p, payload.anchor, runtime, payload.removed_id)
             if not source then
                 return finishPart(payload, false, "MISSING_MATERIAL", "no usable "..payload.part
@@ -896,7 +894,38 @@ Service.Tire = partHandler("tire")
 
 -- ------------------------------------------------------ VEHICLE_SERVICE
 
--- Inspect, inflate every low tire, then top up fuel if real petrol exists.
+-- Battery charging: Goblin hooks the installed battery to his own conjured
+-- charger (no charger item is placed in the world) and tops it up in place.
+local CHARGE_MS = 8000
+function Service.chargeBattery(body, vehicle, runtime, now, payload)
+    if payload.battery_charged ~= nil then return true, true end
+    local p = part(vehicle, "Battery")
+    local item = installed(p)
+    if not item then payload.battery_charged = false; return true, true end
+    local charge = num(item, "getCurrentUsesFloat") or num(vehicle, "getBatteryCharge") or 1
+    if charge >= 0.99 then payload.battery_charged = false; return true, true end
+    runtime.chargeUntil = runtime.chargeUntil or (now + CHARGE_MS)
+    if now < runtime.chargeUntil then
+        Support.status(body, "charging the battery")
+        return false
+    end
+    runtime.chargeUntil = nil
+    local set = call(item, "setCurrentUsesFloat", 1.0)
+    if not set then set = call(item, "setUsedDelta", 1.0) end
+    call(vehicle, "transmitPartUsedDelta", p)
+    call(vehicle, "transmitPartItem", p)
+    local after = num(item, "getCurrentUsesFloat") or num(vehicle, "getBatteryCharge") or 0
+    if not set or after < 0.99 then
+        payload.battery_charged = false
+        return true, false, "the battery would not take a charge", "ENGINE_ERROR"
+    end
+    payload.battery_charged = true
+    print("[GoblinSurvivor] VEHICLE_BATTERY_CHARGED owner="..tostring(payload.owner)
+        .." from="..string.format("%.2f", charge))
+    return true, true
+end
+
+-- Inspect, inflate every low tire, charge the battery, then top up fuel.
 Service.Full = {}
 function Service.Full.prepare(body, owner, request)
     local payload, vehicle = base(body, owner, request, true)
@@ -905,7 +934,7 @@ function Service.Full.prepare(body, owner, request)
     if not ok then return nil, why end
     payload.phase = "inspect"
     payload.added, payload.cans, payload.inflated = 0, {}, 0
-    return payload, "servicing the nearby vehicle: inspection, tires, fuel"
+    return payload, "servicing the nearby vehicle: inspection, tires, battery, fuel"
 end
 function Service.Full.update(body, payload, runtime, now)
     local vehicle, why, code = Service.resolve(payload)
@@ -923,6 +952,13 @@ function Service.Full.update(body, payload, runtime, now)
         if done == true and not success and resultCode ~= "MISSING_TOOL" then
             return done, success, detail, resultCode
         end
+        payload.phase = "battery"
+        return false
+    end
+    if payload.phase == "battery" then
+        local done, success, detail, resultCode = Service.chargeBattery(body, vehicle, runtime, now, payload)
+        if not done then return false end
+        if not success then return done, success, detail, resultCode end
         payload.phase = "fuel"
         return false
     end
@@ -930,8 +966,9 @@ function Service.Full.update(body, payload, runtime, now)
     if not done then return false end
     local report = Service.report(vehicle)
     Body.data(body).GoblinVehicleReport = report
-    local text = string.format("service finished: %d tire(s) inflated, %.1f L added; %s",
-        payload.inflated or 0, payload.added or 0, Service.summary(report))
+    local text = string.format("service finished: %d tire(s) inflated, %sbattery, %.1f L added; %s",
+        payload.inflated or 0, payload.battery_charged and "charged the " or "checked the ",
+        payload.added or 0, Service.summary(report))
     if resultCode == "MISSING_MATERIAL" then
         return true, true, text.." (no petrol was available)", "COMPLETE"
     end

@@ -78,7 +78,13 @@ local Config = {
     -- non-safehouse buildings for planks when the base runs short.
     salvageEnabled = true,
     salvageRadius = 24,
-    salvageBaseBuffer = 6
+    salvageBaseBuffer = 6,
+
+    -- Goblin conjures the materials he needs for his own work (planks, nails,
+    -- parts, petrol, seeds, bandages, recipe inputs). Conjured items are
+    -- quarantined: they never enter a container, the floor, or a player.
+    provisionEnabled = true,
+    provisionPerMinute = 60
 }
 
 local function parseBoolean(value, defaultValue)
@@ -215,6 +221,8 @@ function Config.refresh()
     Config.salvageEnabled = parseBoolean(option("GoblinSalvageEnabled", Config.salvageEnabled), Config.salvageEnabled)
     Config.salvageRadius = boundedNumber(option("GoblinSalvageRadius", Config.salvageRadius), Config.salvageRadius, 3, 40)
     Config.salvageBaseBuffer = boundedNumber(option("GoblinSalvageBaseBuffer", Config.salvageBaseBuffer), Config.salvageBaseBuffer, 0, 100)
+    Config.provisionEnabled = parseBoolean(option("GoblinProvisionEnabled", Config.provisionEnabled), Config.provisionEnabled)
+    Config.provisionPerMinute = boundedInteger(option("GoblinProvisionPerMinute", Config.provisionPerMinute), Config.provisionPerMinute, 1, 600)
 
     if Config.followWalkDistance <= Config.followPreferredDistance then Config.followWalkDistance = Config.followPreferredDistance + 1 end
     if Config.followRunDistance <= Config.followWalkDistance then Config.followRunDistance = Config.followWalkDistance + 1 end

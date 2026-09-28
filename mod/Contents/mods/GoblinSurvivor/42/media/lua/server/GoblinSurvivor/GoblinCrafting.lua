@@ -128,9 +128,14 @@ function Craft.update(body,payload,job,now)
             local before=#World.items(World.inventory(body))
             -- supply() normally returns a carried match. Here we need another
             -- unit, so only accept items not already in the companion inventory.
+            local conjureType
+            for _,choice in ipairs(World.values(missing:getPossibleInputItems())) do
+                local okName,name=call(choice,"getFullName")
+                if okName and type(name)=="string" then conjureType=name;break end
+            end
             Support.supply(body,job,payload.anchor,function(i)
                 return not World.has(World.inventory(body),i) and not Tools.reserved(i) and missing:canUseItem(i,body)
-            end,now,"more materials for "..payload.recipe)
+            end,now,"more materials for "..payload.recipe,conjureType)
             if #World.items(World.inventory(body))>before then job.nextSupplyScan=0 end
             job.logic=nil -- Refresh native input selection after supplies change.
             return false,true,"waiting for more materials for "..payload.recipe,"WAITING_FOR_MATERIAL"
@@ -152,13 +157,24 @@ function Craft.update(body,payload,job,now)
     end
     -- Once perform starts, never retry this batch after an exception: native
     -- recipes may already have consumed items. The job supervisor fails closed.
+    job.conjuredInputs=false
+    for _,input in ipairs(World.values(logic:getRecipeData():getAllNotKeepInputItems())) do
+        if require("GoblinSurvivor/GoblinProvision").isConjured(input) then job.conjuredInputs=true end
+    end
     if not goblinServerCraft(body,logic) then return true,false,"native crafting refused the recipe; no completion claimed","TARGET_CHANGED" end
     payload.remaining=payload.remaining-1
     local outputs=ArrayList.new();logic:getCreatedOutputItems(outputs)
     local inv=World.inventory(body)
+    -- Outputs made from conjured inputs stay conjured (Goblin's own use only).
+    local Provision=require("GoblinSurvivor/GoblinProvision")
+    local tainted=job.conjuredInputs==true
     for _,item in ipairs(World.values(outputs)) do
+        if tainted then Provision.taint(item,"crafted from conjured "..payload.recipe) end
         local ok,added=call(inv,"AddItem",item)
-        if not ok or not added then
+        if (not ok or not added) and tainted then
+            -- A conjured output that cannot fit is discarded, never dropped.
+            print("[GoblinSurvivor] PROVISION discarded="..tostring(World.fullType(item)).." reason=inventory_full")
+        elseif not ok or not added then
             local dropped=square:AddWorldInventoryItem(item,0.5,0.5,0)
             if not dropped then error("crafted item could not be delivered") end
         end

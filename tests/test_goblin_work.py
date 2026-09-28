@@ -1077,10 +1077,8 @@ class CompanionWorkTests(unittest.TestCase):
             end
 
             local ordinary=routeDoor('ordinary')
-            assert(not Access.open(a,ordinary,false),'locked door opened without its native key')
-            assert(ordinary.locked and ordinary.keyLocked and ordinary.silent==0)
-            local matchingKey={}
-            function a.inv:haveThisKeyId(id) assert(id==42);return matchingKey end
+            -- No key: Goblin picks the lock himself.
+            function a.inv:haveThisKeyId() return nil end
             assert(Access.open(a,ordinary,false))
             assert(ordinary.opened and not ordinary.locked and not ordinary.keyLocked)
             assert(ordinary.silent==1 and ordinary.actorCalls==0 and ordinary.syncs>=2)
@@ -1130,7 +1128,7 @@ class CompanionWorkTests(unittest.TestCase):
             assert(not door.keyLocked,'door remained key-locked')
         ''')
 
-    def test_key_locked_exit_can_be_unlocked_only_from_its_inside_edge(self):
+    def test_goblin_picks_key_and_custom_locks_from_either_side(self):
         self.lua.execute('''
             package.loaded['GoblinSurvivor/GoblinAccess']=nil
             Access=require('GoblinSurvivor/GoblinAccess')
@@ -1159,21 +1157,14 @@ class CompanionWorkTests(unittest.TestCase):
             function door:isDestroyed() return false end
             function door:syncIsoObject() end
             function door:ToggleDoorSilent() self.opened=not self.opened end
+            -- Goblin picks key locks from either side, and custom locks too.
             a.doorSide=outside
-            assert(not Access.open(a,door,false))
+            assert(Access.open(a,door,false))
+            assert(door.opened and not door.locked and not door.keyLocked)
+            door.opened=false;door.locked=true;door.keyLocked=true
             a.doorSide=remote
-            assert(not Access.open(a,door,false))
-            assert(door.locked and door.keyLocked and not door.opened)
-            a.doorSide=inside
             local lockData={CustomLock=true}
             function door:getModData() return lockData end
-            assert(not Access.open(a,door,false),'inside must not bypass a native CustomLock')
-            assert(door.locked and door.keyLocked and not door.opened)
-            function a.inv:haveThisKeyId(id) if id==42 then return {} end end
-            assert(Access.open(a,door,false),'matching key still authorizes CustomLock')
-            door.opened=false;door.locked=true;door.keyLocked=true
-            function a.inv:haveThisKeyId() return nil end
-            lockData.CustomLock=false
             assert(Access.open(a,door,false))
             assert(door.opened and not door.locked and not door.keyLocked)
         ''')

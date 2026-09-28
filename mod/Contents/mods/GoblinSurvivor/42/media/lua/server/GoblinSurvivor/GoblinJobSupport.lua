@@ -28,10 +28,18 @@ function Support.validPoint(p)
     return true
 end
 
--- Returns a carried matching item, or walks to one real nearby source.
-function Support.supply(body,job,anchor,predicate,now,label)
+-- Returns a carried matching item, conjures one (conjureType, for Goblin's
+-- own crafting/repair/farming only), or walks to one real nearby source.
+function Support.supply(body,job,anchor,predicate,now,label,conjureType)
     for _,item in ipairs(World.items(World.inventory(body))) do
         if predicate(item) then job.supply=nil;return item end
+    end
+    if type(conjureType)=="string" then
+        local Provision=require("GoblinSurvivor/GoblinProvision")
+        if Provision.enabled() then
+            local created=Provision.create(body,conjureType,1,label)
+            if created and created[1] and predicate(created[1]) then job.supply=nil;return created[1] end
+        end
     end
     if not job.supply and now>=(job.nextSupplyScan or 0) then
         job.nextSupplyScan=now+3000

@@ -71,6 +71,9 @@ class Action(str, Enum):
     CHANGE_TIRE = "CHANGE_TIRE"
     CHOP_WOOD = "CHOP_WOOD"
     TREAT_PLAYER = "TREAT_PLAYER"
+    FORAGE = "FORAGE"
+    CHECK_TRAPS = "CHECK_TRAPS"
+    COOK = "COOK"
 
 
 @dataclass(frozen=True)
@@ -274,6 +277,9 @@ class TacticalController:
         "CHANGE_TIRE": Action.CHANGE_TIRE,
         "CHOP_WOOD": Action.CHOP_WOOD,
         "TREAT_PLAYER": Action.TREAT_PLAYER,
+        "FORAGE": Action.FORAGE,
+        "CHECK_TRAPS": Action.CHECK_TRAPS,
+        "COOK": Action.COOK,
     }
 
     def decide(self, intent: ValidatedIntent, state: BodyState) -> ControllerResult:

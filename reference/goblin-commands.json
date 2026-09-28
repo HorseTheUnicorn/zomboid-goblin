@@ -40,7 +40,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "8c14ac28ddbebe9bd0db0904e829f4e127d31e0e086fe2ad13225b91f368ade1"
+    "sha256": "19122d3a6b6b11f15eb979e8c8ee17f4e44bc6d4b303e89bc99316a2989dc4fa"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -544,6 +544,40 @@
         "engine_tested": false
       },
       {
+        "command": "forage",
+        "aliases": [
+          "forage 5"
+        ],
+        "task": "FORAGE",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
+      },
+      {
+        "command": "traps",
+        "aliases": [],
+        "task": "CHECK_TRAPS",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
+      },
+      {
+        "command": "cook",
+        "aliases": [
+          "cook 2"
+        ],
+        "task": "COOK",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
+      },
+      {
         "command": "chop wood",
         "aliases": [
           "chop 3"
@@ -681,7 +715,7 @@
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "aec36055c16e4851124b4e69c6ce68118284cf2f470edc5db5b7925e8b607445"
+      "sha256": "7cc959e4b4ea823c53621f056ca7c1bc5f9dca2809b32e6ac64c6e07abdecafc"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
@@ -837,6 +871,18 @@
       {
         "task": "TREAT_PLAYER",
         "example": "Goblin, bandage me"
+      },
+      {
+        "task": "FORAGE",
+        "example": "Goblin, forage for some food"
+      },
+      {
+        "task": "CHECK_TRAPS",
+        "example": "Goblin, check the traps"
+      },
+      {
+        "task": "COOK",
+        "example": "Goblin, cook some food"
       }
     ],
     "guards": [
@@ -859,13 +905,6 @@
   ],
   "proposed_goblin_chat": [
     {
-      "command": "cook",
-      "evidence": [
-        "PROPOSED"
-      ],
-      "registered": false
-    },
-    {
       "command": "patrol",
       "evidence": [
         "PROPOSED"
@@ -882,11 +921,11 @@
     "sources": [
       {
         "path": "goblin_zomboid/validator.py",
-        "sha256": "aeea7c04596b979547cd39c6d7a4f0ce0026c3743ef8f68e9ce26b8eefd88ad4"
+        "sha256": "80005a116cbd32d038776a26e997adbdf9ea749d591648abee3ec7d434c5a2db"
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "5d725cf5387972490e40053461ea9bef4f73ad1399fd2282f66264364471c94b"
+        "sha256": "46ee907810dda3c9fe2f7e8b36505a342b195cd62d80141d405e703b2ae5112a"
       },
       {
         "path": "goblin_zomboid/service.py",
@@ -929,7 +968,10 @@
       "REPLACE_PART",
       "CHANGE_TIRE",
       "CHOP_WOOD",
-      "TREAT_PLAYER"
+      "TREAT_PLAYER",
+      "FORAGE",
+      "CHECK_TRAPS",
+      "COOK"
     ],
     "offline_actions": [
       "WAIT",

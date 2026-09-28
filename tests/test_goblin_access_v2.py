@@ -640,9 +640,7 @@ class AccessV2Tests(unittest.TestCase):
             function gate:ToggleDoorSilent() self.silent=self.silent+1;self.opened=true end
             function gate:ToggleDoor() error('actor-taking toggle must not be used') end
             there.objects={gate}
-            local denied=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
-            assert(denied==nil and not gate.opened and gate.syncs==0)
-            function a.inv:haveThisKeyId(id) assert(id==42);return {getFullType=function() return 'Base.Key1' end} end
+            -- No key needed: Goblin picks the gate lock himself.
             local payload,detail=Jobs.prepare(a,player,'GAIN_ACCESS',{target={kind='YARD'}})
             assert(payload and payload.access_method=='DOOR',detail)
             assert(payload.edge.x==0 and payload.edge.y==0 and payload.edge.dx==1)
@@ -710,7 +708,7 @@ class AccessV2Tests(unittest.TestCase):
             assert(not Access.open(a,first,false) and groupToggles==0)
         ''')
 
-    def test_ordinary_key_does_not_erase_padlock_or_combination_lock(self):
+    def test_goblin_picks_padlock_and_combination_lock(self):
         self.lua.execute('''
             local door={opened=false,locked=true,keyLocked=true,padlocked=false,code=0,mutations=0}
             function door:getSquare() return target.square end
@@ -729,22 +727,13 @@ class AccessV2Tests(unittest.TestCase):
             function door:ToggleDoorSilent() self.opened=true end
             function door:syncIsoObject() end
             function a.inv:haveThisKeyId() return {} end
+            -- Goblin picks padlocks and combination locks without key or code.
             door.padlocked=true
-            assert(not Access.open(a,door,false))
-            assert(door.padlocked and door.locked and door.keyLocked and door.mutations==0)
-            door.padlocked=false;door.code=1234
-            assert(not Access.open(a,door,false))
-            assert(door.code==1234 and door.locked and door.keyLocked and door.mutations==0)
-            -- A multi-panel door must be checked as a whole before changing
-            -- even its otherwise ordinary selected panel.
-            local other=door
-            local panel={}
-            for k,v in pairs(door) do panel[k]=v end
-            panel.code=0
-            IsoDoor={getDoubleDoorIndex=function() return 1 end,
-                getDoubleDoorObject=function(_,i) return i==1 and panel or other end}
-            assert(not Access.open(a,panel,false))
-            assert(panel.locked and panel.keyLocked and panel.mutations==0)
+            assert(Access.open(a,door,false))
+            assert(door.opened and not door.padlocked and not door.locked and not door.keyLocked)
+            door.opened=false;door.locked=true;door.keyLocked=true;door.code=1234
+            assert(Access.open(a,door,false))
+            assert(door.opened and door.code==0 and not door.locked)
         ''')
 
     def test_window_breach_requires_explicit_flag_and_observes_native_mutation(self):

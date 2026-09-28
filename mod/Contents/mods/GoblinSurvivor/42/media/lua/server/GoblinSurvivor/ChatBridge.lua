@@ -83,6 +83,17 @@ function ChatBridge.directIntent(text)
         or contains(lower,"fell the tree") then
         return Constants.TASK.CHOP_WOOD
     end
+    if lower:match("^forage%f[%A]") or lower:match("^go%s+foraging") or lower:match("^gather%s+berries")
+        or lower:match("^look%s+for%s+food%s+outside") then
+        return Constants.TASK.FORAGE
+    end
+    if (lower:match("^check%f[%A]") or lower:match("^empty%f[%A]") or lower:match("^rebait%f[%A]")
+        or lower:match("^bait%f[%A]")) and contains(lower,"trap") then
+        return Constants.TASK.CHECK_TRAPS
+    end
+    if lower:match("^cook%f[%A]") or lower:match("^make%s+dinner") or lower:match("^make%s+food") then
+        return Constants.TASK.COOK
+    end
     if lower:match("^bandage%s+me") or lower:match("^patch%s+me%s+up") or lower:match("^heal%s+me")
         or lower:match("^treat%s+my%s+wound") or contains(lower,"i'm bleeding") or contains(lower,"im bleeding") then
         return Constants.TASK.TREAT_PLAYER
@@ -93,7 +104,8 @@ function ChatBridge.directIntent(text)
         or lower:match("^fuel%s+up")) then
         return Constants.TASK.REFUEL_VEHICLE
     end
-    if vehicleWord and (lower:match("^service%f[%A]") or lower:match("^tune%s+up")) then
+    if (vehicleWord or contains(lower,"battery")) and (lower:match("^service%f[%A]") or lower:match("^tune%s+up")
+        or lower:match("^charge%f[%A]") or lower:match("^recharge%f[%A]")) then
         return Constants.TASK.VEHICLE_SERVICE
     end
     if vehicleWord and (lower:match("^inspect%f[%A]") or lower:match("^check%f[%A]")
@@ -219,6 +231,12 @@ local function applyDirect(player, speaker, task, text)
         payload = { explicit_owner_order = true }
         local count = string.match(string.lower(text or ""), "(%d+)%s+trees?")
         if count then payload.count = math.max(1, math.min(5, tonumber(count))) end
+    end
+    if task == Constants.TASK.FORAGE or task == Constants.TASK.CHECK_TRAPS or task == Constants.TASK.COOK then
+        payload = { explicit_owner_order = true }
+        local count = tonumber(string.match(string.lower(text or ""), "(%d+)"))
+        if count and task == Constants.TASK.FORAGE then payload.count = math.max(1, math.min(10, count)) end
+        if count and task == Constants.TASK.COOK then payload.count = math.max(1, math.min(5, count)) end
     end
     if task == Constants.TASK.REFUEL_VEHICLE or task == Constants.TASK.VEHICLE_SERVICE
         or task == Constants.TASK.VEHICLE_INSPECT or task == Constants.TASK.CHANGE_TIRE

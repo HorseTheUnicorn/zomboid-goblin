@@ -803,6 +803,8 @@ end
 
 function Spawner.onZombieDead(zombie)
     if not Body.isGoblin(zombie) then return false end
+    -- Conjured supplies must not become lootable from the corpse.
+    pcall(function() require("GoblinSurvivor/GoblinProvision").purge(zombie) end)
     local owner = Body.owner(zombie)
     local key = ownerKey(owner)
     local record = recordFor(owner, true)
