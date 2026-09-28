@@ -140,8 +140,9 @@ function Autonomy.update(body,now)
     -- Home upkeep needs no orders and does not wait for free will: a stopped
     -- generator or thirsty crops are handled as soon as they are noticed,
     -- with or without the owner online.
-    -- With the owner online he only does upkeep while they are around the
-    -- base; out in the world he stays their companion.
+    -- With the owner online he only does upkeep while they are within his
+    -- roaming range of the base; beyond it he stays their companion.
+    local roam=tonumber(Config.caretakerRoamRadius) or 500
     local home=Caretaker.base(body)
     -- No base yet: once the owner settles in a house, Goblin makes it home.
     if not home and player and (record.claimAt or 0)<=now then
@@ -153,16 +154,16 @@ function Autonomy.update(body,now)
         end
     end
     local ownerHome=not player or (home~=nil and math.floor(point.z)==home.z
-        and (point.x-home.x)^2+(point.y-home.y)^2<=40*40)
+        and (point.x-home.x)^2+(point.y-home.y)^2<=roam*roam)
     if ownerHome and not (player and threatNear(body,point)) and Caretaker.tick(body,Brain.setTask,now) then
         return true
     end
-    -- Owner away: go home and look after the place instead of standing
-    -- wherever the owner logged out.
+    -- Owner away: stay within roaming range of home; beyond it, walk back
+    -- instead of standing wherever the owner logged out.
     if not player then
         local here=Body.position(body)
         if home and here and (math.floor(here.z)~=home.z
-            or (here.x-home.x)^2+(here.y-home.y)^2>(Caretaker.RADIUS*Caretaker.RADIUS)) then
+            or (here.x-home.x)^2+(here.y-home.y)^2>roam*roam) then
             if (record.homeAt or 0)<=now then
                 record.homeAt=now+60000
                 data.GoblinLastAutonomyAction="GO_HOME"

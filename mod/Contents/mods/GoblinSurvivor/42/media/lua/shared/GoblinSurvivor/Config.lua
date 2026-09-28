@@ -67,6 +67,8 @@ local Config = {
     autonomyDecisionSeconds = 8,
     autonomyExploreRadius = 24,
     autonomyWorkRadius = 10,
+    -- How far from the base (tiles) Goblin roams as its caretaker.
+    caretakerRoamRadius = 500,
     autonomyBarricadeRadius = 8,
 
     -- Free will: how long scripted chores wait for Qwen to choose a job, and
@@ -214,6 +216,7 @@ function Config.refresh()
     Config.autonomyIdleSeconds = boundedNumber(option("GoblinAutonomyIdleSeconds", Config.autonomyIdleSeconds), Config.autonomyIdleSeconds, 30, 3600)
     Config.autonomyDecisionSeconds = boundedNumber(option("GoblinAutonomyDecisionSeconds", Config.autonomyDecisionSeconds), Config.autonomyDecisionSeconds, 2, 120)
     Config.autonomyExploreRadius = boundedNumber(option("GoblinAutonomyExploreRadius", Config.autonomyExploreRadius), Config.autonomyExploreRadius, 8, 40)
+    Config.caretakerRoamRadius = boundedNumber(option("GoblinCaretakerRoamRadius", Config.caretakerRoamRadius), Config.caretakerRoamRadius, 10, 2000)
     Config.autonomyWorkRadius = boundedNumber(option("GoblinAutonomyWorkRadius", Config.autonomyWorkRadius), Config.autonomyWorkRadius, 3, 32)
     Config.autonomyBarricadeRadius = boundedNumber(option("GoblinAutonomyBarricadeRadius", Config.autonomyBarricadeRadius), Config.autonomyBarricadeRadius, 2, 20)
     Config.freewillGraceSeconds = boundedNumber(option("GoblinFreewillGraceSeconds", Config.freewillGraceSeconds), Config.freewillGraceSeconds, 10, 600)
