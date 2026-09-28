@@ -124,7 +124,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCrafting.lua"
@@ -627,15 +627,15 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCurtains.lua",
-          "sha256": "8927bb5d3a7e8a76c043d4731beff19a7f2f14e604059e01c94871c35f4549eb"
+          "sha256": "365a438d336e91ddfc48c8dd41efb57221c516c00eb613166dab6f0bfca922ed"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISOpenCloseCurtain.lua",
@@ -1097,7 +1097,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinVehicles.lua"
@@ -1198,11 +1198,11 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinFarming.lua",
-          "sha256": "80495856fd8740e258e3b216f8ce1e08e36b4fd632a5d3f1f9d019831832d559"
+          "sha256": "be39939bd02b9c4ec67fea5b91a5249af8786932067e6043d11fa0bcce7d50d5"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua"
@@ -2576,11 +2576,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -2956,11 +2956,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3120,11 +3120,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3296,11 +3296,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3434,11 +3434,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3691,11 +3691,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3841,11 +3841,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3922,11 +3922,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4010,11 +4010,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4098,11 +4098,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4186,11 +4186,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4279,11 +4279,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4939,11 +4939,11 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -5361,15 +5361,15 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
+          "sha256": "5225c1efb6d9d53484cedbf45a51cf5924ee27118d8eb3759ea3685ae77b5046"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
-          "sha256": "4f45132170c49acb5760682804721f3493fb59698be7d04fd55bbb9536b8b0c5"
+          "sha256": "818bccc6ca08afece334b9e26a1eab5fae7e6bc9702669bcd86401d4b25a2a23"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "installed_path": "media/lua/shared/Foraging/forageSystem.lua"
@@ -5433,7 +5433,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
+          "sha256": "5225c1efb6d9d53484cedbf45a51cf5924ee27118d8eb3759ea3685ae77b5046"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinProvision.lua",
@@ -5441,7 +5441,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "installed_path": "media/lua/server/Traps/STrapGlobalObject.lua"
@@ -5517,7 +5517,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "770683bf642bf41aab7a79e778b791580200826945654deafc040b8f10e49374"
+          "sha256": "5225c1efb6d9d53484cedbf45a51cf5924ee27118d8eb3759ea3685ae77b5046"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -5525,7 +5525,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "installed_path": "media/lua/server/Camping/SCampfireSystem.lua"
@@ -5596,11 +5596,11 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinPower.lua",
-          "sha256": "0439741a63347c0cc2af928e787807f392d905fe855f2c4b287a0dc141dcd4df"
+          "sha256": "3f48b1a53f388c49aab5f814db26d3aef1cbaceab3133161556d29a288553767"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "1e1d16a2f8adc43f26b7021fbede62c7780f00fbd0d278ba047c88302808163a"
+          "sha256": "86db472cba8b8322619a9fc4c94b9143b84d3b0043e1ed6b853db46041485894"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISAddFuel.lua"

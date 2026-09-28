@@ -6,6 +6,7 @@ local Work=require("GoblinSurvivor/GoblinWork")
 local Loot=require("GoblinSurvivor/GoblinLoot")
 local Motion=require("GoblinSurvivor/GoblinLocomotion")
 local Goals=require("GoblinSurvivor/GoblinGoals")
+local Caretaker=require("GoblinSurvivor/GoblinCaretaker")
 local Autonomy={owners={}}
 
 local function fortifySuppliesAvailable(body)
@@ -130,6 +131,45 @@ function Autonomy.update(body,now)
     -- Standing owner goals take precedence over independent chores.
     if player and Goals.tick(body,Brain.setTask,{idle=true,threat=threatNear(body,point)},now) then
         return true
+    end
+    -- Tell the owner what got done while they were away.
+    if player and type(data.GoblinCaretakerReport)=="string" then
+        Body.say(body,"Comrade, "..data.GoblinCaretakerReport)
+        data.GoblinCaretakerReport=nil
+    end
+    -- Home upkeep needs no orders and does not wait for free will: a stopped
+    -- generator or thirsty crops are handled as soon as they are noticed,
+    -- with or without the owner online.
+    -- With the owner online he only does upkeep while they are around the
+    -- base; out in the world he stays their companion.
+    local home=Caretaker.base(body)
+    -- No base yet: once the owner settles in a house, Goblin makes it home.
+    if not home and player and (record.claimAt or 0)<=now then
+        record.claimAt=now+300000
+        local _,room=World.call(World.square(point),"getRoom")
+        if room then
+            pcall(require("GoblinSurvivor/GoblinBaseClaim").ensure,body,"INSPECT_BASE",player)
+            home=Caretaker.base(body)
+        end
+    end
+    local ownerHome=not player or (home~=nil and math.floor(point.z)==home.z
+        and (point.x-home.x)^2+(point.y-home.y)^2<=40*40)
+    if ownerHome and not (player and threatNear(body,point)) and Caretaker.tick(body,Brain.setTask,now) then
+        return true
+    end
+    -- Owner away: go home and look after the place instead of standing
+    -- wherever the owner logged out.
+    if not player then
+        local here=Body.position(body)
+        if home and here and (math.floor(here.z)~=home.z
+            or (here.x-home.x)^2+(here.y-home.y)^2>(Caretaker.RADIUS*Caretaker.RADIUS)) then
+            if (record.homeAt or 0)<=now then
+                record.homeAt=now+60000
+                data.GoblinLastAutonomyAction="GO_HOME"
+                return Brain.setTask(body,"RETURN_TO_BASE",{owner=Body.owner(body),caretaker=true})
+            end
+            return false
+        end
     end
     -- With free will on, give Qwen the first chance to choose Goblin's next
     -- job; scripted chores only fill in if it has been silent for a while,

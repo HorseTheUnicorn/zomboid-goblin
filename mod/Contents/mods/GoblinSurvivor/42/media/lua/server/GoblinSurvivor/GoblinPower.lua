@@ -45,7 +45,7 @@ local function anchorFor(body, owner)
         local p = { x = tonumber(data.GoblinBaseX), y = tonumber(data.GoblinBaseY), z = tonumber(data.GoblinBaseZ) }
         if p.x and p.y and p.z then return { x = math.floor(p.x), y = math.floor(p.y), z = math.floor(p.z) } end
     end
-    local p = Body.position(owner)
+    local p = owner and Body.position(owner) or nil
     if not Support.validPoint(p) then return nil end
     return { x = math.floor(p.x), y = math.floor(p.y), z = math.floor(p.z) }
 end
@@ -150,19 +150,25 @@ local function refuel(body, generator)
 end
 
 function Power.prepare(body, owner, request)
-    if type(request) ~= "table" or request.explicit_owner_order ~= true or request.autonomous == true then
-        return nil, "this job requires an explicit order from the online owner"
+    local caretaker = type(request) == "table" and request.caretaker == true
+    local name = Body.owner(body)
+    if not caretaker then
+        if type(request) ~= "table" or request.explicit_owner_order ~= true or request.autonomous == true then
+            return nil, "this job requires an explicit order from the online owner"
+        end
+        name = select(2, call(owner, "getUsername"))
+        if name ~= Body.owner(body) or not playerFor(name) then return nil, "the owning player must be online" end
     end
-    local name = select(2, call(owner, "getUsername"))
-    if name ~= Body.owner(body) or not playerFor(name) then return nil, "the owning player must be online" end
     local anchor = anchorFor(body, owner)
-    if not anchor then return nil, "owner position unavailable" end
-    return { owner = name, anchor = anchor, placed = false, poured = 0, repaired = false },
+    if not anchor then return nil, "no base or owner position to work from" end
+    return { owner = name, anchor = anchor, placed = false, poured = 0, repaired = false, caretaker = caretaker or nil },
         "getting the power running at the base"
 end
 
 function Power.update(body, payload, runtime, now)
-    if not playerFor(payload.owner) then return true, false, "owner logged out; power work stopped", "INTERRUPTED" end
+    if not payload.caretaker and not playerFor(payload.owner) then
+        return true, false, "owner logged out; power work stopped", "INTERRUPTED"
+    end
     local generator = runtime.generator
     if generator then
         local square = select(2, call(generator, "getSquare"))

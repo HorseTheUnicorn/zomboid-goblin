@@ -36,6 +36,9 @@ local function playerFor(name)
 end
 
 local function ownerOrder(body, owner, request)
+    -- Caretaker duties (server-built, never from the wire) run for the owner
+    -- even while they are away.
+    if type(request) == "table" and request.caretaker == true then return Body.owner(body) end
     if type(request) ~= "table" or request.explicit_owner_order ~= true or request.autonomous == true then
         return nil, "this job requires an explicit order from the online owner"
     end
@@ -195,6 +198,8 @@ local function trapsNear(anchor)
     table.sort(found, function(a, b) return a.d < b.d end)
     return found
 end
+
+Life.trapsNear = function(anchor) return trapsNear(anchor) end
 
 local function trapAt(x, y, z)
     local system = trapSystem()
@@ -359,8 +364,8 @@ function Life.Traps.prepare(body, owner, request)
     if not anchor then return nil, "owner position unavailable" end
     local traps = trapsNear(anchor)
     if #traps == 0 then return nil, "no traps within thirty tiles of the base or you; try traps place" end
-    return { owner=name, anchor=anchor, completed=0, caught=0, baited=0 },
-        "checking "..#traps.." trap(s)"
+    return { owner=name, anchor=anchor, completed=0, caught=0, baited=0,
+        caretaker=request.caretaker == true or nil }, "checking "..#traps.." trap(s)"
 end
 
 local function placeUpdate(body, payload, runtime, now)
@@ -404,7 +409,9 @@ local function placeUpdate(body, payload, runtime, now)
 end
 
 function Life.Traps.update(body, payload, runtime, now)
-    if not playerFor(payload.owner) then return true, false, "owner logged out; trap run stopped", "INTERRUPTED" end
+    if not payload.caretaker and not playerFor(payload.owner) then
+        return true, false, "owner logged out; trap run stopped", "INTERRUPTED"
+    end
     if (payload.place or 0) > 0 then return placeUpdate(body, payload, runtime, now) end
     runtime.done = runtime.done or {}
     if not runtime.target then

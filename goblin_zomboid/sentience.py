@@ -51,6 +51,10 @@ EVENT_WEIGHTS: dict[str, tuple[float, float]] = {
     "owner_left_base": (0.5, 0.0),
     "food_low": (0.55, -0.3),
     "vehicle_low": (0.4, -0.1),
+    "power_down": (0.6, -0.4),
+    "power_restored": (0.4, 0.5),
+    "crops_thirsty": (0.45, -0.2),
+    "crops_ready": (0.45, 0.4),
     "new_place": (0.35, 0.1),
     "job": (0.3, 0.2),
     "job_complete": (0.3, 0.3),
@@ -203,6 +207,7 @@ class Sentience:
         owner, vehicle = sub("owner"), sub("vehicle")
         nearby = situation.get("nearby_goblins") if isinstance(situation.get("nearby_goblins"), list) else []
         shortages = base.get("stock_shortages") if isinstance(base.get("stock_shortages"), list) else []
+        home = base.get("homestead") if isinstance(base.get("homestead"), Mapping) else {}
         return {
             "day": time_info.get("day") if isinstance(time_info.get("day"), int) else None,
             "period": time_info.get("period"),
@@ -213,6 +218,9 @@ class Sentience:
             "goblins": sorted(str(g.get("name") or g.get("npc_id")) for g in nearby if isinstance(g, Mapping)),
             "food_short": any("food" in str(s).lower() or "tinned" in str(s).lower() for s in shortages),
             "vehicle": str(vehicle.get("summary") or ""),
+            "power": home.get("power"),
+            "thirsty": int(home.get("plants_need_water") or 0),
+            "ripe": int(home.get("plants_ready") or 0),
         }
 
     @staticmethod
@@ -234,6 +242,14 @@ class Sentience:
             add("new_place", f"we went into the {now['room']}")
         for name in set(now.get("goblins") or []) - set(before.get("goblins") or []):
             add("goblin_met", f"ran into {name}")
+        if now.get("power") in ("none", "generator_down") and before.get("power") in ("grid", "generator"):
+            add("power_down", "the power at home went out")
+        if now.get("power") == "generator" and before.get("power") in ("none", "generator_down"):
+            add("power_restored", "the lights are back on at home")
+        if (now.get("thirsty") or 0) > 0 and not (before.get("thirsty") or 0):
+            add("crops_thirsty", f"{now['thirsty']} crop(s) at home need water")
+        if (now.get("ripe") or 0) > 0 and not (before.get("ripe") or 0):
+            add("crops_ready", f"{now['ripe']} crop(s) at home are ready to pick")
         if now.get("food_short") and not before.get("food_short"):
             add("food_low", "the base is running short of food")
         vehicle = now.get("vehicle") or ""

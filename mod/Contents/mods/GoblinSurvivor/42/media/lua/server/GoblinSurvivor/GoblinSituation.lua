@@ -157,6 +157,8 @@ local function base(body)
     local result = { set = true, windows_needing_boards = report.unbarricaded_windows,
         damaged_structures = report.damaged_structures, broken_windows = report.broken_windows,
         open_exterior_doors = report.open_exterior_doors, report_stale = report.stale == true }
+    -- What the caretaker last saw of the homestead (power, crops, traps).
+    if type(data.GoblinHomestead) == "table" then result.homestead = data.GoblinHomestead end
     local okS, Stockpiles = pcall(require, "GoblinSurvivor/GoblinStockpiles")
     local okC, Curtains = pcall(require, "GoblinSurvivor/GoblinCurtains")
     if okS and okC then

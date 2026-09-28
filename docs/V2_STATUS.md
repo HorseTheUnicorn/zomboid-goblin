@@ -243,6 +243,16 @@ server-built gate with `transmitAddObjectToSquare` before any lock packets.
 - `RESTORE_POWER` (`!goblin power`, "Goblin, set up a generator"): Goblin finds a generator within 20 tiles of the base, or conjures a `Base.Generator` onto the nearest free outdoor square beside the house, repairs it to 100%, fills it with conjured petrol, plugs it in and starts it. Never touches another player's safehouse. Lua fixtures only.
 - Base auto-claim: jobs that need a base claim the nearest house when none is set; house jobs move an outdoor base into the adjacent house. Close-curtains works the base house when the owner is outdoors.
 
+### Caretaker: a Goblin with his own life (2026-09-28, PZ 42.21)
+
+- `GoblinCaretaker.lua`: with no orders, Goblin keeps the home going: base generator (missing when the grid is off, stopped, under 50% fuel or damaged -> RESTORE_POWER), crops by the base (thirsty or ripe -> FARM tend), curtains after dusk (CLOSE_CURTAINS), traps every 12 game hours (CHECK_TRAPS). Boarding windows, salvage and looting stay in GoblinAutonomy. Each duty has a game-hour interval and a 3-hour backoff after a failure.
+- Upkeep runs while the owner is idle at home (within 40 tiles of the base) and while the owner is offline; out in the world Goblin stays a companion. With the owner offline he walks back to the base first.
+- Caretaker payloads (`caretaker=true`) are built only by the server; `Capabilities.prepare` lets exactly RESTORE_POWER, FARM, CLOSE_CURTAINS and CHECK_TRAPS prepare without an online owner when they carry it.
+- Catch-up: if Goblin's area was unloaded for 6+ game hours, his first tick back waters the base crops and tops up the base generator, and he tells his owner what he did.
+- No base yet: when the owner settles inside a house, Goblin claims it as home.
+- Sentience sees `situation.base.homestead` (power, crops, traps, curtains) and notices power going out or coming back, thirsty crops and ripe crops.
+- 42.21 spot check: the installed SPlantGlobalObject water/seed/isAlive, SFarmingSystem plow/harvest, Vehicles.JerryCanLitres/InstallTest and IsoGenerator/IsoWorld.isHydroPowerOn APIs used by the mod are unchanged. Lua fixtures only; not yet exercised live on 42.21.
+
 ## Remaining work
 
 | Milestone | What remains |

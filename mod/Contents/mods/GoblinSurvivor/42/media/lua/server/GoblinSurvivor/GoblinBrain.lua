@@ -312,6 +312,10 @@ function Brain.update(body, timestamp)
                 task.." "..tostring(result.code)..": "..tostring(result.detail)) end)
             -- Goal progression only ever reads this deterministic result.
             pcall(function() require("GoblinSurvivor/GoblinGoals").onResult(body,task,result,now,payload.goal_id) end)
+            if data.GoblinCaretakerTask==task then
+                data.GoblinCaretakerTask=nil
+                pcall(function() require("GoblinSurvivor/GoblinCaretaker").onResult(body,task,result) end)
+            end
             local delivery=result.success and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
             Brain.setTask(body,delivery,{owner=Body.owner(body)})
             data.GoblinWorkStatus=result.detail

@@ -108,3 +108,7 @@ function supplies(planks,nails)
     for i=1,planks do a.inv:AddItem('Base.Plank') end
     for i=1,nails do a.inv:AddItem('Base.Nails') end
 end
+
+-- The power grid is still on (no generator duty) unless a test turns it off.
+gridOn=true
+getWorld=getWorld or function() return {isHydroPowerOn=function() return gridOn end} end

@@ -135,7 +135,12 @@ end
 function Capabilities.prepare(name,body,owner,payload)
     local definition=registry[name]
     if not definition then return nil,"unsupported capability" end
-    if definition.owner_required and not owner then return nil,"the owner must be present to issue this job" end
+    -- Caretaker duties are built by the server (GoblinCaretaker), never
+    -- accepted from the wire, and may run while the owner is away.
+    local caretaker=definition.caretaker==true and type(payload)=="table" and payload.caretaker==true
+    if definition.owner_required and not owner and not caretaker then
+        return nil,"the owner must be present to issue this job"
+    end
     if type(definition.can_prepare)=="function" then
         local ran,allowed,detail=pcall(definition.can_prepare,body,owner,payload or {})
         if not ran then return nil,"capability preparation check failed" end

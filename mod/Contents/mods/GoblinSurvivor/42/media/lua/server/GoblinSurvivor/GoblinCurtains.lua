@@ -319,8 +319,13 @@ function Curtains.prepare(body, owner, payload)
     if type(isServer) == "function" and not isServer() then return nil, "work must run on the game server" end
     local _, dead = call(owner, "isDead")
     if dead == true then return nil, "the owner must be alive and inside a house" end
-    local scope, why = captureScope(owner)
-    local anchor = Motion.position(owner)
+    local scope, why, anchor
+    if owner then
+        scope, why = captureScope(owner)
+        anchor = Motion.position(owner)
+    else
+        why = "no owner here and no base house"
+    end
     if not scope then
         -- Owner is outdoors: the Goblin does his own base house instead.
         local data = Body.data(body)
@@ -460,6 +465,12 @@ function Curtains.update(body, payload, job, now)
         Movement.update(body, now)
     end
     return false, true, "walking to close the owner's house curtains", "MOVING_TO_TARGET"
+end
+
+-- Open curtains in a house scope (Caretaker night check).
+function Curtains.openCount(scope)
+    local ok, found = pcall(scan, scope, true)
+    return ok and type(found) == "table" and #found or 0
 end
 
 function Curtains.clear(body)

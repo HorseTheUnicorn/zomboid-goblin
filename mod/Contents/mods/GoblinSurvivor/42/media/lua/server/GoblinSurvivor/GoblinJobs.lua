@@ -6,6 +6,8 @@ local Capabilities=require("GoblinSurvivor/GoblinCapabilities")
 -- Conjured supplies (GoblinProvision) feed every job Goblin does for himself;
 -- they are quarantined inside Goblin's inventory.
 local Jobs={active=Capabilities.active}
+-- Home upkeep Goblin keeps doing on his own, also while the owner is away.
+Jobs.CARETAKER={RESTORE_POWER=true,FARM=true,CLOSE_CURTAINS=true,CHECK_TRAPS=true}
 local VehicleService=require("GoblinSurvivor/GoblinVehicleService")
 local Survival=require("GoblinSurvivor/GoblinSurvival")
 local Life=require("GoblinSurvivor/GoblinSurvivalLife")
@@ -113,12 +115,15 @@ for task,item in pairs(definitions) do
     local handler=item.handler
     Capabilities.register(task,{
         destructive=item.destructive,offline_allowed=false,owner_required=true,
+        caretaker=Jobs.CARETAKER[task]==true,
         timeout_ms=item.timeout_ms or 300000,
         requirements=item.requirements,
-        can_prepare=function(body,owner)
+        can_prepare=function(body,owner,payload)
             if not serverReady() then return false,"work must run on the game server" end
             if not Body.isGoblin(body) then return false,"Goblin body is not present" end
-            if not owner then return false,"the owner must be present to issue this job" end
+            if not owner and not (Jobs.CARETAKER[task] and payload and payload.caretaker==true) then
+                return false,"the owner must be present to issue this job"
+            end
             return true
         end,
         prepare=function(body,owner,payload) return handler.prepare(body,owner,payload) end,

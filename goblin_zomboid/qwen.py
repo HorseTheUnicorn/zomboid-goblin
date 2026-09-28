@@ -410,13 +410,18 @@ class QwenClient:
         "the narration to a few plain words. If context.sentience.current_step is set, that is the next "
         "step of your own plan toward context.sentience.current_goal: do exactly that intent (with its job "
         "if given) unless the situation makes it impossible or pointless right now; then pick the next "
-        "sensible action toward the goal. Never choose an intent listed in context.sentience.avoid_for_now: it "
+        "sensible action toward the goal. You look after the home by yourself: context.situation.base.homestead "
+        "shows power, crops and traps, and you keep the generator running (RESTORE_POWER), crops watered and "
+        "picked (FARM), windows boarded (SECURE_BASE) and traps checked (CHECK_TRAPS) without being asked; "
+        "your comrade should rarely need to give you orders. Never choose an intent listed in context.sentience.avoid_for_now: it "
         "just failed or was just finished, so do something else useful (loot, forage, chop wood, cook, check "
         "traps). Narration may mention the goal, briefly, or stay silent."
     )
 
     REFLECT_RULES = (
         " PRIVATE THOUGHT TURN: nobody hears this unless you fill say. You are a person with a continuous "
+        "life and a home you keep yourself: context.situation.base.homestead shows its power, crops and traps; "
+        "you do your own thing as your comrade's companion, with no orders needed. "
         "life, not a tool. context.self is your own mind: mood, desires (with priorities), current_goal, "
         "plan and current_step, private_thoughts, expectations. context.what_just_happened lists what you "
         "noticed since you last thought, with importance 0-1. context.situation is the world now; "

@@ -67,6 +67,42 @@ local function operation(plant,mode,crop)
         and (tonumber(plant.waterLvl) or 0)<desired then return "water" end
 end
 
+-- Caretaker: count plants around anchor that need water or are ready to harvest.
+function Farm.needs(anchor,radius)
+    local counts={plants=0,water=0,harvest=0}
+    if not system() or not anchor then return counts end
+    radius=radius or 8
+    for dx=-radius,radius do for dy=-radius,radius do
+        local square=World.square({x=anchor.x+dx,y=anchor.y+dy,z=anchor.z})
+        local plant=square and system():getLuaObjectOnSquare(square)
+        if plant and plant.state~="plow" then
+            local okAlive,alive=pcall(plant.isAlive,plant)
+            if okAlive and alive then
+                counts.plants=counts.plants+1
+                local op=operation(plant,"tend",nil)
+                if op then counts[op]=(counts[op] or 0)+1 end
+            end
+        end
+    end end
+    return counts
+end
+
+-- Offline catch-up: water every living plant around anchor (no body needed;
+-- works on the global plant objects of loaded squares).
+function Farm.waterAll(anchor,radius)
+    local watered=0
+    if not system() or not anchor then return 0 end
+    radius=radius or 8
+    for dx=-radius,radius do for dy=-radius,radius do
+        local square=World.square({x=anchor.x+dx,y=anchor.y+dy,z=anchor.z})
+        local plant=square and system():getLuaObjectOnSquare(square)
+        if plant and plant.state~="plow" and operation(plant,"water",nil)=="water" then
+            pcall(plant.water,plant,nil,10);watered=watered+1
+        end
+    end end
+    return watered
+end
+
 local function target(payload,job)
     if payload.job=="plow" then return World.square(payload.anchor),"plow" end
     local best,action,dist

@@ -62,6 +62,14 @@ class SentienceTests(unittest.TestCase):
         kinds = sorted(e["kind"] for e in events)
         self.assertEqual(kinds, ["goblin_met", "new_place", "night_approaching", "owner_left_base"])
 
+    def test_homestead_changes_are_noticed(self):
+        home = lambda **h: {"distance": "at base", "set": True, "homestead": h}
+        self.sentience.perceive(companion(base=home(power="grid", plants_need_water=0)), [])
+        events = self.sentience.perceive(companion(base=home(power="none", plants_need_water=3)), [])
+        self.assertEqual(sorted(e["kind"] for e in events), ["crops_thirsty", "power_down"])
+        events = self.sentience.perceive(companion(base=home(power="generator", plants_ready=2)), [])
+        self.assertEqual(sorted(e["kind"] for e in events), ["crops_ready", "power_restored"])
+
     def test_interrupt_suspends_and_completion_resumes_the_old_goal(self):
         self.sentience.apply_reflection("g1", {
             "mood": "grumpy", "thought": "Base is a sieve.", "decision": "new",
