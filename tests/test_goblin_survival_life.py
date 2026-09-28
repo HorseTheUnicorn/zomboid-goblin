@@ -9,6 +9,7 @@ LUA = ROOT / "mod/Contents/mods/GoblinSurvivor/42/media/lua"
 
 FIXTURE = r'''
 Life=require('GoblinSurvivor/GoblinSurvivalLife')
+next=nil -- the PZ server Lua has no global next
 local seed=7
 ZombRand=function(n) seed=(seed*1103515245+12345)%2147483648; return seed%n end
 instanceItem=function(kind) known[kind]=true; return item(kind,'Food') end
@@ -170,7 +171,7 @@ class SurvivalLifeTests(unittest.TestCase):
             end}
             triggerEvent=function(name,obj)
                 assert(name=='OnObjectAdded')
-                local p=World.point(obj.sq)
+                local p={x=obj.sq:getX(),y=obj.sq:getY(),z=obj.sq:getZ()}
                 local trap={x=p.x,y=p.y,z=p.z,animal={}}
                 function trap:addBait(kind,age,multi,player) assert(player:getUsername()=='horse');self.bait=kind end
                 system.objects[#system.objects+1]=trap

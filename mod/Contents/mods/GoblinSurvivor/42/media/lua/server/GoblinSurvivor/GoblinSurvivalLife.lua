@@ -60,6 +60,11 @@ local function count(request, default, maximum)
     return n
 end
 
+-- Integer tile coordinates (World.point returns tile centres).
+local function tile(square)
+    return { x=square:getX(), y=square:getY(), z=square:getZ() }
+end
+
 local function random(n)
     if type(ZombRand) == "function" then return ZombRand(n) end
     return math.random(0, n - 1)
@@ -76,7 +81,7 @@ local function forageZone(square)
     if not fs or type(fs.getDefinedZoneAt) ~= "function" then return nil end
     local _, outside = call(square, "isOutside")
     if outside ~= true then return nil end
-    local p = World.point(square)
+    local p = tile(square)
     local ok, zoneDef, zone = pcall(fs.getDefinedZoneAt, p.x, p.y)
     if not ok or not zoneDef then return nil end
     local name = type(zoneDef) == "table" and zoneDef.name or nil
@@ -234,7 +239,7 @@ function Life.Traps.siteValid(square)
     if not square then return false end
     local _, outside = call(square, "isOutside")
     if outside ~= true then return false end
-    local p = World.point(square)
+    local p = tile(square)
     if trapAt(p.x, p.y, p.z) then return false end
     local _, moving = call(square, "getMovingObjects")
     local _, n = call(moving, "size")
@@ -250,7 +255,10 @@ function Life.Traps.siteValid(square)
     local TrapSystem = rawget(_G, "TrapSystem")
     if TrapSystem and type(TrapSystem.getTrapZones) == "function" then
         local ok, zones = pcall(TrapSystem.getTrapZones, square)
-        if not ok or type(zones) ~= "table" or next(zones) == nil then return false end
+        if not ok or type(zones) ~= "table" then return false end
+        local any = false
+        for _ in pairs(zones) do any = true; break end
+        if not any then return false end
     end
     return true
 end
@@ -303,7 +311,7 @@ function Life.Traps.place(body, square, owner, fullType)
     if TrapSystem then pcall(TrapSystem.initObjectModData, object, def, false, owner) end
     call(object, "transmitCompleteItemToClients")
     call(World.inventory(body), "DoRemoveItem", item)
-    local p = World.point(square)
+    local p = tile(square)
     if not trapAt(p.x, p.y, p.z) and type(triggerEvent) == "function" then
         pcall(triggerEvent, "OnObjectAdded", object)
     end
@@ -367,13 +375,13 @@ local function placeUpdate(body, payload, runtime, now)
     end
     local square = runtime.site
     if now - runtime.siteAt > 45000 then
-        runtime.tried[World.point(square).x..":"..World.point(square).y] = true
+        runtime.tried[tile(square).x..":"..tile(square).y] = true
         runtime.site = nil
         return false
     end
     if not Support.work(body, runtime, square, now, 3000, "LOOT", "setting a trap") then return false end
     runtime.site, runtime.readyAt = nil, nil
-    local p = World.point(square)
+    local p = tile(square)
     runtime.tried[p.x..":"..p.y] = true
     if not Life.Traps.siteValid(square) then return false end
     local trap, why = Life.Traps.place(body, square, playerFor(payload.owner), Life.TRAP_TYPE)
@@ -465,14 +473,17 @@ local function campfireSite(fire)
 end
 
 -- Nearest heat source: a stove/oven/microwave, else a campfire.
-local function nearestHeat(body, anchor, radius)
+local function siteKey(square) local p = tile(square); return p.x..":"..p.y..":"..p.z end
+
+local function nearestHeat(body, anchor, radius, skip)
+    skip = skip or {}
     local best, bestD
     for dx = -radius, radius do for dy = -radius, radius do
         local square = World.square({ x=anchor.x+dx, y=anchor.y+dy, z=anchor.z })
         if square then
             for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
                 local _, container = call(object, "getContainer")
-                if isStove(object) and container and Policy.access(body, object) then
+                if isStove(object) and container and not skip[siteKey(square)] and Policy.access(body, object) then
                     local d = dx*dx + dy*dy
                     if not best or d < bestD then
                         best, bestD = { kind="stove", object=object, square=square, container=container }, d
@@ -491,7 +502,9 @@ local function nearestHeat(body, anchor, radius)
                 local d = (fire.x - anchor.x)^2 + (fire.y - anchor.y)^2
                 if d <= radius*radius and (not best or d < bestD) then
                     local site = campfireSite(fire)
-                    if site and Policy.access(body, site.object) then best, bestD = site, d end
+                    if site and not skip[siteKey(site.square)] and Policy.access(body, site.object) then
+                        best, bestD = site, d
+                    end
                 end
             end
         end
@@ -647,8 +660,10 @@ function Life.Cook.update(body, payload, runtime, now)
     local recipe = payload.dish and potRecipe(Life.POT_RECIPES[payload.dish]) or nil
     if payload.dish and not recipe then return true, false, "the recipe is gone", "UNSUPPORTED" end
     local accept = recipe and ingredientFor(recipe) or rawFood
-    local site = runtime.site or nearestHeat(body, payload.anchor, 10)
-    if not site and payload.phase == "gather" then
+    runtime.badSites = runtime.badSites or {}
+    local site = runtime.site or nearestHeat(body, payload.anchor, 10, runtime.badSites)
+    if site and site ~= runtime.site then runtime.siteAt = now end
+    if not site and payload.phase == "gather" and not runtime.builtFire then
         -- No stove or fire: Goblin builds a campfire beside the owner.
         local ground = campfireGround(body, payload.anchor)
         local system = campfireSystem()
@@ -674,6 +689,9 @@ function Life.Cook.update(body, payload, runtime, now)
         end
         runtime.gatherStarted = runtime.gatherStarted or now
         if #held < payload.count and now - runtime.gatherStarted < 60000 then
+            if runtime.supply and now - (runtime.supplyAt or now) > 5000 then
+                Support.status(body, "fetching "..(payload.dish and (payload.dish.." ingredients") or "raw food"))
+            end
             local notCarried = function(item)
                 return accept(item) and World.containsExact(inventory, item) ~= true
             end
@@ -687,7 +705,21 @@ function Life.Cook.update(body, payload, runtime, now)
             return true, false, payload.dish and "no ingredients left" or "no raw food left to cook", "MISSING_MATERIAL"
         end
         local label = site.kind == "campfire" and "loading the campfire" or "loading the stove"
-        if not Support.work(body, runtime, site.square, now, 1500, "CRAFT", label) then return false end
+        runtime.loadAt = runtime.loadAt or now
+        if not Support.work(body, runtime, site.square, now, 1500, "CRAFT", label) then
+            if now - runtime.loadAt > 45000 then
+                -- Unreachable heat source: try the next one, or build a fire.
+                print("[GoblinSurvivor] COOK_SITE_UNREACHABLE owner="..tostring(payload.owner).." kind="..site.kind
+                    .." at="..siteKey(site.square))
+                runtime.badSites[siteKey(site.square)] = true
+                runtime.site, runtime.loadAt, runtime.readyAt = nil, nil, nil
+                runtime.tries = (runtime.tries or 0) + 1
+                if runtime.tries >= 3 then
+                    return true, false, "I can't reach a stove or fire from here", "NO_PATH"
+                end
+            end
+            return false
+        end
         runtime.readyAt = nil
         local switched, err = lightHeat(site)
         if err then return true, false, err, "BLOCKED" end
