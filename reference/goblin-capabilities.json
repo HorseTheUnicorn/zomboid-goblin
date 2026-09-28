@@ -631,7 +631,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCurtains.lua",
-          "sha256": "75be282185c89b2d1547ccfd8499694f12addaa9fc438b3f9f5220be0418b7b3"
+          "sha256": "8927bb5d3a7e8a76c043d4731beff19a7f2f14e604059e01c94871c35f4549eb"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
@@ -1941,7 +1941,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinLoot.lua",
-          "sha256": "a2819b3c3290de1ebfe212643044fdd49f110066529bfbd778cc0f3c77a48b0d"
+          "sha256": "871da225b37a8f1990078b46784f12363923e62f5a7a87c5526b73546b79fcc9"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWorld.lua"

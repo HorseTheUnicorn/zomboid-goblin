@@ -26,6 +26,14 @@ PLAN_INTENTS = (
     "VEHICLE_INSPECT", "VEHICLE_SERVICE", "REFUEL_VEHICLE", "REPAIR_VEHICLE", "CHANGE_TIRE",
     "FOLLOW", "SAY",
 )
+# Task names the game reports that differ from the intent that started them.
+JOB_ALIASES = {"FORTIFY": "SECURE_BASE", "FORTIFY_BASE": "SECURE_BASE", "LOOT": "LOOT_AREA"}
+# Base chores with nothing left to do once finished (no point repeating soon).
+ONE_SHOT_CHORES = {"SECURE_BASE", "CLOSE_CURTAINS", "RESTORE_POWER", "INSPECT_BASE", "MAINTAIN_BASE",
+                   "SORT_STORAGE", "VEHICLE_SERVICE", "VEHICLE_INSPECT", "REFUEL_VEHICLE", "REPAIR_STRUCTURE",
+                   "STOCKPILE", "DELIVER", "CHECK_TRAPS"}
+FAILED_COOLDOWN_S = 600
+DONE_COOLDOWN_S = 900
 DECISIONS = ("continue", "new", "interrupt", "complete", "abandon")
 
 # kind -> (importance 0..1, emotional valence -1..1)
@@ -101,6 +109,8 @@ class Sentience:
         self.selves: dict[str, dict[str, Any]] = {}
         self.inbox: dict[str, list[dict[str, Any]]] = {}
         self.last_seen: dict[str, dict[str, Any]] = {}
+        # npc -> intent -> {"at", "ok", "detail"}: what he recently tried.
+        self.recent_jobs: dict[str, dict[str, dict[str, Any]]] = {}
 
     # ------------------------------------------------------------- state
     def get(self, npc_id: str, name: str | None = None, owner: str | None = None) -> dict[str, Any]:
@@ -289,7 +299,42 @@ class Sentience:
                 "what_just_happened": [
                     {k: e[k] for k in ("kind", "text", "importance") if k in e}
                     for e in self.inbox.get(npc_id, [])][-8:],
+                "avoid_for_now": self.cooling(npc_id),
                 "reflections_so_far": state.get("reflections", 0)}
+
+    # ------------------------------------------------- job memory / cooldowns
+    def note_job(self, npc_id: str, intent: str, success: bool, detail: str = "") -> None:
+        intent = JOB_ALIASES.get(intent, intent)
+        self.recent_jobs.setdefault(npc_id, {})[intent] = {"at": self.clock(), "ok": bool(success),
+                                                           "detail": str(detail)[:120]}
+
+    def cooling(self, npc_id: str) -> dict[str, str]:
+        """Intents he should not pick again yet: a job that just failed, or a
+        one-shot base chore that was just finished (nothing left to do)."""
+        now = self.clock()
+        out = {}
+        for intent, entry in self.recent_jobs.get(npc_id, {}).items():
+            age = now - float(entry.get("at") or 0)
+            if not entry.get("ok") and age < FAILED_COOLDOWN_S:
+                out[intent] = f"failed {int(age // 60)} min ago: {entry.get('detail')}"
+            elif entry.get("ok") and intent in ONE_SHOT_CHORES and age < DONE_COOLDOWN_S:
+                out[intent] = f"already done {int(age // 60)} min ago: {entry.get('detail')}"
+        return out
+
+    def skip_cooling_steps(self, npc_id: str) -> None:
+        """Walk the plan past steps that are cooling down."""
+        state = self.get(npc_id)
+        cooling = self.cooling(npc_id)
+        plan = state.get("plan") or []
+        moved = False
+        while 0 <= int(state.get("current_step") or 0) < len(plan) \
+                and plan[int(state.get("current_step") or 0)].get("intent") in cooling:
+            state["current_step"] = int(state.get("current_step") or 0) + 1
+            moved = True
+        if moved:
+            if int(state["current_step"]) >= len(plan):
+                self._finish_goal(npc_id, state, "complete")
+            self.save(npc_id)
 
     # -------------------------------------------------------- reflection
     def apply_reflection(self, npc_id: str, output: Mapping[str, Any]) -> dict[str, Any]:
@@ -327,7 +372,8 @@ class Sentience:
                 self.mind.set_opinion(npc_id, subject, trait, old + (float(value) - old) * 0.35,
                                       _text(entry.get("note"), 120))
         decision = output.get("decision") if output.get("decision") in DECISIONS else "continue"
-        plan = self._clean_plan(output.get("plan"))
+        cooling = self.cooling(npc_id)
+        plan = [s for s in self._clean_plan(output.get("plan")) if s["intent"] not in cooling]
         goal = _text(output.get("goal"), 100)
         reason = _text(output.get("reason"), 160)
         previous = state.get("current_goal")
@@ -382,6 +428,7 @@ class Sentience:
 
     def step_result(self, npc_id: str, intent: str, success: bool) -> None:
         """A physical job finished: advance the plan (or wake a rethink)."""
+        intent = JOB_ALIASES.get(intent, intent)
         state = self.get(npc_id)
         step = self.current_step(npc_id)
         if step is None:

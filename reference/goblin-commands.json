@@ -730,7 +730,7 @@
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "d960a57b18970b65ac4f552a7529bde7733f2167f7da2744bf421d6a71c96f40"
+      "sha256": "6aa877b577b79766d93f2d4d75c5febe5b4eb5a03a3bea0cd967eb84c2b0001c"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
@@ -944,11 +944,11 @@
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "5223971fb38f8e64f8bd106583d9f2f39e5c4d3a1dd3fac6c4a7e8a9526fbf1e"
+        "sha256": "7b9a574fc5d9bc5dc08a055294ee26d0594235231824ad27e94ec6bd85571ef2"
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "c782a88753216d625f3dd484fc37fa02632b441b847bdc1d87c4b0954d8496dc"
+        "sha256": "d2dd595f91e2922dd4236961dc6bf4dab4c313587da2f4864e410e9eb12c47f7"
       }
     ],
     "chat_generation_actions": [

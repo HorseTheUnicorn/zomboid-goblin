@@ -102,6 +102,20 @@ class HouseAccessTests(unittest.TestCase):
             """
         )
 
+    def test_curtain_behind_furniture_is_reached_from_the_next_tile(self):
+        self.run_lua(
+            """
+            player.x,player.y=0.5,0.5
+            local c=curtain(2)
+            function c:canInteractWith() return false end -- a bed blocks the usual spot
+            function c:ToggleDoor() self.calls=self.calls+1; self.opened=not self.opened end
+            local payload=assert(Curtains.prepare(a,player,{}))
+            a.x,a.y=2.5,1.5
+            local done,ok=Curtains.update(a,payload,job(),clock)
+            assert(c.calls==1 and not c.opened)
+            """
+        )
+
     def test_partially_streamed_building_never_claims_full_completion(self):
         self.run_lua(
             """

@@ -40,7 +40,7 @@ local function matches(item, focus, autonomous)
     if protected(item) then return false end
     -- Do not continuously pick up and redeliver a previous delivery pile.
     local _, metadata = call(item,"getModData")
-    if autonomous and metadata and metadata.GoblinDelivered == true then return false end
+    if metadata and metadata.GoblinDelivered == true then return false end
     if focus == "surprise" or not focus then return true end
     local kind = string.lower(World.fullType(item) or "")
     local _, category = call(item,"getDisplayCategory")

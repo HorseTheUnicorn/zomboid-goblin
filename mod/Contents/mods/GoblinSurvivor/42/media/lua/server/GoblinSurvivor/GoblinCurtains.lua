@@ -239,7 +239,7 @@ local function scan(scope, openOnly)
     return found
 end
 
-local function approachSquare(object, body)
+local function approachSquare(object, body, loose)
     local _, square = call(object, "getSquare")
     local point = Motion.position(body)
     if not square or not point or type(getCell) ~= "function" then return nil end
@@ -252,6 +252,9 @@ local function approachSquare(object, body)
         local adjacent = select(2, call(object, "isAdjacentToSquare", candidate))
         local checked, blocked = call(square, "isBlockedTo", candidate)
         local free = select(2, call(candidate, "isFree", false))
+        -- Loose: furniture (a bed, a counter) under the window still lets
+        -- Goblin walk up beside it and reach over, as a player does.
+        if loose and candidate and free ~= true then free = true end
         local validSide = candidate == opposite or adjacent == true
         if candidate and validSide and checked and not blocked and free == true then
             local distance = (candidate:getX() + 0.5 - point.x)^2
@@ -408,8 +411,17 @@ function Curtains.update(body, payload, job, now)
     end
     local point = Motion.position(body)
     if not point then return true, false, "Goblin position is unavailable", "TARGET_UNLOADED" end
-    local goalSquare = approachSquare(target.object, body)
-    if goalSquare and select(2, call(target.object, "canInteractWith", body)) == true then
+    local goalSquare = approachSquare(target.object, body) or approachSquare(target.object, body, true)
+    local interact = goalSquare and select(2, call(target.object, "canInteractWith", body)) == true
+    if not interact then
+        -- Within arm's reach over furniture, not through a wall.
+        local here = World.square(point)
+        local near = (target.point.x + 0.5 - point.x)^2 + (target.point.y + 0.5 - point.y)^2 <= 2.25
+            and target.point.z == math.floor(point.z)
+        local checked, walled = call(square, "isBlockedTo", here)
+        interact = near and here ~= nil and checked and walled ~= true
+    end
+    if interact then
         -- Guard the exact live object a final time.  Never issue a native
         -- toggle after a replacement object has appeared on this square.
         if not objectStillOnSquare(target.object, square) then

@@ -105,6 +105,21 @@ class SentienceTests(unittest.TestCase):
         self.sentience.step_result("g1", "FETCH_ITEM", False)
         self.assertEqual(self.sentience.current_step("g1")["intent"], "SECURE_BASE")
 
+    def test_failed_or_finished_chores_cool_down_and_are_kept_out_of_plans(self):
+        self.sentience.note_job("g1", "CLOSE_CURTAINS", False, "skipped 3 unreachable curtain(s)")
+        self.sentience.note_job("g1", "FORTIFY", True, "no more accessible windows need boards")
+        self.sentience.note_job("g1", "LOOT", True, "looted 8")
+        cooling = self.sentience.cooling("g1")
+        self.assertEqual(sorted(cooling), ["CLOSE_CURTAINS", "SECURE_BASE"])  # loot may repeat
+        self.sentience.apply_reflection("g1", {"mood": "ok", "thought": "t", "decision": "new", "goal": "g",
+                                               "plan": [{"intent": "CLOSE_CURTAINS", "note": "x"},
+                                                        {"intent": "SECURE_BASE", "note": "y"},
+                                                        {"intent": "FORAGE", "note": "z"}]})
+        self.assertEqual([s["intent"] for s in self.sentience.get("g1")["plan"]], ["FORAGE"])
+        self.assertIn("CLOSE_CURTAINS", self.sentience.reflection_context("g1")["avoid_for_now"])
+        self.now[0] += 1000
+        self.assertEqual(self.sentience.cooling("g1"), {})
+
     def test_opinions_drift_and_self_survives_restart(self):
         for _ in range(3):
             self.sentience.apply_reflection("g1", {"mood": "fond", "thought": "He is alright.",

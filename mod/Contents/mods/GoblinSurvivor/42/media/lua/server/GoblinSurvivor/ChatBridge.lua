@@ -106,8 +106,12 @@ function ChatBridge.directIntent(text)
     end
     local vehicleWord=contains(lower,"car") or contains(lower,"vehicle") or contains(lower,"truck")
         or lower:match("%f[%a]van%f[%A]") ~= nil
+    local carWord=lower:match("%f[%a]car%f[%A]") or lower:match("%f[%a]vehicle%f[%A]")
+        or lower:match("%f[%a]truck%f[%A]") or lower:match("%f[%a]van%f[%A]") or lower:match("%f[%a]tank%f[%A]")
+    local fuelWord=lower:match("%f[%a]gas%f[%A]") or lower:match("%f[%a]fuel%f[%A]") or contains(lower,"petrol")
+        or contains(lower,"gasoline") or contains(lower,"diesel") or lower:match("%f[%a]refuel%f[%A]")
     if vehicleWord and (lower:match("^refuel%f[%A]") or lower:match("^fill%s+up") or lower:match("^gas%s+up")
-        or lower:match("^fuel%s+up")) then
+        or lower:match("^fuel%s+up")) or (carWord and fuelWord) then
         return Constants.TASK.REFUEL_VEHICLE
     end
     if (vehicleWord or contains(lower,"battery")) and (lower:match("^service%f[%A]") or lower:match("^tune%s+up")

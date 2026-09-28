@@ -164,6 +164,16 @@ class NaturalLanguageInventoryTests(unittest.TestCase):
                     route['task'],
                 )
 
+    def test_fuel_and_power_phrases_route_to_the_right_jobs(self):
+        route = self.lua.globals().ChatBridge.directIntent
+        for text, task in (('goblin need gas in the car', 'REFUEL_VEHICLE'),
+                           ('goblin fuel the car', 'REFUEL_VEHICLE'),
+                           ('Goblin, put petrol in the truck', 'REFUEL_VEHICLE'),
+                           ('Goblin, the generator needs gas', 'RESTORE_POWER'),
+                           ('Goblin, fix the power', 'RESTORE_POWER')):
+            with self.subTest(text=text):
+                self.assertEqual(route(text), task)
+
     def test_direct_router_rejects_negated_and_question_examples(self):
         for text in (
             'Goblin, do not kill that zombie',

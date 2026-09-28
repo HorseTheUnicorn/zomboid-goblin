@@ -155,6 +155,7 @@ class GoblinService:
             if mapped is not None and status in {"failed", "rejected", "refused", "error", "invalid", "denied",
                                                  "expired", "stale"}:
                 npc_id, intent = mapped
+                self.sentience.note_job(npc_id, intent, False, str(fields.get("detail", "")))
                 self.sentience.step_result(npc_id, intent, False)
                 self.mind.record(npc_id, "job", f"{intent} failed: {str(fields.get('detail', ''))[:80]}", None,
                                  importance=0.3, valence=-0.2)
@@ -635,7 +636,9 @@ class GoblinService:
                         # Brain notes "TASK CODE: detail" for every finished job.
                         words = str(event.get("text", "")).split()
                         if len(words) >= 2:
-                            self.sentience.step_result(npc_id, words[0], words[1].rstrip(":") == "COMPLETE")
+                            ok = words[1].rstrip(":") == "COMPLETE"
+                            self.sentience.note_job(npc_id, words[0], ok, " ".join(words[2:]))
+                            self.sentience.step_result(npc_id, words[0], ok)
             except Exception:  # memory must never take the service down
                 LOG.exception("MIND_OBSERVE_FAILED npc=%s", npc_id)
                 continue
@@ -835,6 +838,7 @@ class GoblinService:
                 if not self._lane_free(f"npc:{companion['npc_id']}"):
                     break
                 npc_id = str(companion["npc_id"])
+                self.sentience.skip_cooling_steps(npc_id)
                 self.next_think[npc_id] = now + interval
                 body = self._configure_driver(companion)
                 owner = companion.get("owner")
@@ -848,7 +852,8 @@ class GoblinService:
                            "companion": view, "situation": situation,
                            "memory": self.mind.digest(npc_id, place=self._room(companion),
                                                       entities=(owner,) if isinstance(owner, str) else ()),
-                           "sentience": self.sentience.view(npc_id),
+                           "sentience": dict(self.sentience.view(npc_id),
+                                             avoid_for_now=self.sentience.cooling(npc_id)),
                            "conversation": list(self.dialogue.get(str(owner), [])),
                            "persistent_goblins": self._roster_context()}
                 self._submit_think("think", {"npc_id": npc_id, "owner": owner}, "propose_think", context)
@@ -932,6 +937,13 @@ class GoblinService:
             self.next_think[str(npc_id)] = max(self.next_think.get(str(npc_id), 0), now + 90)
             LOG.info("FREEWILL_TALK owner=%s spoke=%s", owner, bool(spoken))
             return ServiceResult("think_spoke" if spoken else "npc_steady", "Goblin spoke up on his own")
+        cooling = self.sentience.cooling(str(npc_id))
+        if action.value in cooling:
+            # He just did (or failed) exactly this: don't redo it; think again soon.
+            self._count("think_cooling_dropped")
+            self.next_think[str(npc_id)] = min(self.next_think.get(str(npc_id), now + 40), now + 15)
+            LOG.info("FREEWILL_SKIP owner=%s action=%s reason=%s", owner, action.value, cooling[action.value][:100])
+            return ServiceResult("npc_steady", f"skipped {action.value}: {cooling[action.value]}")
         step = self.sentience.current_step(str(npc_id))
         if step and step.get("intent") not in {action.value, "SAY", "FOLLOW"}:
             # He chose something else over his planned step: two strikes and the
