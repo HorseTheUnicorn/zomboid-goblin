@@ -331,7 +331,13 @@ class QwenClient:
                             break
                         if self.wait_callback is not None:
                             self.wait_callback()
-        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as exc:
+        except HTTPError as exc:
+            try:
+                body = exc.read(240).decode("utf-8", "replace")
+            except Exception:
+                body = ""
+            raise QwenError(f"local Qwen request failed: HTTP {exc.code} {body}".strip()) from exc
+        except (URLError, TimeoutError, OSError, ValueError) as exc:
             raise QwenError(f"local Qwen request failed: {type(exc).__name__}") from exc
         try:
             if raw_response["choices"][0].get("finish_reason") == "length":
@@ -422,7 +428,9 @@ class QwenClient:
         "SORT_STORAGE, FETCH_ITEM, DELIVER, DISMANTLE, LOOT_AREA, RETURN_TO_BASE, CHOP_WOOD, FORAGE, "
         "CHECK_TRAPS, COOK, FARM, CRAFT, VEHICLE_INSPECT, VEHICLE_SERVICE, REFUEL_VEHICLE, REPAIR_VEHICLE, "
         "CHANGE_TIRE, FOLLOW, SAY) plus a short note; for COOK the optional job is food, soup or stew; for "
-        "CHECK_TRAPS check or place. thought is your honest private inner voice in first person (one or "
+        "CHECK_TRAPS check or place. Plan only steps you can do yourself right now: FETCH_ITEM just carries "
+        "stock you already have to your comrade, so never plan it to obtain things; to get goods, LOOT_AREA, "
+        "FORAGE, DISMANTLE, CHECK_TRAPS or CHOP_WOOD. thought is your honest private inner voice in first person (one or "
         "two sentences, may be crude). mood is a few words. opinions (0-3) update how you see someone or "
         "something: subject (a name, place or activity:NAME), trait (reckless, generous, competent, "
         "trustworthy, respect, rivalry, danger, usefulness, preference), value -1..1, optional note. "

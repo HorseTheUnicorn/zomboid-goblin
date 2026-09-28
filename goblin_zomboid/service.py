@@ -932,6 +932,11 @@ class GoblinService:
             self.next_think[str(npc_id)] = max(self.next_think.get(str(npc_id), 0), now + 90)
             LOG.info("FREEWILL_TALK owner=%s spoke=%s", owner, bool(spoken))
             return ServiceResult("think_spoke" if spoken else "npc_steady", "Goblin spoke up on his own")
+        step = self.sentience.current_step(str(npc_id))
+        if step and step.get("intent") not in {action.value, "SAY", "FOLLOW"}:
+            # He chose something else over his planned step: two strikes and the
+            # step is dropped, so a plan never pins him to an impossible step.
+            self.sentience.step_result(str(npc_id), str(step.get("intent")), False)
         result = self.npc_driver.execute(decision.action, owner=owner, freewill=True,
                                          authority_token=latest.get("companion_authority_token"))
         self.last_action = decision.action.as_dict()

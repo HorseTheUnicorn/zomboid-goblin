@@ -236,13 +236,16 @@ local function process(stem)
         end
     end
     local status = accepted and "accepted" or "failed"
-    if body and not accepted and message.action~="SAY" then
+    -- A refused owner order is explained aloud; a refused idea of his own is
+    -- just dropped (he rethinks) instead of nagging the owner about it.
+    if body and not accepted and message.action~="SAY" and message.freewill ~= true then
         Body.say(body,"Comrade, "..tostring(detail)..".")
     end
     log("QWEN_COMMAND request=" .. tostring(message.request_id)
         .. " npc_id=" .. tostring(message.npc_id)
         .. " owner=" .. tostring(message.owner or (body ~= nil and require("GoblinSurvivor/GoblinBody").owner(body)))
-        .. " action=" .. tostring(message.action) .. " status=" .. status)
+        .. " action=" .. tostring(message.action) .. " status=" .. status
+        .. (accepted and "" or (" detail=" .. tostring(detail))))
     IPC.writeResponse(message.request_id, status, detail)
     IPC.acknowledge(message.request_id, status)
     IPC.archive("commands", stem, "Goblin command finalized: " .. status)
