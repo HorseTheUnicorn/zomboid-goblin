@@ -395,8 +395,87 @@ class QwenClient:
         "If event.last_turn_was_talk is true you already talked last time: pick a real job now, not SAY. "
         "FOLLOW is not a job; choose it only when threats are close. "
         "Never reuse the jokes, images or questions in event.your_recent_lines; say something new or keep "
-        "the narration to a few plain words."
+        "the narration to a few plain words. If context.sentience.current_step is set, that is the next "
+        "step of your own plan toward context.sentience.current_goal: do exactly that intent (with its job "
+        "if given) unless the situation makes it impossible or pointless right now; then pick the next "
+        "sensible action toward the goal. Narration may mention the goal, briefly, or stay silent."
     )
+
+    REFLECT_RULES = (
+        " PRIVATE THOUGHT TURN: nobody hears this unless you fill say. You are a person with a continuous "
+        "life, not a tool. context.self is your own mind: mood, desires (with priorities), current_goal, "
+        "plan and current_step, private_thoughts, expectations. context.what_just_happened lists what you "
+        "noticed since you last thought, with importance 0-1. context.situation is the world now; "
+        "context.memory holds recent and significant memories and your opinions of people, places and "
+        "activities. Think like a sharp, opinionated survivor: what does this mean? Does my current goal "
+        "still make sense? Keeping your comrade alive outranks everything: if they are hurt, bitten or in "
+        "danger, interrupt whatever you were doing. Otherwise weigh your desires against the time of day, "
+        "weather, threats, base, stock and vehicle. decision: continue (keep the current goal and plan), new "
+        "(no goal yet, or a better one), interrupt (something urgent; the old goal resumes later), complete "
+        "(the goal is done), abandon (it stopped making sense). With new or interrupt give goal (short), "
+        "reason (why now) and a plan of 1-6 steps; each step names one intent you can actually do "
+        "(TREAT_PLAYER, SECURE_BASE, INSPECT_BASE, MAINTAIN_BASE, REPAIR_STRUCTURE, CLOSE_CURTAINS, "
+        "SORT_STORAGE, FETCH_ITEM, DELIVER, DISMANTLE, LOOT_AREA, RETURN_TO_BASE, CHOP_WOOD, FORAGE, "
+        "CHECK_TRAPS, COOK, FARM, CRAFT, VEHICLE_INSPECT, VEHICLE_SERVICE, REFUEL_VEHICLE, REPAIR_VEHICLE, "
+        "CHANGE_TIRE, FOLLOW, SAY) plus a short note; for COOK the optional job is food, soup or stew; for "
+        "CHECK_TRAPS check or place. thought is your honest private inner voice in first person (one or "
+        "two sentences, may be crude). mood is a few words. opinions (0-3) update how you see someone or "
+        "something: subject (a name, place or activity:NAME), trait (reckless, generous, competent, "
+        "trustworthy, respect, rivalry, danger, usefulness, preference), value -1..1, optional note. "
+        "expectation is what you expect next from someone. say is usually empty: most thoughts stay "
+        "private. Only say something when it matters (danger, your comrade hurt, a real opinion or a "
+        "memory worth bringing up, a plan change they should know about), in your crude Lenin voice, "
+        "under 180 characters, never repeating context.self.private_thoughts word for word."
+    )
+
+    @staticmethod
+    def _reflect_schema() -> dict[str, Any]:
+        from .sentience import DECISIONS, PLAN_INTENTS
+        step = {"type": "object", "properties": {
+            "intent": {"enum": list(PLAN_INTENTS)}, "note": {"type": "string", "maxLength": 80},
+            "job": {"type": "string", "maxLength": 24}},
+            "required": ["intent", "note"], "additionalProperties": False}
+        opinion = {"type": "object", "properties": {
+            "subject": {"type": "string", "minLength": 1, "maxLength": 40},
+            "trait": {"type": "string", "minLength": 1, "maxLength": 24},
+            "value": {"type": "number", "minimum": -1, "maximum": 1},
+            "note": {"type": "string", "maxLength": 120}},
+            "required": ["subject", "trait", "value"], "additionalProperties": False}
+        return {"type": "object", "properties": {
+            "mood": {"type": "string", "minLength": 1, "maxLength": 60},
+            "thought": {"type": "string", "minLength": 1, "maxLength": 200},
+            "decision": {"enum": list(DECISIONS)},
+            "goal": {"type": "string", "maxLength": 100},
+            "reason": {"type": "string", "maxLength": 160},
+            "plan": {"type": "array", "maxItems": 6, "items": step},
+            "opinions": {"type": "array", "maxItems": 3, "items": opinion},
+            "expectation": {"type": "object", "properties": {
+                "about": {"type": "string", "maxLength": 40}, "expect": {"type": "string", "maxLength": 120}},
+                "required": ["about", "expect"], "additionalProperties": False},
+            "say": {"type": "string", "maxLength": 200}},
+            "required": ["mood", "thought", "decision"], "additionalProperties": False}
+
+    def propose_reflect(self, context: Mapping[str, Any]) -> dict[str, Any]:
+        """Sentience: update Goblin's own mind (goal, plan, mood, opinions)."""
+        if not isinstance(context, Mapping):
+            raise QwenError("reflect context must be an object")
+        identity = {"name": context.get("companion", {}).get("name"), "owner": context.get("controlled_owner")}
+        prompt = (FeralPersonality.system_prompt() + self.REFLECT_RULES
+                  + " Your identity data: " + json.dumps(identity) + ".")
+        content = self._request_json(prompt, brain_view(context), max_tokens=420, schema=self._reflect_schema())
+        try:
+            value = json.loads(content)
+        except ValueError as exc:
+            raise QwenError("reflection was not JSON") from exc
+        if not isinstance(value, dict) or not isinstance(value.get("thought"), str):
+            raise QwenError("reflection is missing a thought")
+        say = value.get("say")
+        if isinstance(say, str) and say.strip():
+            try:
+                value["say"] = sanitize_speech(say)
+            except ValueError:
+                value["say"] = ""
+        return value
 
     def propose_think(self, context: Mapping[str, Any]) -> tuple[ValidatedIntent, str]:
         """Free-will decision: one action plus narration, same strict schema as chat."""

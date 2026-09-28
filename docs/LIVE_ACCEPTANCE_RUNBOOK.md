@@ -159,6 +159,20 @@ falls back to `TARGET_UNLOADED`.
 6. After an in-game day passes, the agent admin snapshot `free_will.stats.journal`
    increments.
 
+## 6d. Sentience
+
+1. Start the agent with free will on. Within a minute the agent log shows
+   `SENTIENCE owner=... decision=new ... goal=... step=...`, and the admin
+   snapshot `sentience` lists his mood, goal and plan.
+2. Stand still: his free-will jobs follow the plan's steps in order; after each
+   job's `COMMAND_RESULT ... COMPLETE` the next step runs.
+3. Walk around (don't stop): no chores start, but the log keeps showing
+   `SENTIENCE` lines when things happen (new rooms, night coming).
+4. Get hurt mid-plan: a `decision=interrupt` reflection within ~20 s, usually
+   a spoken line, a TREAT_PLAYER step, then the old goal resumes.
+5. Praise or insult him in chat, then ask what he thinks of you: the reply
+   reflects his opinions. Restart the agent: mood, goal and plan persist.
+
 ## 7. Milestone 9 — Offline Life (not implemented)
 
 No offline chore is registered. Every new capability declares

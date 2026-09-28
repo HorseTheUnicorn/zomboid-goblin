@@ -165,6 +165,39 @@ sets every perk to 10).
 
 Live checks are in the runbook, section 6c.
 
+### Goblin Sentience V1, 2026-09-28
+
+Owner direction: Goblins should feel like fellow players, not a job picker.
+A persistent cognitive layer (`goblin_zomboid/sentience.py`) now sits between
+perception and the unchanged action path (validator, safety, bridge, Lua):
+
+- **A continuous self** per Goblin, saved in `*.mind.sqlite3` (`self_state`):
+  mood, desires with priorities, current goal (with reason), a plan of 1-6
+  steps, a suspended goal, private thoughts and expectations.
+- **Event-driven cognition.** The situation log plus derived changes (owner
+  hurt or bitten, horde or rising threat, job complete/failed, night coming,
+  left base, new place, another Goblin met, food low, car in bad shape, owner
+  praise/insult) are weighted 0-1. Anything at 0.5 or more wakes a reflection
+  at once (at most every 20 s per Goblin); otherwise he reflects every ~4 min.
+  Reflection runs while he follows a moving owner; physical free will still
+  waits for the owner to stop.
+- **Reflection** (`QwenClient.propose_reflect`, strict JSON schema): continue,
+  new, interrupt (old goal suspended and resumed after), complete or abandon;
+  a plan whose steps must be known intents; mood; a private thought; up to
+  three opinion updates; an expectation; and an optional line to say.
+- **Plans drive actions.** The physical free-will turn receives the current
+  goal and step and performs it; the game's job result advances the plan, and
+  a failure wakes a rethink. Owner orders never advance or cancel the plan.
+- **Opinions** (`opinions` table) about the owner, places, other Goblins and
+  activities drift from events and reflections (never jump).
+- **Salient memory.** Episodes carry importance, feeling, place and people.
+  Prompts get recent memories plus the most significant ones and those tied
+  to the current place and people; significant memories outlive routine ones.
+- **Private by default.** Most thoughts are never spoken; he speaks up when a
+  thought matters (importance 0.6+) or now and then, never repeating himself.
+- Chat also sees his mood, goal and opinions, so he can explain himself.
+- Admin snapshot: `sentience` shows each Goblin's mood, goal, plan and thoughts.
+
 ### Furniture salvage
 
 Owner direction, 2026-09-27: Goblin also breaks up furniture for planks and

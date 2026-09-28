@@ -112,9 +112,10 @@ local function ownerState(player, id)
     if not player then return { online = false } end
     local damage = select(2, call(player, "getBodyDamage"))
     local health = num(damage, "getOverallBodyHealth")
-    local bleeding, wounds = 0, 0
+    local bleeding, wounds, bitten = 0, 0, 0
     for _, part in ipairs(World.values(select(2, call(damage, "getBodyParts")))) do
         if (num(part, "getBleedingTime") or 0) > 0 then bleeding = bleeding + 1 end
+        if select(2, call(part, "bitten")) == true then bitten = bitten + 1 end
         if select(2, call(part, "bandaged")) ~= true and (select(2, call(part, "scratched")) == true
             or select(2, call(part, "isCut")) == true or select(2, call(part, "deepWounded")) == true
             or select(2, call(part, "bitten")) == true) then wounds = wounds + 1 end
@@ -126,6 +127,7 @@ local function ownerState(player, id)
         health = bucket(health, 40, 80, { "badly hurt", "hurt", "healthy" }),
         health_drop = previous and health and previous - health >= 15 or false,
         bleeding_parts = bleeding,
+        bitten_parts = bitten,
         unbandaged_wounds = wounds,
         hunger = bucket(stat(player, "HUNGER", "getHunger"), 0.25, 0.5, { "fed", "peckish", "hungry" }),
         thirst = bucket(stat(player, "THIRST", "getThirst"), 0.25, 0.5, { "fine", "thirsty", "parched" }),

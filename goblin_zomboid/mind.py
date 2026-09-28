@@ -1,4 +1,4 @@
-"""Goblin's long-term memory: episodes, places, trust and a daily journal.
+"""Goblin's long-term memory: episodes, places, trust, opinions, self and a journal.
 
 Everything is keyed by npc_id and stored in a small SQLite file next to the
 agent's other state, so it survives restarts. Inputs are the coarse
@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import closing
 from pathlib import Path
 import sqlite3
+import json
 import threading
 import time
 from collections.abc import Mapping
@@ -52,23 +53,47 @@ class GoblinMind:
                 CREATE TABLE IF NOT EXISTS journal (
                     npc_id TEXT NOT NULL, day INTEGER NOT NULL, text TEXT NOT NULL,
                     PRIMARY KEY(npc_id, day));
+                CREATE TABLE IF NOT EXISTS opinions (
+                    npc_id TEXT NOT NULL, subject TEXT NOT NULL, trait TEXT NOT NULL,
+                    value REAL NOT NULL, note TEXT, updated INTEGER,
+                    PRIMARY KEY(npc_id, subject, trait));
+                CREATE TABLE IF NOT EXISTS self_state (
+                    npc_id TEXT PRIMARY KEY, state TEXT NOT NULL, updated INTEGER);
             """)
+            # Salience columns (added after the first release; migrate in place).
+            columns = {row["name"] for row in self.db.execute("PRAGMA table_info(episodes)")}
+            for name, ddl in (("importance", "REAL NOT NULL DEFAULT 0.3"),
+                              ("valence", "REAL NOT NULL DEFAULT 0"),
+                              ("place", "TEXT"), ("entities", "TEXT")):
+                if name not in columns:
+                    self.db.execute(f"ALTER TABLE episodes ADD COLUMN {name} {ddl}")
 
     def close(self) -> None:
         with self.lock:
             self.db.close()
 
     # ---------------------------------------------------------------- writes
-    def record(self, npc_id: str, kind: str, text: str, day: int | None = None) -> None:
+    def record(self, npc_id: str, kind: str, text: str, day: int | None = None, *,
+               importance: float = 0.3, valence: float = 0.0, place: str | None = None,
+               entities: list[str] | tuple[str, ...] | None = None) -> None:
         text = str(text)[:240]
         if not text.strip():
             return
+        importance = max(0.0, min(1.0, float(importance)))
+        valence = max(-1.0, min(1.0, float(valence)))
+        names = ",".join(sorted({str(e)[:32].lower() for e in entities or () if str(e).strip()}))[:160] or None
         with self.lock:
-            self.db.execute("INSERT INTO episodes(npc_id, at, kind, text, day) VALUES (?,?,?,?,?)",
-                            (npc_id, int(self.clock()), str(kind)[:32], text, day))
+            self.db.execute("INSERT INTO episodes(npc_id, at, kind, text, day, importance, valence, place, entities) "
+                            "VALUES (?,?,?,?,?,?,?,?,?)",
+                            (npc_id, int(self.clock()), str(kind)[:32], text, day, importance, valence,
+                             place[:48] if isinstance(place, str) else None, names))
+            # Keep the latest 400 plus the 100 most important older memories:
+            # "Tom nearly died here" must outlive a week of "moved nails".
             self.db.execute("DELETE FROM episodes WHERE npc_id=? AND id NOT IN "
-                            "(SELECT id FROM episodes WHERE npc_id=? ORDER BY id DESC LIMIT 400)",
-                            (npc_id, npc_id))
+                            "(SELECT id FROM episodes WHERE npc_id=? ORDER BY id DESC LIMIT 400) "
+                            "AND id NOT IN (SELECT id FROM episodes WHERE npc_id=? "
+                            "ORDER BY importance DESC, id DESC LIMIT 100)",
+                            (npc_id, npc_id, npc_id))
 
     def visit(self, npc_id: str, name: str, note: str | None = None) -> None:
         with self.lock:
@@ -96,6 +121,56 @@ class GoblinMind:
             self.db.execute("INSERT OR REPLACE INTO journal(npc_id, day, text) VALUES (?,?,?)",
                             (npc_id, int(day), str(text)[:400]))
 
+    def set_opinion(self, npc_id: str, subject: str, trait: str, value: float, note: str | None = None) -> float:
+        value = max(-1.0, min(1.0, float(value)))
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO opinions(npc_id, subject, trait, value, note, updated) VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(npc_id, subject, trait) DO UPDATE SET value=excluded.value, "
+                "note=COALESCE(excluded.note, opinions.note), updated=excluded.updated",
+                (npc_id, str(subject)[:40].lower(), str(trait)[:24].lower(), value,
+                 note[:120] if isinstance(note, str) else None, int(self.clock())))
+        return value
+
+    def nudge_opinion(self, npc_id: str, subject: str, trait: str, delta: float, note: str | None = None) -> float:
+        """Opinions drift: move part of the way instead of jumping."""
+        return self.set_opinion(npc_id, subject, trait, self.opinion(npc_id, subject, trait) + float(delta), note)
+
+    def opinion(self, npc_id: str, subject: str, trait: str) -> float:
+        with self.lock:
+            row = self.db.execute("SELECT value FROM opinions WHERE npc_id=? AND subject=? AND trait=?",
+                                  (npc_id, str(subject)[:40].lower(), str(trait)[:24].lower())).fetchone()
+        return float(row["value"]) if row else 0.0
+
+    def opinions(self, npc_id: str, limit: int = 24) -> dict[str, dict[str, Any]]:
+        with self.lock:
+            rows = self.db.execute("SELECT subject, trait, value, note FROM opinions WHERE npc_id=? "
+                                   "ORDER BY ABS(value) DESC, updated DESC LIMIT ?", (npc_id, limit)).fetchall()
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            entry = result.setdefault(row["subject"], {})
+            entry[row["trait"]] = round(float(row["value"]), 2)
+            if row["note"] and "note" not in entry:
+                entry["note"] = row["note"]
+        return result
+
+    def load_self(self, npc_id: str) -> dict[str, Any] | None:
+        with self.lock:
+            row = self.db.execute("SELECT state FROM self_state WHERE npc_id=?", (npc_id,)).fetchone()
+        if not row:
+            return None
+        try:
+            value = json.loads(row["state"])
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    def save_self(self, npc_id: str, state: Mapping[str, Any]) -> None:
+        encoded = json.dumps(dict(state), ensure_ascii=False, separators=(",", ":"))[:16000]
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO self_state(npc_id, state, updated) VALUES (?,?,?)",
+                            (npc_id, encoded, int(self.clock())))
+
     # ----------------------------------------------------------------- reads
     def episodes(self, npc_id: str, limit: int = 10, day: int | None = None) -> list[dict[str, Any]]:
         with self.lock:
@@ -106,6 +181,38 @@ class GoblinMind:
                 rows = self.db.execute("SELECT kind, text, day FROM episodes WHERE npc_id=? AND day=? "
                                        "ORDER BY id DESC LIMIT ?", (npc_id, day, limit)).fetchall()
         return [dict(row) for row in reversed(rows)]
+
+    def salient(self, npc_id: str, *, place: str | None = None, entities: tuple[str, ...] = (),
+                recent: int = 6, important: int = 5, related: int = 4) -> list[dict[str, Any]]:
+        """Recent memories plus the most significant ones, and those tied to
+        the current place or people, oldest first and without duplicates."""
+        picked: dict[int, sqlite3.Row] = {}
+        with self.lock:
+            queries = [("SELECT * FROM episodes WHERE npc_id=? ORDER BY id DESC LIMIT ?", (npc_id, recent)),
+                       ("SELECT * FROM episodes WHERE npc_id=? AND importance>=0.5 "
+                        "ORDER BY importance DESC, ABS(valence) DESC, id DESC LIMIT ?", (npc_id, important))]
+            if place:
+                queries.append(("SELECT * FROM episodes WHERE npc_id=? AND place=? "
+                                "ORDER BY importance DESC, id DESC LIMIT ?", (npc_id, place[:48], related)))
+            for name in entities[:3]:
+                queries.append(("SELECT * FROM episodes WHERE npc_id=? AND entities LIKE ? "
+                                "ORDER BY importance DESC, id DESC LIMIT ?",
+                                (npc_id, f"%{str(name)[:32].lower()}%", 2)))
+            for sql, args in queries:
+                for row in self.db.execute(sql, args).fetchall():
+                    picked[row["id"]] = row
+        result = []
+        for key in sorted(picked):
+            row = picked[key]
+            entry = {"kind": row["kind"], "text": row["text"], "day": row["day"]}
+            if row["importance"] >= 0.5:
+                entry["importance"] = round(float(row["importance"]), 2)
+            if row["valence"]:
+                entry["feeling"] = round(float(row["valence"]), 2)
+            if row["place"]:
+                entry["place"] = row["place"]
+            result.append(entry)
+        return result
 
     def places(self, npc_id: str, limit: int = 6) -> list[dict[str, Any]]:
         with self.lock:
@@ -120,11 +227,20 @@ class GoblinMind:
                                    (npc_id, limit)).fetchall()
         return [dict(row) for row in reversed(rows)]
 
-    def digest(self, npc_id: str) -> dict[str, Any]:
+    def digest(self, npc_id: str, *, place: str | None = None,
+               entities: tuple[str, ...] = ()) -> dict[str, Any]:
         score = self.trust(npc_id)
-        return {"trust_in_owner": trust_label(score), "trust_score": round(score, 2),
-                "remembered_places": self.places(npc_id), "recent_memories": self.episodes(npc_id, 12),
-                "journal": self.journal(npc_id)}
+        result = {"trust_in_owner": trust_label(score), "trust_score": round(score, 2),
+                  "remembered_places": self.places(npc_id), "recent_memories": self.episodes(npc_id, 12),
+                  "journal": self.journal(npc_id)}
+        significant = [m for m in self.salient(npc_id, place=place, entities=entities, recent=0)
+                       if m not in result["recent_memories"]]
+        if significant:
+            result["significant_memories"] = significant
+        opinions = self.opinions(npc_id, 12)
+        if opinions:
+            result["opinions"] = opinions
+        return result
 
     # ------------------------------------------------------------ perception
     def observe(self, companion: Mapping[str, Any]) -> dict[str, Any]:
@@ -150,7 +266,13 @@ class GoblinMind:
             new_events.append(event)
             self.seen_seq[npc_id] = max(self.seen_seq.get(npc_id, 0), event["seq"])
             kind, text = str(event.get("kind", "event")), str(event.get("text", ""))
-            self.record(npc_id, kind, text, day)
+            from .sentience import event_weight  # local: sentience never imports mind
+            importance, valence = event_weight(kind, text)
+            place_info = situation.get("place") if isinstance(situation.get("place"), Mapping) else {}
+            owner = companion.get("owner")
+            self.record(npc_id, kind, text, day, importance=importance, valence=valence,
+                        place=place_info.get("room") if isinstance(place_info.get("room"), str) else None,
+                        entities=[owner] if isinstance(owner, str) and kind.startswith("owner") else None)
             if kind == "horde":
                 self.adjust_trust(npc_id, -0.03, "dragged into a horde")
             elif kind == "owner_hurt":
