@@ -187,6 +187,7 @@ local function ownerJobPayload(action, message)
     if action == T.CHANGE_TIRE then payload.part = job; return payload end
     if action == T.CHOP_WOOD then payload.count = item.count or 1; return payload end
     if action == T.FORAGE then payload.count = item.count or 5; return payload end
+    if action == T.RESTORE_POWER then return payload end
     if action == T.COOK then
         if job == "soup" or job == "stew" then payload.dish = job end
         payload.count = item.count; return payload

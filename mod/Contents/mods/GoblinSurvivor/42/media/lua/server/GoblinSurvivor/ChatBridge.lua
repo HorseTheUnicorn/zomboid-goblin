@@ -92,6 +92,10 @@ function ChatBridge.directIntent(text)
         or lower:match("^put%s+down%f[%A]") or lower:match("^lay%f[%A]")) and contains(lower,"trap") then
         return Constants.TASK.CHECK_TRAPS
     end
+    if contains(lower,"generator") or lower:match("^restore%s+power") or lower:match("^fix%s+.*power")
+        or lower:match("^get%s+.*power") or lower:match("^turn%s+on%s+.*power") or contains(lower,"electricity") then
+        return Constants.TASK.RESTORE_POWER
+    end
     if lower:match("^cook%f[%A]") or lower:match("^make%s+dinner") or lower:match("^make%s+food")
         or lower:match("^make%s+.*soup") or lower:match("^make%s+.*stew") then
         return Constants.TASK.COOK
@@ -229,6 +233,7 @@ local function applyDirect(player, speaker, task, text)
         or task == Constants.TASK.DELIVER or task == Constants.TASK.REPAIR_STRUCTURE then
         payload = ChatBridge.logisticsPayload(task, text)
     end
+    if task == Constants.TASK.RESTORE_POWER then payload = { explicit_owner_order = true } end
     if task == Constants.TASK.CHOP_WOOD or task == Constants.TASK.TREAT_PLAYER then
         payload = { explicit_owner_order = true }
         local count = string.match(string.lower(text or ""), "(%d+)%s+trees?")

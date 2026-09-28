@@ -23,7 +23,7 @@ local actions = {
     INSPECT_BASE=true, MAINTAIN_BASE=true, REPAIR_STRUCTURE=true, DISMANTLE=true, STOCKPILE=true,
     SORT_STORAGE=true, FETCH_ITEM=true, DELIVER=true, VEHICLE_INSPECT=true, REFUEL_VEHICLE=true,
     VEHICLE_SERVICE=true, INSTALL_PART=true, REMOVE_PART=true, REPLACE_PART=true, CHANGE_TIRE=true,
-    CHOP_WOOD=true, TREAT_PLAYER=true, FORAGE=true, CHECK_TRAPS=true, COOK=true
+    CHOP_WOOD=true, TREAT_PLAYER=true, FORAGE=true, CHECK_TRAPS=true, COOK=true, RESTORE_POWER=true
 }
 
 local allowedKeys = {

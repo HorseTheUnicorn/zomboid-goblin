@@ -172,6 +172,11 @@ local function handle(player, rawText)
         reply(player,result)
         return
     end
+    if command=="power" or command=="generator" then
+        local ok,result=Brain.setTask(body,Constants.TASK.RESTORE_POWER,{explicit_owner_order=true})
+        Body.say(body,"Comrade, "..tostring(result)..".")
+        return
+    end
     if command=="forage" or command=="traps" or command=="cook" then
         local task=({forage=Constants.TASK.FORAGE,traps=Constants.TASK.CHECK_TRAPS,cook=Constants.TASK.COOK})[command]
         local payload={explicit_owner_order=true,count=tonumber(parts[2])}

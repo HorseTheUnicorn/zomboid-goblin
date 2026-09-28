@@ -31,7 +31,7 @@ class QwenClient:
         "INSPECT_BASE", "MAINTAIN_BASE", "REPAIR_STRUCTURE", "DISMANTLE", "STOCKPILE",
         "SORT_STORAGE", "FETCH_ITEM", "DELIVER", "VEHICLE_INSPECT", "REFUEL_VEHICLE",
         "VEHICLE_SERVICE", "INSTALL_PART", "REMOVE_PART", "REPLACE_PART", "CHANGE_TIRE",
-        "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK",
+        "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK", "RESTORE_POWER",
     )
 
     def __init__(
@@ -78,7 +78,7 @@ class QwenClient:
             "CLEAR_BUILDING, FLEE, HELP, and TRADE, plus the owner-requested jobs INSPECT_BASE, MAINTAIN_BASE, "
             "REPAIR_STRUCTURE, DISMANTLE, STOCKPILE, SORT_STORAGE, FETCH_ITEM, DELIVER, VEHICLE_INSPECT, "
             "REFUEL_VEHICLE, VEHICLE_SERVICE, INSTALL_PART, REMOVE_PART, REPLACE_PART, CHANGE_TIRE, CHOP_WOOD, "
-            "TREAT_PLAYER, FORAGE, CHECK_TRAPS and COOK (never as offline chores). Interpret direct player requests naturally: "
+            "TREAT_PLAYER, FORAGE, CHECK_TRAPS, COOK and RESTORE_POWER (never as offline chores). Interpret direct player requests naturally: "
             "'follow/come with me' means FOLLOW the speaking player; 'stay/wait/hold here' means HOLD_POSITION; "
             "'loot/scavenge/find supplies' means LOOT_AREA with current_position and an optional focus food, "
             "medical, tools, ammo, or surprise; 'go home/take it back/bring it to base' means RETURN_TO_BASE; "
@@ -260,8 +260,8 @@ class QwenClient:
             "finds and brings them home; CHECK_TRAPS empties and re-baits the traps around the base, or with "
             "job place sets item.count 1-5 new baited traps near the owner; COOK with job food puts item.count 1-5 "
             "raw foods in a nearby stove or campfire and takes them out cooked, with job soup or stew fills a pot "
-            "with item.count 1-6 ingredients and cooks it; with no stove or fire nearby Goblin builds a campfire. Vehicle jobs use the nearest parked vehicle within five tiles "
-            "of the owner: VEHICLE_INSPECT reports, REFUEL_VEHICLE adds real petrol, VEHICLE_SERVICE inspects, "
+            "with item.count 1-6 ingredients and cooks it; with no stove or fire nearby Goblin builds a campfire. RESTORE_POWER gets electricity running at the base: it uses a generator near the base or places a new one outside, repairs it, fills it with petrol Goblin provides himself, plugs it in and starts it. Vehicle jobs use the nearest parked vehicle within five tiles "
+            "of the owner: VEHICLE_INSPECT reports, REFUEL_VEHICLE fills the tank with petrol Goblin provides himself, VEHICLE_SERVICE inspects, "
             "inflates tires, charges the battery and refuels, INSTALL_PART/REMOVE_PART/REPLACE_PART need job as the part id in lower "
             "case (battery, tirefrontleft, headlightleft, ...) and optional item.name, CHANGE_TIRE takes an "
             "optional job tire id. Map the player's words onto these jobs when they ask for them. "
@@ -398,7 +398,9 @@ class QwenClient:
         "why, and you may bitch and grumble about the work, the weather or the owner's choices while doing "
         "it. You are self-sufficient: never ask your comrade to bring, find or give you items. Your own work "
         "supplies (planks, nails, parts, petrol, bait, bandages) appear as you work; for real goods go and "
-        "get them yourself (LOOT_AREA, FORAGE, DISMANTLE salvage, CHECK_TRAPS, CHOP_WOOD). FETCH_ITEM only "
+        "get them yourself (LOOT_AREA, FORAGE, DISMANTLE salvage, CHECK_TRAPS, CHOP_WOOD). You provide fuel "
+        "yourself too: REFUEL_VEHICLE fills a car, and when the base has no power RESTORE_POWER sets up, fuels "
+        "and starts a generator. FETCH_ITEM only "
         "brings base stock TO your comrade when they need it. "
         "Now and then ask the owner a real question or raise a problem instead of (or as well as) "
         "working. SAY is only for when talking really is the best move. Never claim work is finished. "
@@ -426,7 +428,7 @@ class QwenClient:
         "reason (why now) and a plan of 1-6 steps; each step names one intent you can actually do "
         "(TREAT_PLAYER, SECURE_BASE, INSPECT_BASE, MAINTAIN_BASE, REPAIR_STRUCTURE, CLOSE_CURTAINS, "
         "SORT_STORAGE, FETCH_ITEM, DELIVER, DISMANTLE, LOOT_AREA, RETURN_TO_BASE, CHOP_WOOD, FORAGE, "
-        "CHECK_TRAPS, COOK, FARM, CRAFT, VEHICLE_INSPECT, VEHICLE_SERVICE, REFUEL_VEHICLE, REPAIR_VEHICLE, "
+        "CHECK_TRAPS, COOK, RESTORE_POWER, FARM, CRAFT, VEHICLE_INSPECT, VEHICLE_SERVICE, REFUEL_VEHICLE, REPAIR_VEHICLE, "
         "CHANGE_TIRE, FOLLOW, SAY) plus a short note; for COOK the optional job is food, soup or stew; for "
         "CHECK_TRAPS check or place. Plan only steps you can do yourself right now: FETCH_ITEM just carries "
         "stock you already have to your comrade, so never plan it to obtain things; to get goods, LOOT_AREA, "

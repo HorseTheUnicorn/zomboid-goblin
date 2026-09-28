@@ -74,6 +74,7 @@ class Action(str, Enum):
     FORAGE = "FORAGE"
     CHECK_TRAPS = "CHECK_TRAPS"
     COOK = "COOK"
+    RESTORE_POWER = "RESTORE_POWER"
 
 
 @dataclass(frozen=True)
@@ -280,6 +281,7 @@ class TacticalController:
         "FORAGE": Action.FORAGE,
         "CHECK_TRAPS": Action.CHECK_TRAPS,
         "COOK": Action.COOK,
+        "RESTORE_POWER": Action.RESTORE_POWER,
     }
 
     def decide(self, intent: ValidatedIntent, state: BodyState) -> ControllerResult:

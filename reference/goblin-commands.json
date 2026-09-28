@@ -40,7 +40,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "e114be93178681fabb2534411542e5d2d0d4ae46f2ceb330a8397f4180730ebf"
+    "sha256": "a951e2ff3c9724add1f2845e788c092dc9b32b37e2ea4f115f1bc9f521d52398"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -581,6 +581,18 @@
         "engine_tested": false
       },
       {
+        "command": "power",
+        "aliases": [
+          "generator"
+        ],
+        "task": "RESTORE_POWER",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
+      },
+      {
         "command": "chop wood",
         "aliases": [
           "chop 3"
@@ -718,7 +730,7 @@
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "682ad30c445c5da88b890321ec8b5a268be258094b045cee2007d6bc4c4798c5"
+      "sha256": "d960a57b18970b65ac4f552a7529bde7733f2167f7da2744bf421d6a71c96f40"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
@@ -886,6 +898,10 @@
       {
         "task": "COOK",
         "example": "Goblin, cook some food"
+      },
+      {
+        "task": "RESTORE_POWER",
+        "example": "Goblin, set up a generator"
       }
     ],
     "guards": [
@@ -924,11 +940,11 @@
     "sources": [
       {
         "path": "goblin_zomboid/validator.py",
-        "sha256": "1f6755187329767eda31a5bb58a84c3a85363551edb628c411d8d30929438491"
+        "sha256": "fc7e29d6e5b00700097677b1b871ef9c7ffe8a18b393e8f4361a9eb4c9f1a46a"
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "86a13b531aca903dba27f6166b50fa7ec388c4ef5d51f0b5a148f94ed685d922"
+        "sha256": "5223971fb38f8e64f8bd106583d9f2f39e5c4d3a1dd3fac6c4a7e8a9526fbf1e"
       },
       {
         "path": "goblin_zomboid/service.py",
@@ -974,7 +990,8 @@
       "TREAT_PLAYER",
       "FORAGE",
       "CHECK_TRAPS",
-      "COOK"
+      "COOK",
+      "RESTORE_POWER"
     ],
     "offline_actions": [
       "WAIT",

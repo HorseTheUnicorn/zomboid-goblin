@@ -23,7 +23,7 @@ local privileged = {
     STOCKPILE = true, SORT_STORAGE = true, FETCH_ITEM = true, DELIVER = true,
     VEHICLE_INSPECT = true, REFUEL_VEHICLE = true, VEHICLE_SERVICE = true, INSTALL_PART = true,
     REMOVE_PART = true, REPLACE_PART = true, CHANGE_TIRE = true, CHOP_WOOD = true, TREAT_PLAYER = true,
-    FORAGE = true, CHECK_TRAPS = true, COOK = true
+    FORAGE = true, CHECK_TRAPS = true, COOK = true, RESTORE_POWER = true
 }
 -- Jobs any owner may have Qwen start for their own Goblin (no commander role).
 local ownerJobs = {
@@ -34,7 +34,7 @@ local ownerJobs = {
     STOCKPILE = true, SORT_STORAGE = true, FETCH_ITEM = true, DELIVER = true,
     VEHICLE_INSPECT = true, REFUEL_VEHICLE = true, VEHICLE_SERVICE = true, INSTALL_PART = true,
     REMOVE_PART = true, REPLACE_PART = true, CHANGE_TIRE = true, CHOP_WOOD = true, TREAT_PLAYER = true,
-    FORAGE = true, CHECK_TRAPS = true, COOK = true
+    FORAGE = true, CHECK_TRAPS = true, COOK = true, RESTORE_POWER = true
 }
 
 local GRANT_TTL_MS = 60000

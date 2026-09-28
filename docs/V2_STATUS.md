@@ -238,6 +238,11 @@ server-built gate with `transmitAddObjectToSquare` before any lock packets.
 - Every Goblin now thinks in its own lane: free will, reflection, banter and journals run concurrently (`GOBLIN_THINK_PARALLEL`, default 6) instead of one Goblin at a time. The per-Goblin think interval is a flat 40 s no matter how many Goblins exist. `ops/goblin-llama-8b.service` now serves `--parallel 4 --ctx-size 32768` so the model answers several Goblins at once.
 - A free-will command the server rejects or fails now counts as a failed plan step; a step that fails twice is skipped. Reflection output limit raised to 800 tokens; background model calls time out after 30-40 s.
 
+### Power and fuel (2026-09-28)
+
+- `RESTORE_POWER` (`!goblin power`, "Goblin, set up a generator"): Goblin finds a generator within 20 tiles of the base, or conjures a `Base.Generator` onto the nearest free outdoor square beside the house, repairs it to 100%, fills it with conjured petrol, plugs it in and starts it. Never touches another player's safehouse. Lua fixtures only.
+- Base auto-claim: jobs that need a base claim the nearest house when none is set; house jobs move an outdoor base into the adjacent house. Close-curtains works the base house when the owner is outdoors.
+
 ## Remaining work
 
 | Milestone | What remains |
