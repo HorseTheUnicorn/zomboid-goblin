@@ -7,7 +7,8 @@ local World = require("GoblinSurvivor/GoblinWorld")
 local Claim = { RADIUS = 30, NEAR_BASE = 12 }
 
 -- Jobs that work on the base house itself.
-Claim.HOUSE_TASKS = { INSPECT_BASE = true, MAINTAIN_BASE = true, FORTIFY = true, FORTIFY_BASE = true }
+Claim.HOUSE_TASKS = { INSPECT_BASE = true, MAINTAIN_BASE = true, FORTIFY = true, FORTIFY_BASE = true,
+    CLOSE_CURTAINS = true }
 -- Jobs that only need some base to carry things to.
 Claim.BASE_TASKS = { STOCKPILE = true, SORT_STORAGE = true, FETCH_ITEM = true, DELIVER = true,
     REPAIR_STRUCTURE = true, RETURN_TO_BASE = true }

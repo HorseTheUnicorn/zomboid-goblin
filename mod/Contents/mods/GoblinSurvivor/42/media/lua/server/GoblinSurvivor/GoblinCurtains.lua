@@ -6,6 +6,7 @@
 -- bounded room geometry and stable target ids are put in the task payload.
 local World = require("GoblinSurvivor/GoblinWorld")
 local Motion = require("GoblinSurvivor/GoblinLocomotion")
+local Body = require("GoblinSurvivor/GoblinBody")
 local Movement = require("GoblinSurvivor/GoblinMovement")
 
 local Curtains = { targets = setmetatable({}, { __mode = "k" }), sequence = 0 }
@@ -316,12 +317,23 @@ function Curtains.prepare(body, owner, payload)
     local _, dead = call(owner, "isDead")
     if dead == true then return nil, "the owner must be alive and inside a house" end
     local scope, why = captureScope(owner)
-    if not scope then return nil, why end
+    local anchor = Motion.position(owner)
+    if not scope then
+        -- Owner is outdoors: the Goblin does his own base house instead.
+        local data = Body.data(body)
+        local base = data and data.GoblinBaseSet == true and { x = tonumber(data.GoblinBaseX),
+            y = tonumber(data.GoblinBaseY), z = tonumber(data.GoblinBaseZ) } or nil
+        if base and base.x and base.y and base.z then
+            scope = captureScopeAt(base)
+            anchor = base
+        end
+        if not scope then return nil, why end
+    end
     Curtains.sequence = Curtains.sequence + 1
     local state = { id = Curtains.sequence, building = scope.building,
         scope = scope, known = {}, current = nil }
     Curtains.targets[body] = state
-    local p = { anchor = Motion.position(owner), completed = 0, skipped = 0,
+    local p = { anchor = anchor, completed = 0, skipped = 0,
         house_id = scope.id, building_id = scope.id, bounds = scope.bounds,
         house_bounds = scope.bounds, curtain_id = state.id,
         partial_house = scope.partiallyStreamed == true }

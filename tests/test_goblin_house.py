@@ -25,8 +25,12 @@ class HouseAccessTests(unittest.TestCase):
         self.run_lua(
             """
             player.x,player.y,player.z=20.5,20.5,0
+            local data=require('GoblinSurvivor/GoblinBody').data(a)
+            local hadBase=data and data.GoblinBaseSet
+            if data then data.GoblinBaseSet=false end -- no base house to fall back on
             local missing,why=Curtains.prepare(a,player,{})
             assert(not missing and why:find('inside a house'))
+            if data then data.GoblinBaseSet=hadBase end
             player.x,player.y=0.5,0.5
             local upper={x=0,y=0,x2=2,y2=2,z=1,building=houseBuilding}
             function upper:getX() return self.x end;function upper:getY() return self.y end
@@ -43,6 +47,19 @@ class HouseAccessTests(unittest.TestCase):
             Curtains.targets[a]=nil
             local done,ok=Curtains.update(a,payload,job(),clock)
             assert(done and not ok)
+            """
+        )
+
+    def test_owner_outdoors_goblin_closes_curtains_in_his_base_house(self):
+        self.run_lua(
+            """
+            player.x,player.y,player.z=20.5,20.5,0
+            local data=require('GoblinSurvivor/GoblinBody').data(a)
+            assert(data, 'fixture Goblin has mod data')
+            data.GoblinBaseSet=true; data.GoblinBaseX=0.5; data.GoblinBaseY=0.5; data.GoblinBaseZ=0
+            curtain(1,1,0)
+            local payload,detail=Curtains.prepare(a,player,{})
+            assert(payload and payload.anchor.x==0.5, detail)
             """
         )
 
