@@ -40,7 +40,7 @@
   },
   "source": {
     "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCommands.lua",
-    "sha256": "a951e2ff3c9724add1f2845e788c092dc9b32b37e2ea4f115f1bc9f521d52398"
+    "sha256": "327a99f6fe98301e8a8ec460363b80edfe9df511275d0c7ea61c3279b422c156"
   },
   "existing_goblin_chat": {
     "prefixes": [
@@ -643,6 +643,17 @@
         "engine_tested": false
       },
       {
+        "command": "goal food",
+        "aliases": [],
+        "task": null,
+        "handler": "Goals.add",
+        "evidence": [
+          "REPO_EXISTING",
+          "LUA_FIXTURE_ONLY"
+        ],
+        "engine_tested": false
+      },
+      {
         "command": "cancel",
         "aliases": [
           "goal cancel all"
@@ -677,6 +688,20 @@
           "LUA_FIXTURE_ONLY"
         ],
         "engine_tested": false
+      },
+      {
+        "command": "clean corpses",
+        "aliases": [
+          "corpses"
+        ],
+        "task": "MOVE_CORPSE",
+        "handler": "Brain.setTask",
+        "evidence": [
+          "REPO_EXISTING",
+          "UNIT_FIXTURE"
+        ],
+        "engine_tested": false,
+        "limitation": "Experimental, disabled pending native managed actor and MP proof"
       }
     ],
     "arguments": {
@@ -730,7 +755,7 @@
   "existing_natural_language_chat": {
     "source": {
       "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/ChatBridge.lua",
-      "sha256": "6aa877b577b79766d93f2d4d75c5febe5b4eb5a03a3bea0cd967eb84c2b0001c"
+      "sha256": "5a5eac8bae2f13e359bba0de6e1197e8b07a53798e5be35b558bfca12115015f"
     },
     "authority": "Authenticated OnClientCommand speaker; deterministic directIntent applies only when chat addresses that speaker's named Goblin or the word goblin, then resolves only that owner's companion.",
     "routes": [
@@ -774,6 +799,11 @@
         "task": "DISMANTLE",
         "example": "Goblin, dismantle this furniture",
         "semantic_payload": "explicit online owner only; exactly one nearby empty wooden single-tile object inside saved base"
+      },
+      {
+        "task": "MOVE_CORPSE",
+        "example": "Goblin, remove the corpses from the house",
+        "semantic_payload": "explicit online owner only; native dragging of zombie remains to a loaded exterior pile; compatibility-gated"
       },
       {
         "task": "OPEN_WINDOW",
@@ -940,15 +970,15 @@
     "sources": [
       {
         "path": "goblin_zomboid/validator.py",
-        "sha256": "fc7e29d6e5b00700097677b1b871ef9c7ffe8a18b393e8f4361a9eb4c9f1a46a"
+        "sha256": "574721c28b589fba1c2774ab74e2817657b3d5c72cbc8089eba25332e0a5a070"
       },
       {
         "path": "goblin_zomboid/qwen.py",
-        "sha256": "0a388bf81eb28cec7f883f78a0bb9b40b2a355adad848f583d264ced8a9d617f"
+        "sha256": "959af706222043e87be8e1afeb3b8e36b0377b414f1399c3e510b86fa5178d0f"
       },
       {
         "path": "goblin_zomboid/service.py",
-        "sha256": "d2dd595f91e2922dd4236961dc6bf4dab4c313587da2f4864e410e9eb12c47f7"
+        "sha256": "6872fcef2e58a928875a504cd6e43b3e2b90c1860545823c62caa5a2245abb94"
       }
     ],
     "chat_generation_actions": [
@@ -991,7 +1021,8 @@
       "FORAGE",
       "CHECK_TRAPS",
       "COOK",
-      "RESTORE_POWER"
+      "RESTORE_POWER",
+      "MOVE_CORPSE"
     ],
     "offline_actions": [
       "WAIT",

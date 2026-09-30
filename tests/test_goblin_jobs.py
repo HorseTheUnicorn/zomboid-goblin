@@ -328,7 +328,7 @@ class ExtendedJobTests(unittest.TestCase):
     def test_extended_orders_require_one_use_grant_for_the_matching_owner(self):
         self.lua.execute('''
             Authority=require('GoblinSurvivor/Authority')
-            for _,action in ipairs({'OPEN_DOOR','OPEN_WINDOW','CLOSE_CURTAINS','FARM','CRAFT','REPAIR_VEHICLE'}) do
+            for _,action in ipairs({'OPEN_DOOR','OPEN_WINDOW','CLOSE_CURTAINS','FARM','CRAFT','REPAIR_VEHICLE','MOVE_CORPSE'}) do
                 assert(Authority.requires(action))
                 local token=Authority.issue(player)
                 assert(not Authority.consume({action=action,owner='unicorn',authority_token=token}))

@@ -635,7 +635,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISOpenCloseCurtain.lua",
@@ -1372,7 +1372,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWork.lua",
-          "sha256": "f3ea8b268e25127e59f7e8a0012b26f74dba88449655f5593f8cf8debac6045f"
+          "sha256": "23060ea6f9f1ef7cdf07316f6ae78bd3be0012b3bf58e784a67e24020ce7bfd2"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISBarricadeAction.lua",
@@ -1475,7 +1475,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWork.lua",
-          "sha256": "f3ea8b268e25127e59f7e8a0012b26f74dba88449655f5593f8cf8debac6045f"
+          "sha256": "23060ea6f9f1ef7cdf07316f6ae78bd3be0012b3bf58e784a67e24020ce7bfd2"
         },
         {
           "installed_path": "media/lua/server/BuildingObjects/ISWoodenWall.lua",
@@ -2131,7 +2131,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinBody.lua",
-          "sha256": "3d1b40fb16a9cdbee09daab75f33f0f36e11a8ca4ab2047ce13e675a1fea8549"
+          "sha256": "b9598e90a81f292a35950044bfb0984c743ae89accb115009963c4ab7b8897c4"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/shared/GoblinSurvivor/Config.lua"
@@ -2580,7 +2580,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -2960,7 +2960,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3116,7 +3116,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinStorage.lua",
-          "sha256": "161a66a68a49e20d76dfff9985ec58dc62f467bc8e0795d62bda4e480ae7b132"
+          "sha256": "7df399037d07fdd28ab90e2c8d558d17c58ae5c49a1ebbdcbc2af0683d17c476"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -3124,7 +3124,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3288,11 +3288,11 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinDeliverWork.lua",
-          "sha256": "cd74c50ac5b1fdb760bf908e90c687ffe6c69027afcfbdfeb2b6f747ece231c2"
+          "sha256": "c427faa069967ffea95437805db7a7477cca61c48cf3a952a696ded9550bb1b6"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinStorage.lua",
-          "sha256": "161a66a68a49e20d76dfff9985ec58dc62f467bc8e0795d62bda4e480ae7b132"
+          "sha256": "7df399037d07fdd28ab90e2c8d558d17c58ae5c49a1ebbdcbc2af0683d17c476"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -3300,7 +3300,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3430,7 +3430,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinStorage.lua",
-          "sha256": "161a66a68a49e20d76dfff9985ec58dc62f467bc8e0795d62bda4e480ae7b132"
+          "sha256": "7df399037d07fdd28ab90e2c8d558d17c58ae5c49a1ebbdcbc2af0683d17c476"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -3438,7 +3438,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3542,8 +3542,11 @@
     },
     {
       "id": "MOVE_CORPSE",
-      "origin": "proposed",
-      "commands": [],
+      "origin": "existing",
+      "commands": [
+        "clean corpses",
+        "corpses"
+      ],
       "evidence": [
         "STATIC_INSTALLED"
       ],
@@ -3552,7 +3555,7 @@
       },
       "target_class": "IsoDeadBody with managed IsoZombie carrier",
       "authority": {
-        "side": "Proposed server identity/drag task; not implemented"
+        "side": "Server capability with explicit online owner order; experimental and disabled by default pending native/MP validation"
       },
       "sources": [
         {
@@ -3563,12 +3566,17 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua"
+        },
+        {
+          "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCorpseWork.lua"
         }
       ],
       "native_api": {
         "entrypoints": [
           "IsoGameCharacter.pickUpCorpse(corpse,BwdDrag)",
-          "isDraggingCorpse"
+          "isDraggingCorpse",
+          "IGrappleable.setDoGrappleLetGo()",
+          "getGrapplingTarget()"
         ],
         "compatibility": "NPC_DRAG_OWNERSHIP_AND_NATIVE_CHAIN_UNKNOWN"
       },
@@ -3580,7 +3588,7 @@
       "permission_checks": "Require explicit owner-authorized corpse and destination, loaded same-level reach, unchanged corpse identity, no competing drag owner, destination validity and intact contained inventory.",
       "replication_save_strategy": "Use native corpse pickup/drag/drop only if managed-IsoZombie support is proven; persist task/corpse identity and verify body position, carrier state and contents on both clients and reload.",
       "reconciliation_strategy": "After any interruption, locate the original corpse as world body, actively dragged body or carried corpse item. Resume from the observed representation and never manufacture a replacement.",
-      "verified_versions": "Exact .03 disposable-copy inventory: Project Zomboid 42.20.4 b0bbce05d5. Installed corpse actions and public IsoDeadBody/IsoGameCharacter APIs inspected; managed-IsoZombie ownership and multiplayer packets remain unverified.",
+      "verified_versions": "Exact .03 disposable-copy inventory: Project Zomboid 42.20.4 b0bbce05d5. Installed corpse actions and public IsoDeadBody/IsoGameCharacter APIs inspected; managed-IsoZombie ownership and multiplayer packets remain unverified. Local 42.21.0 installed TimedActions and native bytecode inspected; fixture custody checks pass, but actual managed actor pickup/drop and multiplayer remain unverified.",
       "required_items": [],
       "material_consumption": "Move original corpse, preserve contained inventory; no synthetic corpse copy",
       "vanilla_chain": "Check reach/static-moving-object identity; face/loot animation; human path stores lastPlayerGrabbed using player ID then pickUpCorpse; animal path instead adds corpse item, equips hands, removes world body",
@@ -3588,7 +3596,8 @@
         "Player-number/UI and lastPlayerGrabbed identity cannot be copied blindly for zombie actor",
         "Native pickup/drop and packet support unverified",
         "Cannot assume ordinary item transfer implements dragging",
-        "No false IsoPlayer identity allowed"
+        "No false IsoPlayer identity allowed",
+        "Disabled unless GoblinCorpseCleanupEnabled=true; no automatic/offline, player-remains, animal or cross-floor cleanup"
       ],
       "completion_evidence_required": [
         "Native actor support demonstrated",
@@ -3598,7 +3607,10 @@
         "Disconnect/interruption leaves corpse recoverable without duplication"
       ],
       "multiplayer_evidence": [],
-      "complete": false
+      "complete": false,
+      "unit_test_ids": [
+        "tests.test_goblin_corpse_work"
+      ]
     },
     {
       "id": "DISPOSE_CORPSE",
@@ -3695,7 +3707,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3845,7 +3857,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -3926,7 +3938,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4014,7 +4026,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4102,7 +4114,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4190,7 +4202,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4283,7 +4295,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -4943,7 +4955,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -5361,7 +5373,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "c8b1ffda8fe7f9b9aa7eee893cdf3fa20c3a97652788eeab5341d48ab6374849"
+          "sha256": "8d89f7ff8149e6cef6588c35a9ae61c4c21b06610f681381578de40a22f21774"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinCapabilities.lua",
@@ -5369,7 +5381,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "installed_path": "media/lua/shared/Foraging/forageSystem.lua"
@@ -5433,7 +5445,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "c8b1ffda8fe7f9b9aa7eee893cdf3fa20c3a97652788eeab5341d48ab6374849"
+          "sha256": "8d89f7ff8149e6cef6588c35a9ae61c4c21b06610f681381578de40a22f21774"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinProvision.lua",
@@ -5441,7 +5453,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "installed_path": "media/lua/server/Traps/STrapGlobalObject.lua"
@@ -5517,7 +5529,7 @@
       "sources": [
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinSurvivalLife.lua",
-          "sha256": "c8b1ffda8fe7f9b9aa7eee893cdf3fa20c3a97652788eeab5341d48ab6374849"
+          "sha256": "8d89f7ff8149e6cef6588c35a9ae61c4c21b06610f681381578de40a22f21774"
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinTransfer.lua",
@@ -5525,7 +5537,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "installed_path": "media/lua/server/Camping/SCampfireSystem.lua"
@@ -5600,7 +5612,7 @@
         },
         {
           "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinJobs.lua",
-          "sha256": "70ff9486a18806728f9763ffc15527a815487df723d0ac6bb719ab2976d86239"
+          "sha256": "a11fcc32f7af7772a95e17603b750c498c2e7541af4d846647ec0f54f28cd789"
         },
         {
           "installed_path": "media/lua/shared/TimedActions/ISAddFuel.lua"
@@ -5644,6 +5656,133 @@
       "replication_save_strategy": "IsoGenerator.transmitCompleteItemToClients on placement; generator:sync() after each change.",
       "reconciliation_strategy": "The generator is re-found by square each tick; if it disappears the search restarts.",
       "implementation_2026_09_28": "Finds a loaded IsoGenerator within twenty tiles of the base (or owner); with none, conjures Base.Generator onto the nearest free outdoor square within eight tiles. Repairs to 100% condition, pours conjured petrol (ISAddFuel arithmetic) until full, setConnected(true), setActivated(true), sync. Lua fixture tests only."
+    },
+    {
+      "id": "PREPARE_FOOD_STORAGE",
+      "origin": "existing",
+      "commands": [],
+      "evidence": [
+        "REPO_EXISTING",
+        "STATIC_INSTALLED",
+        "RUNTIME_ITEM_RESOLVED"
+      ],
+      "semantic_arguments": {
+        "kind": "crate, wall or fence only",
+        "north": "boolean orientation",
+        "site": "Owner's floored current position, assigned by server; no arbitrary client coordinates"
+      },
+      "target_class": "IsoThumpable placed on loaded IsoGridSquare",
+      "authority": {
+        "side": "Internal server-only online food goal; not a Qwen intent, chat or administrative command"
+      },
+      "sources": [
+        {
+          "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinFoodStorage.lua"
+        },
+        {
+          "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinWork.lua"
+        },
+        {
+          "path": "mod/Contents/mods/GoblinSurvivor/42/media/lua/server/GoblinSurvivor/GoblinStorage.lua"
+        }
+      ],
+      "native_api": {
+        "entrypoints": [
+          "IsoThumpable.new(cell,square,sprite,north,KahluaTable)",
+          "IsoThumpable.setIsContainer(boolean)",
+          "IsoGridSquare.AddSpecialObject",
+          "IsoObject.transmitCompleteItemToClients"
+        ],
+        "public_documentation_url": "https://projectzomboid.com/modding/zombie/iso/objects/IsoThumpable.html",
+        "documentation_retrieved": "2026-09-19",
+        "evidence": "Installed setIsContainer(true) creates a real crate ItemContainer, reads sprite capacity and marks it explored. That proves container allocation, not valid placement, lifecycle parity or replication. The custom build path does not call player timed actions."
+      },
+      "required_items": [
+        "Base.Plank",
+        "Base.Nails",
+        "Base.Hammer"
+      ],
+      "item_recipe_resolution": "All resolve enabled/nonobsolete. Current custom blueprints do not resolve or execute native construction recipes; matching vanilla recipe/material requirements remain unverified.",
+      "reusable_inputs": "Reserved Base.Hammer",
+      "blueprints": [
+        {
+          "kind": "crate",
+          "materials": {
+            "Base.Plank": 3,
+            "Base.Nails": 3
+          },
+          "sprites": [
+            "carpentry_01_16"
+          ]
+        },
+        {
+          "kind": "wall",
+          "materials": {
+            "Base.Plank": 3,
+            "Base.Nails": 3
+          },
+          "sprites": [
+            "carpentry_02_40",
+            "carpentry_02_41"
+          ]
+        },
+        {
+          "kind": "fence",
+          "materials": {
+            "Base.Plank": 2,
+            "Base.Nails": 2
+          },
+          "sprites": [
+            "carpentry_02_16",
+            "carpentry_02_17"
+          ]
+        }
+      ],
+      "vanilla_chain": [
+        "Construction cursor validates placement and materials",
+        "ISBuildAction uses build transaction and facing/animation",
+        "Building object create uses buildUtil.setInfo and consumeMaterial",
+        "Object-specific health, stacking/corners and native object transmission",
+        "Construction flag and native modData support later lifecycle/dismantling"
+      ],
+      "permission_checks": [
+        "allowlisted blueprint",
+        "live owner marks site",
+        "loaded free square",
+        "safehouse authorization rechecked at mutation",
+        "no existing wall/door/window on selected edge for wall/fence",
+        "physical unobstructed work reach",
+        "four-second work delay",
+        "real materials reserved"
+      ],
+      "completion_evidence": "Only getObjectIndex>=0 after insertion is checked; no structural, container capacity, collision, salvage or second-client postcondition.",
+      "replication_save_strategy": "Native object insertion, RecalcAllWithNeighbours and transmitCompleteItemToClients; protected calls ignore failures. Object saved through native world lifecycle, but no save/reload verification on this candidate.",
+      "rollback_reconciliation": "Shared Work catch compares object count before/after a failure. It refunds only when the count is unchanged; if an object appeared or observation is unknown, materials stay consumed and the job stops for inspection. This avoids a simple post-insertion refund duplicate but is not a durable transaction or save/reload proof.",
+      "compatibility": "CUSTOM_THUMPABLE_BLUEPRINTS_NOT_GENERAL_NATIVE_BUILD_SUPPORT",
+      "limitations": [
+        "Fixture checks only; native crate construction, storage assignment, consumed materials and second-client replication await live proof",
+        "Loaded exact base only; do not overwrite furniture, occupy doors or reassign player containers"
+      ],
+      "verified_game": "42.20.4 b0bbce05d5, source/registry only",
+      "verified_storm": "42.20.4_2.10.11-SNAPSHOT, registry only",
+      "unit_tests": [
+        "test_goblin_work.test_build_consumes_materials_once_and_retains_hammer",
+        "test_goblin_work.test_postinsertion_build_error_does_not_refund_materials"
+      ],
+      "completion_evidence_required": [
+        "Actual approach and hammer animation",
+        "Exact blueprint material use, no free material creation",
+        "Correct collision/container/lifecycle behavior for each blueprint",
+        "Second-client insertion and material replication",
+        "Save/reload and injected interruption reconciliation",
+        "Permission and occupied/invalid site rejection"
+      ],
+      "multiplayer_evidence": [],
+      "complete": false,
+      "material_consumption": "Existing Work crate blueprint consumes three planks and three nails; hammer reusable. Existing Goblin building-provision policy applies; no food created.",
+      "unit_test_ids": [
+        "tests.test_goblin_food_storage"
+      ]
     }
   ],
   "remaining_existing_inventory": [],

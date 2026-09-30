@@ -67,12 +67,18 @@ function Deliver.prepare(body, owner, request)
         return nil, "name an exact item or a storage category to deliver"
     end
     local ledger = {}
+    local selected
+    if type(request.selected_ids) == "table" then
+        selected = {}
+        for _, id in ipairs(request.selected_ids) do selected[id] = true end
+    end
     for _, item in ipairs(World.items(World.inventory(body))) do
         if #ledger >= MAX_ITEMS then break end
         local id = Transfer.itemId(item)
         local kind = World.fullType(item)
         local category = Storage.category(item)
         if id and Transfer.movable(body, item)
+            and (not selected or selected[id])
             and (not filterType or kind == filterType)
             and (not filterCategory or category == filterCategory) then
             ledger[#ledger+1] = { id=id, type=kind, category=category or "MISC", state="carried" }

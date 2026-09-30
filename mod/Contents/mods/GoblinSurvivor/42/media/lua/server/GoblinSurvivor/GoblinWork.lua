@@ -152,6 +152,7 @@ local function build(body,square,payload)
         return false,"this edge already has a wall, door, or window"
     end
     local md={GoblinBuilt=true,GoblinOwner=Body.owner(body)}
+    if payload.food_crate==true and payload.kind=="crate" then md.GoblinFoodCrate=true end
     local object=IsoThumpable.new(getCell(),square,payload.north and spec.northSprite or spec.sprite,payload.north==true,md)
     object:setName("Goblin "..payload.kind)
     object:setMaxHealth(500); object:setHealth(500)

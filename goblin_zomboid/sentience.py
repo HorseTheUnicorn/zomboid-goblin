@@ -50,6 +50,7 @@ EVENT_WEIGHTS: dict[str, tuple[float, float]] = {
     "night_approaching": (0.55, -0.1),
     "owner_left_base": (0.5, 0.0),
     "food_low": (0.55, -0.3),
+    "survival": (0.6, 0.0),
     "vehicle_low": (0.4, -0.1),
     "power_down": (0.6, -0.4),
     "power_restored": (0.4, 0.5),
@@ -207,6 +208,7 @@ class Sentience:
         owner, vehicle = sub("owner"), sub("vehicle")
         nearby = situation.get("nearby_goblins") if isinstance(situation.get("nearby_goblins"), list) else []
         shortages = base.get("stock_shortages") if isinstance(base.get("stock_shortages"), list) else []
+        food = base.get("food_reserve") if isinstance(base.get("food_reserve"), Mapping) else {}
         home = base.get("homestead") if isinstance(base.get("homestead"), Mapping) else {}
         return {
             "day": time_info.get("day") if isinstance(time_info.get("day"), int) else None,
@@ -216,7 +218,8 @@ class Sentience:
             "base_distance": base.get("distance"),
             "owner_bitten": owner.get("bitten_parts") if isinstance(owner.get("bitten_parts"), int) else 0,
             "goblins": sorted(str(g.get("name") or g.get("npc_id")) for g in nearby if isinstance(g, Mapping)),
-            "food_short": any("food" in str(s).lower() or "tinned" in str(s).lower() for s in shortages),
+            "food_short": (bool(food.get("shortage")) if food.get("known") is True else
+                           any("food" in str(s).lower() or "tinned" in str(s).lower() for s in shortages)),
             "vehicle": str(vehicle.get("summary") or ""),
             "power": home.get("power"),
             "thirsty": int(home.get("plants_need_water") or 0),
@@ -348,8 +351,10 @@ class Sentience:
             state["current_step"] = int(state.get("current_step") or 0) + 1
             moved = True
         if moved:
+            if state.get("current_goal"):
+                state["current_goal"]["unverified_steps"] = True
             if int(state["current_step"]) >= len(plan):
-                self._finish_goal(npc_id, state, "complete")
+                self._finish_goal(npc_id, state, "abandon")
             self.save(npc_id)
 
     # -------------------------------------------------------- reflection
@@ -399,8 +404,10 @@ class Sentience:
                                            "current_step": int(state.get("current_step") or 0)}
             state["current_goal"] = {"goal": goal, "reason": reason, "started": now}
             state["plan"], state["current_step"] = plan, 0
-        elif decision in ("complete", "abandon"):
+        elif decision == "abandon":
             self._finish_goal(npc_id, state, decision)
+        # A model's claim of completion is not a physical job result. Jobs
+        # finish the plan through step_result; reflection can only abandon it.
         elif decision == "continue" and plan and not previous and goal:
             state["current_goal"] = {"goal": goal, "reason": reason, "started": now}
             state["plan"], state["current_step"] = plan, 0
@@ -429,9 +436,10 @@ class Sentience:
     def _finish_goal(self, npc_id: str, state: dict[str, Any], how: str) -> None:
         goal = state.get("current_goal")
         if goal:
-            self.mind.record(npc_id, "goal", f"{'finished' if how == 'complete' else 'gave up on'}: "
+            verified = how == "complete" and not goal.get("unverified_steps")
+            self.mind.record(npc_id, "goal", f"{'finished' if verified else 'gave up on'}: "
                              f"{goal.get('goal')}", self._day(npc_id),
-                             importance=0.45, valence=0.4 if how == "complete" else -0.2)
+                             importance=0.45, valence=0.4 if verified else -0.2)
         suspended = state.get("suspended_goal")
         if suspended:
             # Back to what he was doing before something more urgent came up.
@@ -455,6 +463,8 @@ class Sentience:
             # Never hammer the same failing step: after two failures skip it.
             step["failures"] = int(step.get("failures") or 0) + 1
             if step["failures"] >= 2:
+                if state.get("current_goal"):
+                    state["current_goal"]["unverified_steps"] = True
                 success = True
                 self.mind.record(npc_id, "gave_up", f"gave up on {intent} for now", self._day(npc_id),
                                  importance=0.35, valence=-0.3)

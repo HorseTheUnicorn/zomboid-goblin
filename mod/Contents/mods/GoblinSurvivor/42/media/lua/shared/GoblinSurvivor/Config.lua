@@ -1,6 +1,10 @@
 local Config = {
     protocol = 2,
     enabled = true,
+    -- Measured usable food items in assigned FOOD/INBOX/OVERFLOW storage.
+    foodSurvivalEnabled = true,
+    foodReserveItems = 4,
+    corpseCleanupEnabled = false, -- enable only for local compatibility tests until native/MP proof
     bridgeRootOverride = "",
     npcId = "goblin.primary",
     npcName = "Goblin",
@@ -216,6 +220,9 @@ function Config.refresh()
     Config.lootScanSeconds = boundedNumber(option("GoblinLootScanSeconds", Config.lootScanSeconds), Config.lootScanSeconds, 0.5, 30)
     Config.lootMaxItemsPerTask = boundedInteger(option("GoblinLootMaxItemsPerTask", Config.lootMaxItemsPerTask), Config.lootMaxItemsPerTask, 1, 32)
     Config.autonomyEnabled = parseBoolean(option("GoblinAutonomyEnabled", Config.autonomyEnabled), Config.autonomyEnabled)
+    Config.foodSurvivalEnabled = parseBoolean(option("GoblinFoodSurvivalEnabled", Config.foodSurvivalEnabled), Config.foodSurvivalEnabled)
+    Config.foodReserveItems = boundedInteger(option("GoblinFoodReserveItems", Config.foodReserveItems), Config.foodReserveItems, 1, 10)
+    Config.corpseCleanupEnabled = parseBoolean(option("GoblinCorpseCleanupEnabled", Config.corpseCleanupEnabled), Config.corpseCleanupEnabled)
     Config.autonomyIdleSeconds = boundedNumber(option("GoblinAutonomyIdleSeconds", Config.autonomyIdleSeconds), Config.autonomyIdleSeconds, 30, 3600)
     Config.autonomyDecisionSeconds = boundedNumber(option("GoblinAutonomyDecisionSeconds", Config.autonomyDecisionSeconds), Config.autonomyDecisionSeconds, 2, 120)
     Config.autonomyExploreRadius = boundedNumber(option("GoblinAutonomyExploreRadius", Config.autonomyExploreRadius), Config.autonomyExploreRadius, 8, 300)

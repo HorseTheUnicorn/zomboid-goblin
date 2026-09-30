@@ -125,7 +125,7 @@ function Life.Forage.prepare(body, owner, request)
     if not forageSpot(body, anchor, 60) then
         return nil, "no forageable outdoor ground (forest, field, vegetation) near you"
     end
-    return { owner=name, anchor=anchor, count=n, completed=0, finds={} },
+    return { owner=name, anchor=anchor, count=n, completed=0, finds={}, food_only=request.food_only == true },
         "foraging for "..n.." find(s) nearby; I will bring them home"
 end
 
@@ -152,6 +152,10 @@ function Life.Forage.update(body, payload, runtime, now)
     local zone = runtime.zone
     runtime.spot, runtime.zone, runtime.readyAt = nil, nil, nil
     runtime.searches = (runtime.searches or 0) + 1
+    if runtime.searches > payload.count * 8 then
+        return true, (payload.completed or 0) > 0, "no more usable finds here",
+            (payload.completed or 0) > 0 and "COMPLETE" or "NO_TARGET"
+    end
     local itemType = Life.Forage.roll(zone)
     if not itemType or type(instanceItem) ~= "function" then
         if runtime.searches > payload.count * 4 then
@@ -162,6 +166,14 @@ function Life.Forage.update(body, payload, runtime, now)
     end
     local ok, item = pcall(instanceItem, itemType)
     if not ok or not item then return false end
+    if payload.food_only then
+        local definition = forageSystem.itemDefs and forageSystem.itemDefs[itemType]
+        -- The normal player's spawn path may add poison after instanceItem.
+        -- Don't bypass that by treating potentially poisonous wild food as
+        -- safe; skip those definitions instead (no IsoPlayer-only callbacks).
+        if not definition or (tonumber(definition.poisonChance) or 0) > 0
+            or not require("GoblinSurvivor/GoblinFoodCycle").classify(item) then return false end
+    end
     local inventory = World.inventory(body)
     local added, value = call(inventory, "AddItem", item)
     if not added or value ~= item then return false end
@@ -615,6 +627,9 @@ function Life.Cook.prepare(body, owner, request)
         return nil, "no stove or campfire within 150 tiles, and no open ground here for a campfire"
     end
     local accept = rawFood
+    if request.food_only then
+        accept = function(item) return require("GoblinSurvivor/GoblinFoodCycle").classify(item) == "raw" end
+    end
     if dish then
         local recipe = potRecipe(Life.POT_RECIPES[dish])
         if not recipe then return nil, "the "..dish.." recipe is not installed" end
@@ -627,7 +642,8 @@ function Life.Cook.prepare(body, owner, request)
     if carried == 0 and #World.sourcesNear(anchor, accept, body) == 0 then
         return nil, dish and ("no "..dish.." ingredients near you") or "no raw food to cook near you"
     end
-    return { owner=name, anchor=anchor, count=n, dish=dish, completed=0, phase="gather", cooking={} },
+    return { owner=name, anchor=anchor, count=n, dish=dish, completed=0, phase="gather", cooking={},
+        food_only=request.food_only == true },
         dish and ("making a pot of "..dish.." with up to "..n.." ingredient(s)") or ("cooking up to "..n.." item(s)")
 end
 
@@ -676,8 +692,19 @@ function Life.Cook.update(body, payload, runtime, now)
     local recipe = payload.dish and potRecipe(Life.POT_RECIPES[payload.dish]) or nil
     if payload.dish and not recipe then return true, false, "the recipe is gone", "UNSUPPORTED" end
     local accept = recipe and ingredientFor(recipe) or rawFood
+    if payload.food_only then
+        accept = function(item) return require("GoblinSurvivor/GoblinFoodCycle").classify(item) == "raw" end
+    end
     runtime.badSites = runtime.badSites or {}
-    local site = runtime.site or nearestHeat(body, payload.anchor, World.range(), runtime.badSites)
+    local site = runtime.site
+    if not site then
+        if payload.phase == "cooking" and payload.heat then
+            site = nearestHeat(body,payload.heat,0)
+            runtime.switchedOn = payload.switched_on == true
+        else
+            site = nearestHeat(body,payload.anchor,World.range(),runtime.badSites)
+        end
+    end
     if site and site ~= runtime.site then runtime.siteAt = now end
     if not site and payload.phase == "gather" and not runtime.builtFire then
         -- No stove or fire: Goblin builds a campfire beside the owner.
@@ -741,6 +768,7 @@ function Life.Cook.update(body, payload, runtime, now)
         local switched, err = lightHeat(site)
         if err then return true, false, err, "BLOCKED" end
         runtime.switchedOn = switched
+        payload.heat, payload.switched_on = tile(site.square), switched
         payload.cooking = {}
         -- Items already on the heat; anything new that appears later is ours
         -- (the engine replaces some foods on cooking, e.g. a soup pot).
@@ -786,7 +814,10 @@ function Life.Cook.update(body, payload, runtime, now)
             if World.approach(body, site.square, now) then
                 local moved = Transfer.pickup(body, { square=site.square, object=site.object,
                     container=site.container, item=item })
-                if moved then payload.completed = (payload.completed or 0) + 1 else remaining[#remaining+1] = id end
+                if moved then
+                    if select(2, call(item,"isBurnt")) == true then payload.burnt=(payload.burnt or 0)+1
+                    else payload.completed=(payload.completed or 0)+1 end
+                else remaining[#remaining+1] = id end
             else
                 remaining[#remaining+1] = id
             end
@@ -808,7 +839,8 @@ function Life.Cook.update(body, payload, runtime, now)
                 and (select(2, call(item, "isCooked")) == true or select(2, call(item, "isBurnt")) == true) then
                 if World.approach(body, site.square, now) and Transfer.pickup(body, { square=site.square,
                     object=site.object, container=site.container, item=item }) then
-                    payload.completed = (payload.completed or 0) + 1
+                    if select(2, call(item,"isBurnt")) == true then payload.burnt=(payload.burnt or 0)+1
+                    else payload.completed=(payload.completed or 0)+1 end
                     payload.replaced = payload.replaced - 1
                 end
             end
@@ -825,12 +857,28 @@ function Life.Cook.update(body, payload, runtime, now)
     print("[GoblinSurvivor] COOK owner="..tostring(payload.owner).." dish="..tostring(payload.dish or "food")
         .." cooked="..tostring(payload.completed).." heat="..site.kind)
     if (payload.completed or 0) == 0 then
+        if (payload.burnt or 0) > 0 then return true,false,"the food burnt; no usable meal cooked","MISSING_MATERIAL" end
         return true, false, "the food left the heat before I could take it out", "TARGET_CHANGED"
     end
     local what = payload.dish and ("a pot of "..payload.dish) or (payload.completed.." item(s)")
     return true, true, "cooked "..what.."; I will bring it home", "COMPLETE"
 end
 
-function Life.Cook.clear(body) end
+function Life.Cook.clear(body,runtime)
+    -- Owner movement/orders/combat must not leave a stove we lit running.
+    -- Recover only our tracked instances when still adjacent; never teleport
+    -- food out of an unloaded/distant world container.
+    local payload = Body.data(body).GoblinTaskPayload or {}
+    local site = runtime and runtime.site
+    if not site and payload.heat then site=nearestHeat(body,payload.heat,0) end
+    if not site then return end
+    if (runtime and (runtime.switchedOn or runtime.builtFire)) or payload.switched_on then heatOff(site) end
+    if World.reachable(body,site.square) then
+        for _, id in ipairs(payload.cooking or {}) do
+            local item = Transfer.findById(site.container,id)
+            if item then Transfer.pickup(body,{square=site.square,object=site.object,container=site.container,item=item}) end
+        end
+    end
+end
 
 return Life

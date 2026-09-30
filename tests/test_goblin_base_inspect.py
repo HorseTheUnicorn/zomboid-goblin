@@ -143,7 +143,7 @@ class BaseInspectTests(unittest.TestCase):
             local before=a.data.GoblinTask
             local jobs={'SORT_STORAGE','FETCH_ITEM','DELIVER','REPAIR_STRUCTURE',
                 'REFUEL_VEHICLE','INSTALL_PART','REMOVE_PART','REPLACE_PART','CHANGE_TIRE',
-                'VEHICLE_SERVICE','VEHICLE_INSPECT','STOCKPILE','DISMANTLE','CHOP_WOOD','TREAT_PLAYER'}
+                'VEHICLE_SERVICE','VEHICLE_INSPECT','STOCKPILE','DISMANTLE','CHOP_WOOD','TREAT_PLAYER','MOVE_CORPSE'}
             for _,action in ipairs(jobs) do
                 local ok,detail=Brain.execute({action=action,item={name='Base.Nails'}},a)
                 assert(ok==false and detail:find('own request'),action..' '..tostring(detail))
@@ -165,6 +165,8 @@ class BaseInspectTests(unittest.TestCase):
             assert(calls[4].payload.allow_floor==true)
             assert(Brain.execute({action='CHOP_WOOD',owner_authorized=true,item={count=2}},a))
             assert(calls[5].payload.count==2)
+            assert(Brain.execute({action='MOVE_CORPSE',owner_authorized=true},a))
+            assert(calls[6].task=='MOVE_CORPSE' and calls[6].payload.explicit_owner_order)
             Brain.setTask=original
         ''')
 

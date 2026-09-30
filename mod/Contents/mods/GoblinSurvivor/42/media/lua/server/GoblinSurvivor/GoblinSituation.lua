@@ -35,13 +35,17 @@ local function bucket(value, low, high, names)
 end
 
 -- Record a notable event for a Goblin (npc id keyed so it survives rebinds).
-function Situation.note(body, kind, text)
+function Situation.note(body, kind, text, metadata)
     local id = Body.npcId(body)
     if type(id) ~= "string" then return end
     local log = Situation.events[id] or {}
     Situation.seq[id] = (Situation.seq[id] or 0) + 1
     log[#log+1] = { seq = Situation.seq[id], kind = tostring(kind), text = string.sub(tostring(text), 1, 160),
         at = nowMs() }
+    if type(metadata) == "table" then
+        log[#log].freewill = metadata.freewill == true
+        log[#log].goal_id = type(metadata.goal_id) == "string" and metadata.goal_id or nil
+    end
     while #log > MAX_EVENTS do table.remove(log, 1) end
     Situation.events[id] = log
 end
@@ -157,6 +161,12 @@ local function base(body)
     local result = { set = true, windows_needing_boards = report.unbarricaded_windows,
         damaged_structures = report.damaged_structures, broken_windows = report.broken_windows,
         open_exterior_doors = report.open_exterior_doors, report_stale = report.stale == true }
+    local okFood, Food = pcall(require,"GoblinSurvivor/GoblinFoodCycle")
+    if okFood then
+        local scan = Food.scan(body)
+        result.food_reserve = {known=scan.known,ready=scan.ready,raw=scan.raw,
+            target=scan.target,shortage=scan.shortage,reason=scan.reason}
+    end
     -- What the caretaker last saw of the homestead (power, crops, traps).
     if type(data.GoblinHomestead) == "table" then result.homestead = data.GoblinHomestead end
     local okS, Stockpiles = pcall(require, "GoblinSurvivor/GoblinStockpiles")
@@ -244,7 +254,10 @@ function Situation.build(body)
         nearby_goblins = nearbyGoblins(body, point),
     }
     local okGoals, Goals = pcall(require, "GoblinSurvivor/GoblinGoals")
-    if okGoals then report.goblin.goals = Goals.describe(Body.owner(body)) end
+    if okGoals then
+        report.goblin.goals = Goals.describe(Body.owner(body))
+        report.goblin.survival_busy = Goals.foodBusy(body,nowMs())
+    end
     if report.owner.health_drop then Situation.note(body, "owner_hurt", "owner took a bad hit") end
     local kills = report.goblin.kills
     local previousKills = Situation.last[id..":kills"]

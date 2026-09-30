@@ -18,6 +18,18 @@ local Config = require("GoblinSurvivor/Config")
 
 local Dismantle = { targets = setmetatable({}, { __mode = "k" }) }
 local call = World.call
+local furnitureNames={
+    chair={"chair"},stool={"stool"},table={"table"},desk={"desk"},crate={"crate"},
+    bookcase={"bookcase"},shelf={"shelf","shelves"},cabinet={"cabinet","cupboard","counter"}
+}
+local function matchesKind(props,kind)
+    if not kind then return true end
+    local names=furnitureNames[kind]
+    if not names then return false end
+    local label=string.lower(tostring(props.name or "").." "..tostring(props.customName or ""))
+    for _,name in ipairs(names) do if label:match("%f[%a]"..name.."%f[%A]") then return true end end
+    return false
+end
 
 local function online(owner)
     if type(getOnlinePlayers) ~= "function" then return false end
@@ -167,7 +179,9 @@ local function prepareSalvage(body, owner, request)
         return nil, "the reusable hammer and saw are unavailable"
     end
     local checked, result = call(target.props, "canScrapObject", body)
-    if not checked or not result or result.canScrap ~= true then
+    -- Vanilla's `canScrap and haveTool and haveTool2` returns the saw item,
+    -- not necessarily boolean true. Use the same Lua truthiness as vanilla.
+    if not checked or type(result) ~= "table" or not result.canScrap then
         return nil, "the installed moveables rules do not allow scrapping that furniture"
     end
     local point = World.point(target.square)
@@ -207,7 +221,7 @@ function Dismantle.prepare(body, owner, request)
         if square then
             for _, object in ipairs(World.values(select(2, call(square, "getObjects")))) do
                 local target = eligible(body, object, square, scope)
-                if target then
+                if target and matchesKind(target.props,request.furniture_kind) then
                     local point = World.point(square)
                     target.distance = (point.x-ownerPoint.x)^2 + (point.y-ownerPoint.y)^2
                     candidates[#candidates+1] = target
@@ -217,7 +231,7 @@ function Dismantle.prepare(body, owner, request)
     end end
     table.sort(candidates, function(a,b) return a.distance < b.distance end)
     local target = candidates[1]
-    if not target then return nil, "no empty, single-tile wooden furniture is within one tile" end
+    if not target then return nil, "no empty, single-tile wooden "..tostring(request.furniture_kind or "furniture").." is within one tile" end
     if candidates[2] and candidates[2].distance - target.distance < 0.25 then
         return nil, "more than one wooden furniture target is equally close; stand beside just one"
     end
@@ -225,7 +239,7 @@ function Dismantle.prepare(body, owner, request)
         return nil, "the reusable hammer and saw are unavailable"
     end
     local checked, result = call(target.props, "canScrapObject", body)
-    if not checked or not result or result.canScrap ~= true then
+    if not checked or type(result) ~= "table" or not result.canScrap then
         return nil, "the installed moveables rules do not allow scrapping this furniture"
     end
     local point = World.point(target.square)
@@ -262,7 +276,7 @@ function Dismantle.update(body, payload, runtime, now)
     local hammer, saw = Tools.ensure(body, "Base.Hammer"), Tools.ensure(body, "Base.Saw")
     if not hammer or not saw then return true, false, "hammer or saw unavailable", "MISSING_TOOL" end
     local checked, result = call(target.props, "canScrapObject", body)
-    if not checked or not result or result.canScrap ~= true then
+    if not checked or type(result) ~= "table" or not result.canScrap then
         return true, false, "native scrap eligibility changed", "BLOCKED"
     end
     local _, duration = call(target.props, "getScrapActionTime", body)
@@ -277,7 +291,7 @@ function Dismantle.update(body, payload, runtime, now)
         return true, false, "furniture or permission changed before dismantling", "TARGET_CHANGED"
     end
     checked, result = call(target.props, "canScrapObject", body)
-    if not checked or not result or result.canScrap ~= true then
+    if not checked or type(result) ~= "table" or not result.canScrap then
         return true, false, "native scrap eligibility changed", "BLOCKED"
     end
     local before = worldItems(target.square)

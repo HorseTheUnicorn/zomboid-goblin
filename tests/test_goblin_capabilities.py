@@ -23,12 +23,13 @@ class CapabilityRegistryTests(unittest.TestCase):
         self.lua.execute('''
             local Jobs=require('GoblinSurvivor/GoblinJobs')
             local registry=Jobs.registry()
-            assert(#registry==26)
+            assert(#registry==28)
             local seen={}
             for _,entry in ipairs(registry) do
                 seen[entry.name]=entry
                 assert(entry.owner_required and not entry.offline_allowed)
-                assert(entry.timeout_ms==300000 or entry.timeout_ms==600000 or entry.timeout_ms==960000)
+                assert(entry.timeout_ms==300000 or entry.timeout_ms==600000
+                    or entry.timeout_ms==960000 or (entry.name=='MOVE_CORPSE' and entry.timeout_ms==1200000))
             end
             assert(seen.SORT_STORAGE.timeout_ms==600000 and not seen.SORT_STORAGE.destructive)
             assert(not seen.FETCH_ITEM.destructive and not seen.DELIVER.destructive)
@@ -44,6 +45,13 @@ class CapabilityRegistryTests(unittest.TestCase):
             assert(not seen.INSPECT_BASE.destructive)
             assert(seen.MAINTAIN_BASE.destructive and seen.DISMANTLE.destructive)
             assert(seen.STOCKPILE.destructive and seen.STOCKPILE.owner_required)
+            assert(seen.PREPARE_FOOD_STORAGE.destructive and seen.PREPARE_FOOD_STORAGE.owner_required)
+            assert(seen.MOVE_CORPSE.destructive and seen.MOVE_CORPSE.timeout_ms==1200000)
+            local food=Jobs.requirements('PREPARE_FOOD_STORAGE',{})
+            assert(food.consumables[1]=='Base.Plank x3' and food.consumables[2]=='Base.Nails x3')
+            assert(food.reusable_tools[1]=='Base.Hammer')
+            local corpse=Jobs.requirements('MOVE_CORPSE',{})
+            assert(corpse.limit=='20 corpses per explicit run' and #corpse.unsupported==4)
             local farm=Jobs.requirements('FARM',{})
             assert(farm.reusable_tools[1]=='Base.HandShovel')
             assert(Jobs.requirements('NOT_REAL',{})==nil)

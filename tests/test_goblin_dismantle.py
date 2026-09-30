@@ -114,6 +114,39 @@ class DismantleTests(unittest.TestCase):
             assert(done and not success and code=='INTERRUPTED' and scrapCalls==1)
         ''')
 
+    def test_native_tool_valued_can_scrap_is_truthy_not_boolean(self):
+        self.lua.execute('''
+            local saw={kind='Base.Saw'}
+            function target.props:canScrapObject()
+                return {haveTool=true,haveTool2=saw,canScrap=true and saw}
+            end
+            local payload=assert(Dismantle.prepare(body,owner,{explicit_owner_order=true}))
+            local done,success,detail,code=Dismantle.update(body,payload,{},1000)
+            assert(done and success and code=='COMPLETE',detail)
+            assert(scrapCalls==1 and #square.objects==0 and #square.world==1)
+        ''')
+
+    def test_false_nil_or_malformed_native_result_is_not_permission(self):
+        self.lua.execute('''
+            for _,bad in ipairs({{}, {canScrap=false}, 'invalid'}) do
+                function target.props:canScrapObject() return bad end
+                assert(Dismantle.prepare(body,owner,{explicit_owner_order=true})==nil)
+            end
+            function target.props:canScrapObject() error('native failure') end
+            assert(Dismantle.prepare(body,owner,{explicit_owner_order=true})==nil)
+            assert(scrapCalls==nil and #square.objects==1)
+        ''')
+
+    def test_named_furniture_never_selects_a_different_closer_object(self):
+        self.lua.execute('''
+            target.props.name='Wooden Counter'
+            assert(Dismantle.prepare(body,owner,{explicit_owner_order=true,furniture_kind='chair'})==nil)
+            target.props.name='Wooden Chair'
+            assert(Dismantle.prepare(body,owner,{explicit_owner_order=true,furniture_kind='chair'}))
+            assert(Dismantle.prepare(body,owner,{explicit_owner_order=true,furniture_kind='wall'})==nil)
+            assert(scrapCalls==nil and #square.objects==1)
+        ''')
+
     def test_ambiguous_nonempty_or_unauthorized_furniture_is_not_touched(self):
         self.lua.execute('''
             local request={explicit_owner_order=true}
@@ -217,6 +250,17 @@ class DismantleTests(unittest.TestCase):
             assert(done and success and code=='COMPLETE',detail)
             assert(#other.objects==0 and square.objects[1]==target,'base furniture must be untouched')
             assert(#picked==3 and detail:find('2 plank'),detail)
+        ''')
+
+    def test_salvage_accepts_native_tool_valued_can_scrap(self):
+        self._salvage_fixture()
+        self.lua.execute('''
+            local other,object=room(10,0)
+            function object.props:canScrapObject() return {canScrap={kind='Base.Saw'}} end
+            local payload=assert(Dismantle.prepare(body,owner,{salvage=true}))
+            local done,success,detail,code=Dismantle.update(body,payload,{},1000)
+            assert(done and success and code=='COMPLETE',detail)
+            assert(#other.objects==0 and #picked==3 and scrapCalls==1)
         ''')
 
     def test_salvage_never_touches_base_safehouses_outdoors_or_the_buffer(self):

@@ -15,6 +15,19 @@ class CompanionWorkTests(unittest.TestCase):
         for filename in ('goblin_fixture.lua','work_fixture.lua'):
             self.lua.execute((ROOT/'tests/lua'/filename).read_text())
 
+    def test_brain_preserves_trusted_goal_metadata_after_capability_preparation(self):
+        self.lua.execute('''
+            local Brain=require('GoblinSurvivor/GoblinBrain')
+            local Jobs=require('GoblinSurvivor/GoblinJobs')
+            Jobs.prepare=function(_,_,task,payload)
+                assert(task=='FORAGE' and payload.explicit_owner_order)
+                return {anchor={x=0,y=0,z=0},count=2},'prepared'
+            end
+            assert(Brain.setTask(a,'FORAGE',{explicit_owner_order=true,goal_id='RESTOCK_FOOD:123'}))
+            assert(a.data.GoblinTaskPayload.goal_id=='RESTOCK_FOOD:123')
+            assert(a.data.GoblinTaskPayload.count==2)
+        ''')
+
     def test_container_native_character_lock_is_checked_at_scan_and_transfer(self):
         self.lua.execute('''
             local sq=cell:getGridSquare(0,0,0)
@@ -624,6 +637,36 @@ class CompanionWorkTests(unittest.TestCase):
             a.data.GoblinTask='WAIT'; Autonomy.update(a,clock)
             Autonomy.update(a,clock+180000)
             assert(a.data.GoblinTask=='WAIT')
+        ''')
+
+    def test_chat_and_noop_follow_sequences_do_not_starve_idle_fallback(self):
+        self.lua.execute('''
+            local C=require('GoblinSurvivor/Config')
+            local Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            C.freewillGraceSeconds=60;C.foodSurvivalEnabled=false
+            a.data.GoblinFreewillEnabled=true;a.data.GoblinBaseSet=false
+            a.data.GoblinTask='FOLLOW';a.x,a.y=player.x,player.y
+            Autonomy.update(a,clock)
+            for i=1,3 do
+                a.data.GoblinFreewillLastAt=clock+i*20000
+                a.data.GoblinTaskSequence=i
+                Autonomy.update(a,clock+i*20000)
+            end
+            assert(a.data.GoblinTask=='LOOT' and a.data.GoblinAutonomous)
+        ''')
+
+    def test_idle_fortification_uses_its_house_not_other_houses_windows(self):
+        self.lua.execute('''
+            local Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            local Curtains=require('GoblinSurvivor/GoblinCurtains')
+            local scope={id='our-house'}
+            Curtains.scopeAt=function() return scope end
+            local wideCalls=0
+            Work.windows=function() wideCalls=wideCalls+1;return {window(cell:getGridSquare(5,5,0))} end
+            Work.houseWindows=function(s) assert(s==scope);return {} end
+            a.data.GoblinTask='FOLLOW';a.x,a.y=player.x,player.y
+            Autonomy.update(a,clock);Autonomy.update(a,clock+30000)
+            assert(a.data.GoblinTask=='LOOT' and wideCalls==0)
         ''')
 
     def test_online_idle_starts_at_30_seconds_and_motion_recalls_before_transfer(self):

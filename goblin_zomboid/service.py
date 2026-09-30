@@ -638,7 +638,10 @@ class GoblinService:
                         if len(words) >= 2:
                             ok = words[1].rstrip(":") == "COMPLETE"
                             self.sentience.note_job(npc_id, words[0], ok, " ".join(words[2:]))
-                            self.sentience.step_result(npc_id, words[0], ok)
+                            # Standing survival goals and owner orders are not
+                            # the model's plan, even if they use the same intent.
+                            if event.get("freewill") is True and not event.get("goal_id"):
+                                self.sentience.step_result(npc_id, words[0], ok)
             except Exception:  # memory must never take the service down
                 LOG.exception("MIND_OBSERVE_FAILED npc=%s", npc_id)
                 continue
@@ -680,7 +683,11 @@ class GoblinService:
     @classmethod
     def _think_eligible(cls, companion: Mapping[str, object]) -> bool:
         idle = companion.get("owner_idle_seconds", 0)
+        situation = companion.get("situation")
+        goblin = situation.get("goblin") if isinstance(situation, Mapping) else None
+        survival_busy = isinstance(goblin, Mapping) and goblin.get("survival_busy") is True
         return (cls._social_ready(companion) and companion.get("freewill") is True
+                and not survival_busy
                 and (companion.get("task") == "FOLLOW" or companion.get("autonomous") is True)
                 and isinstance(idle, (int, float)) and math.isfinite(idle) and idle >= 10
                 and isinstance(companion.get("companion_authority_token"), str))

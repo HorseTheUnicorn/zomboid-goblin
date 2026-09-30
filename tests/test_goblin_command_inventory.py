@@ -183,6 +183,48 @@ class NaturalLanguageInventoryTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(self.lua.globals().ChatBridge.directIntent(text))
 
+    def test_direct_dismantle_phrases_and_destructive_scope(self):
+        route=self.lua.globals().ChatBridge.directIntent
+        for text in ('Goblin, break down the furniture', 'Goblin, break the table down',
+                     'Goblin, take apart the chair', 'Goblin, disassemble this cabinet',
+                     'Goblin, dismantle the crate'):
+            with self.subTest(text=text):
+                self.assertEqual(route(text),'DISMANTLE')
+        for text in ('Goblin, do not break down the table', 'Goblin, how do you dismantle furniture?',
+                     'Goblin, break down all the furniture', 'Goblin, dismantle every chair',
+                     'Goblin, break down the house', 'Goblin, break down the wall'):
+            with self.subTest(text=text):
+                self.assertIsNone(route(text))
+        payload=self.lua.globals().ChatBridge.dismantlePayload('Goblin, break down the chair')
+        self.assertTrue(payload['explicit_owner_order'])
+        self.assertEqual(payload['furniture_kind'],'chair')
+        self.assertEqual(self.lua.globals().ChatBridge.dismantlePayload('Goblin, take apart the cupboard')['furniture_kind'],'cabinet')
+
+    def test_direct_corpse_orders_dispatch_an_explicit_owner_request(self):
+        route=self.lua.globals().ChatBridge.directIntent
+        for text in ('Goblin, remove the corpse', 'Goblin, remove all corpses from the house',
+                     'Goblin, clean corpses', 'Goblin, drag the bodies outside'):
+            self.assertEqual(route(text),'MOVE_CORPSE',text)
+        for text in ('Goblin, do not remove the corpse', 'Goblin, how do you remove bodies?',
+                     'Goblin, burn the corpses', 'Goblin, remove the chair'):
+            self.assertIsNone(route(text),text)
+        self.lua.execute('''
+            Events={OnClientCommand={}}
+            local hooks=package.loaded['GoblinSurvivor/EventHooks']
+            function hooks.install(key,event,fn) callback=fn;return true end
+            local spawner=package.loaded['GoblinSurvivor/GoblinSpawner']
+            body={};player={getUsername=function() return 'horse' end}
+            function spawner.ensureForPlayer(who) assert(who==player);return body end
+            package.loaded['GoblinSurvivor/GoblinBody']={say=function() return true end}
+            package.loaded['GoblinSurvivor/GoblinBrain']={setTask=function(who,task,payload)
+                assert(who==body and task=='MOVE_CORPSE' and payload.explicit_owner_order==true)
+                dispatched=true;return true,'accepted'
+            end}
+            ChatBridge.start()
+            callback('GoblinSurvivor','chat',player,{text='Goblin, remove the corpse'})
+            assert(dispatched)
+        ''')
+
     def test_natural_access_dispatch_is_non_destructive(self):
         self.lua.execute('''
             Events={OnClientCommand={}}

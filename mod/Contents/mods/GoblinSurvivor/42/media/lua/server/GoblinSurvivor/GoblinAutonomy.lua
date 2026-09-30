@@ -43,6 +43,10 @@ function Autonomy.update(body,now)
         if dead~=true and string.lower(candidate:getUsername())==string.lower(Body.owner(body)) then player=candidate;break end
     end
     local data=Body.data(body)
+    -- A model reply or a no-op job is not physical progress. Otherwise a
+    -- steady stream of speech/empty fortification orders can postpone the
+    -- scripted idle fallback forever.
+    local bodyPoint=Body.position(body)
     local point=player and Body.position(player)
     if player and not point then return false end
     local record=Autonomy.owners[Body.owner(body)]
@@ -50,10 +54,19 @@ function Autonomy.update(body,now)
         record={activeAt=now,nextAt=now,online=false}
         Autonomy.owners[Body.owner(body)]=record
     end
+    if not record.progressAt then record.progressAt=now end
+    if bodyPoint and (not record.progressPoint
+        or Motion.distance(bodyPoint,record.progressPoint)>=0.75) then
+        record.progressPoint,record.progressAt=bodyPoint,now
+    end
+    local completed=tonumber(data.GoblinWorkCompleted) or 0
+    if completed>(record.workCompleted or 0) then record.progressAt=now end
+    record.workCompleted=completed
     -- A direct FOLLOW order is player activity even when the player issued it
     -- from a chair or while standing still.  Give that order a fresh idle
     -- window instead of replacing it with autonomous looting on the next tick.
     local payload=type(data.GoblinTaskPayload)=="table" and data.GoblinTaskPayload or {}
+    Goals.restoreActive(body) -- persistent payload survives a lost runtime active flag
     local sequence=tonumber(data.GoblinTaskSequence) or 0
     if player and data.GoblinTask=="FOLLOW" and payload.manual==true
         and record.manualSequence~=sequence then
@@ -95,7 +108,8 @@ function Autonomy.update(body,now)
             local bodyPoint=Body.position(body)
             local recalled=not idle and bodyPoint~=nil
                 and Motion.distance(bodyPoint,point)>(tonumber(Config.goalRecallDistance) or 15)
-            if Goals.tick(body,Brain.setTask,{idle=idle,recalled=recalled,threat=threatNear(body,point)},now) then
+            if Goals.tick(body,Brain.setTask,{idle=idle,recalled=recalled,threat=threatNear(body,point),
+                food_enabled=Config.autonomyEnabled and Config.foodSurvivalEnabled and data.GoblinFreewillEnabled},now) then
                 return true
             end
         end
@@ -129,7 +143,13 @@ function Autonomy.update(body,now)
         end
     end
     -- Standing owner goals take precedence over independent chores.
-    if player and Goals.tick(body,Brain.setTask,{idle=true,threat=threatNear(body,point)},now) then
+    if player and Config.foodSurvivalEnabled == true and data.GoblinFreewillEnabled == true
+        and (record.foodScanAt or 0) <= now and not threatNear(body,point) then
+        record.foodScanAt = now+30000
+        Goals.ensureFood(body,now)
+    end
+    if player and Goals.tick(body,Brain.setTask,{idle=true,threat=threatNear(body,point),
+        food_enabled=Config.foodSurvivalEnabled and data.GoblinFreewillEnabled},now) then
         return true
     end
     -- Tell the owner what got done while they were away.
@@ -176,24 +196,24 @@ function Autonomy.update(body,now)
     -- job; scripted chores only fill in if it has been silent for a while,
     -- so Goblin is never left standing around.
     if data.GoblinFreewillEnabled == true then
-        -- Measure from when Goblin last became idle too: otherwise, once the
-        -- owner has been still for a while, every return to FOLLOW is
-        -- immediately refilled by a chore and Qwen never gets a turn.
-        if record.followSequence~=sequence then
-            record.followSequence,record.followSince=sequence,now
-        end
-        local lastChoice=math.max(record.activeAt or 0,tonumber(data.GoblinFreewillLastAt) or 0,
-            record.followSince or 0)
+        -- Give Qwen grace after real movement/work, but do not renew it for
+        -- speech or an immediately completed empty job.
+        local lastChoice=math.max(record.activeAt or 0,record.progressAt or 0)
         if now-lastChoice<(tonumber(Config.freewillGraceSeconds) or 60)*1000 then return false end
     end
     if now<record.nextAt then return false end
     record.nextAt=now+Config.autonomyDecisionSeconds*1000
-    if data.GoblinBaseSet then
+    if data.GoblinBaseSet and now>=(record.fortifyNextAt or 0) then
         local base={x=data.GoblinBaseX,y=data.GoblinBaseY,z=data.GoblinBaseZ}
-        for _,window in ipairs(Work.windows(base,Config.autonomyBarricadeRadius)) do
+        -- Use the same exact house scope as Work.update, not other houses'
+        -- windows in the surrounding radius that Work will never work on.
+        local scope=require("GoblinSurvivor/GoblinCurtains").scopeAt(base)
+        local windows=scope and Work.houseWindows(scope) or (not scope and Work.windows(base,Config.autonomyBarricadeRadius))
+        for _,window in ipairs(windows or {}) do
             local barr=window:getBarricadeForCharacter(body)
             if not barr or barr:getNumPlanks()<4 then
                 if fortifySuppliesAvailable(body) then
+                    record.fortifyNextAt=now+300000
                     data.GoblinLastAutonomyAction="FORTIFY"
                     return Brain.setTask(body,"FORTIFY",{autonomous=true})
                 end

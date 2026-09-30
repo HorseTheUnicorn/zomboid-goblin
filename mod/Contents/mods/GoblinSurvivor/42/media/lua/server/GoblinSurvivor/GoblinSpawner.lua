@@ -928,6 +928,7 @@ function Spawner.syncClientState(force)
             vehicle_seat=transport.vehicle_seat, vehicle_phase=transport.vehicle_phase,
             vehicle_exit=transport.vehicle_exit, vehicle_revision=transport.vehicle_revision,
             transport_active=body and Body.data(body).GoblinTransportActive==true,
+            corpse_drag=body and Body.data(body).GoblinCorpseDrag or nil,
             npc_id = snapshot.npc_id,
             owner = snapshot.owner,
             name = snapshot.name,

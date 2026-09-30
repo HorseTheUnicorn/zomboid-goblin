@@ -112,6 +112,43 @@ class SentienceTests(unittest.TestCase):
         self.assertEqual(self.sentience.current_step("g1")["intent"], "FETCH_ITEM")
         self.sentience.step_result("g1", "FETCH_ITEM", False)
         self.assertEqual(self.sentience.current_step("g1")["intent"], "SECURE_BASE")
+        self.sentience.step_result("g1", "SECURE_BASE", True)
+        episodes = self.mind.episodes("g1", 10)
+        self.assertTrue(any("gave up on: g" in e["text"] for e in episodes))
+        self.assertFalse(any("finished: g" in e["text"] for e in episodes))
+
+    def test_model_completion_is_not_physical_evidence(self):
+        self.sentience.apply_reflection("g1", {"decision": "new", "goal": "make dinner",
+                                               "plan": [{"intent": "COOK"}, {"intent": "DELIVER"}]})
+        self.sentience.apply_reflection("g1", {"decision": "complete", "thought": "I think dinner is done."})
+        self.assertEqual(self.sentience.current_step("g1")["intent"], "COOK")
+        self.sentience.step_result("g1", "COOK", True)
+        self.sentience.step_result("g1", "DELIVER", True)
+        self.assertIsNone(self.sentience.current_step("g1"))
+
+    def test_survival_jobs_leave_conversation_ready_but_hold_other_freewill_actions(self):
+        from goblin_zomboid.service import GoblinService
+        report = {"owner_online": True, "body_present": True, "control_ready": True,
+                  "npc_engine_ready": True, "freewill": True, "owner_idle_seconds": 40,
+                  "task": "FOLLOW", "companion_authority_token": "token",
+                  "situation": {"goblin": {"survival_busy": True}}}
+        self.assertTrue(GoblinService._social_ready(report))
+        self.assertFalse(GoblinService._think_eligible(report))
+        report["situation"]["goblin"]["survival_busy"] = False
+        self.assertTrue(GoblinService._think_eligible(report))
+
+    def test_skipping_a_cooling_plan_never_records_success(self):
+        self.sentience.apply_reflection("g1", {"decision": "new", "goal": "make dinner",
+                                               "plan": [{"intent": "COOK"}]})
+        self.sentience.note_job("g1", "COOK", False, "stove cold")
+        self.sentience.skip_cooling_steps("g1")
+        self.assertIsNone(self.sentience.current_step("g1"))
+        self.assertTrue(any("gave up on: make dinner" in e["text"] for e in self.mind.episodes("g1", 10)))
+
+    def test_measured_food_shortage_is_noticed(self):
+        self.sentience.perceive(companion(base={"food_reserve": {"known": True, "shortage": 0}}), [])
+        events = self.sentience.perceive(companion(base={"food_reserve": {"known": True, "shortage": 3}}), [])
+        self.assertIn("food_low", [e["kind"] for e in events])
 
     def test_failed_or_finished_chores_cool_down_and_are_kept_out_of_plans(self):
         self.sentience.note_job("g1", "CLOSE_CURTAINS", False, "skipped 3 unreachable curtain(s)")
@@ -246,7 +283,8 @@ class SentienceServiceTests(unittest.TestCase):
             npc = "goblin.primary.alice"
             self._state(service, bob={"situation": situation()})
             service.run_once(); self._drain(service); service.run_once()
-            done = situation(events=[{"seq": 1, "kind": "job", "text": "SORT_STORAGE COMPLETE: sorted 4 items"}])
+            done = situation(events=[{"seq": 1, "kind": "job", "freewill": True,
+                                      "text": "SORT_STORAGE COMPLETE: sorted 4 items"}])
             self._state(service, alice={"situation": done}, bob={"situation": situation()})
             service.run_once()
             self.assertEqual(service.sentience.current_step(npc)["intent"], "SECURE_BASE")

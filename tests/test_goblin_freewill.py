@@ -69,7 +69,7 @@ class FreewillLuaTests(unittest.TestCase):
             assert(d.GoblinTask=='FOLLOW' and d.GoblinFreewillInterrupted=='recall' and d.GoblinFreewill==false)
         ''')
 
-    def test_chores_wait_for_free_will_after_every_return_to_follow(self):
+    def test_chores_give_free_will_grace_after_actual_work(self):
         self.lua.execute('''
             Autonomy=require('GoblinSurvivor/GoblinAutonomy')
             Config=require('GoblinSurvivor/Config')
@@ -78,8 +78,9 @@ class FreewillLuaTests(unittest.TestCase):
             d.GoblinTask='FOLLOW';d.GoblinTaskPayload={};d.GoblinTaskSequence=5
             Autonomy.update(a,1000)            -- owner seen
             local idleAt=1000+Config.autonomyIdleSeconds*1000+Config.freewillGraceSeconds*1000
-            -- Goblin only just came back to FOLLOW (new sequence) after a long owner idle:
+            -- Real completed work earns a fresh window, not task-sequence churn:
             d.GoblinTaskSequence=6
+            d.GoblinWorkCompleted=1
             local record=Autonomy.owners['horse']
             Autonomy.update(a,idleAt)
             -- The chore planner never ran (nextAt untouched): Qwen still has its window.
@@ -87,6 +88,22 @@ class FreewillLuaTests(unittest.TestCase):
             local later=idleAt+Config.freewillGraceSeconds*1000+1
             Autonomy.update(a,later)
             assert(record.nextAt>later, 'filler chores should resume after the grace')
+        ''')
+
+    def test_noop_follow_sequence_does_not_renew_free_will_grace(self):
+        self.lua.execute('''
+            Autonomy=require('GoblinSurvivor/GoblinAutonomy')
+            Config=require('GoblinSurvivor/Config')
+            d.GoblinFreewillEnabled=true
+            a.x,a.y=player.x-1,player.y
+            d.GoblinTask='FOLLOW';d.GoblinTaskPayload={};d.GoblinTaskSequence=5
+            Autonomy.update(a,1000)
+            local idleAt=1000+(Config.autonomyIdleSeconds+Config.freewillGraceSeconds)*1000+1
+            d.GoblinTaskSequence=6
+            Autonomy.update(a,idleAt)
+            local record=Autonomy.owners['horse']
+            assert(record.progressAt==1000, 'no-op sequence counted as physical progress')
+            assert(record.nextAt>idleAt, 'no-op sequence postponed the scripted idle fallback')
         ''')
 
     def test_follow_arrival_has_hysteresis(self):

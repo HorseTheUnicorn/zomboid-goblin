@@ -380,8 +380,24 @@ function Body.faceTarget(body, target)
     return select(1, call(body, "setForwardDirection", dx / length, dy / length))
 end
 
+function Body.compactSpeech(text)
+    text = string.gsub(text, "%s+", " ")
+    text = string.match(text, "^%s*(.-)%s*$")
+    if #text <= 140 then return text end
+    -- Whole UTF-8 words only; Lua's string length counts bytes, not characters.
+    local prefix, sentence = "", nil
+    for word in string.gmatch(text, "%S+") do
+        local candidate = prefix == "" and word or prefix.." "..word
+        if #candidate > 137 then break end
+        prefix = candidate
+        if string.match(word, "[.!?][\"']?$") then sentence = prefix end
+    end
+    return sentence or (prefix ~= "" and prefix.."..." or "...")
+end
+
 function Body.say(body, text)
-    if not Body.isGoblin(body) or type(text) ~= "string" or #text < 1 or #text > 240 then return false, "speech is invalid" end
+    if not Body.isGoblin(body) or type(text) ~= "string" or #text < 1 or #text > 2000 then return false, "speech is invalid" end
+    text = Body.compactSpeech(text)
     if type(isServer) == "function" and isServer() and type(sendServerCommand) == "function" then
         local data = Body.data(body)
         data.GoblinSpeechSequence = (tonumber(data.GoblinSpeechSequence) or 0) + 1

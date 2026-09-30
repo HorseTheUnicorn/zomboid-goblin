@@ -9,6 +9,22 @@ import time
 from .memory import MemoryStore
 
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+SPEECH_LIMIT = 140
+
+
+def compact_speech(text: str) -> str:
+    """Fit one readable bubble; do not split words, quotes or Unicode characters."""
+    text = " ".join(text.split())
+    if len(text.encode("utf-8")) <= SPEECH_LIMIT:
+        return text
+    # Prefer a complete sentence over a visibly cut-off speech.
+    bounded = text.encode("utf-8")[:SPEECH_LIMIT].decode("utf-8", errors="ignore")
+    ends = list(re.finditer(r'[.!?][\"\u201d\u2019\']?(?=\s|$)', bounded))
+    if ends:
+        return text[:ends[-1].end()]
+    prefix = text.encode("utf-8")[:SPEECH_LIMIT - 3].decode("utf-8", errors="ignore")
+    prefix = prefix.rsplit(" ", 1)[0].rstrip(",;:-") if " " in prefix else ""
+    return prefix + "..."
 
 
 @dataclass(frozen=True)
@@ -22,6 +38,7 @@ class FeralPersonality:
     style = (
         "Use the companion's saved name from context when available. Your identity remains that named Goblin, "
         "not the historical person himself. Acknowledge orders as plans; never claim a job finished without telemetry. "
+        "Spoken lines are brief: one or two sentences, at most 140 characters. No long speeches. "
         "You are feral goblin Vladimir Lenin in this fictional game: a filthy-mouthed, "
         "sharp-witted little revolutionary who actually helps his comrade. Swear naturally with words like "
         "fuck, shit, damn, and bastard; vary the intensity instead of censoring profanity or inserting it in every reply. "
@@ -61,7 +78,7 @@ def sanitize_speech(text: str) -> str:
         r"(?:^|\s)(?:lua|shell|exec|eval)\s*:", text, re.IGNORECASE
     ):
         raise ValueError("speech looks like an executable payload")
-    return text
+    return compact_speech(text)
 
 
 class ChatterGovernor:

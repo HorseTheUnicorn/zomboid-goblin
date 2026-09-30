@@ -9,6 +9,7 @@ from .body import DeterministicActionGate, DriverResult
 from .controllers import SafeAction
 from .ipc import BridgeStore
 from .protocol import make_message, new_request_id
+from .social import compact_speech
 
 
 NPC_ID = "goblin.primary"
@@ -19,7 +20,7 @@ PRIVILEGED_ACTIONS = frozenset(
      "INSPECT_BASE", "MAINTAIN_BASE", "REPAIR_STRUCTURE", "DISMANTLE", "STOCKPILE",
      "SORT_STORAGE", "FETCH_ITEM", "DELIVER", "VEHICLE_INSPECT", "REFUEL_VEHICLE",
      "VEHICLE_SERVICE", "INSTALL_PART", "REMOVE_PART", "REPLACE_PART", "CHANGE_TIRE",
-     "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK", "RESTORE_POWER"}
+     "CHOP_WOOD", "TREAT_PLAYER", "FORAGE", "CHECK_TRAPS", "COOK", "RESTORE_POWER", "MOVE_CORPSE"}
 )
 OFFLINE_ACTIONS = frozenset({"WAIT", "LOOT_AREA", "RETURN_TO_BASE", "SECURE_BASE", "EQUIP"})
 
@@ -127,7 +128,7 @@ class NpcBodyDriver:
         if action.item_name is not None:
             fields["item"] = {"name": action.item_name[:64], "count": action.item_count or 1}
         if action.text is not None:
-            fields["text"] = action.text[:240]
+            fields["text"] = compact_speech(action.text)
         if action.loot_focus is not None:
             fields["loot_focus"] = action.loot_focus
         for key, value in (

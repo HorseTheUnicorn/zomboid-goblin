@@ -13,6 +13,13 @@ local Survival=require("GoblinSurvivor/GoblinSurvival")
 local Life=require("GoblinSurvivor/GoblinSurvivalLife")
 local vehicleTools={"Base.Wrench","Base.Screwdriver","Base.LugWrench","Base.Jack","Base.TirePump"}
 local definitions={
+    PREPARE_FOOD_STORAGE={handler=require("GoblinSurvivor/GoblinFoodStorage"),destructive=true,
+        requirements={target="one reachable free indoor base square, online food cycle only",
+            consumables={"Base.Plank x3","Base.Nails x3"},reusable_tools={"Base.Hammer"}}},
+    MOVE_CORPSE={handler=require("GoblinSurvivor/GoblinCorpseWork"),destructive=true,timeout_ms=1200000,
+        requirements={target="zombie corpses only in the owner's saved base or current loaded house",
+            destination="one safe ground-level outside pile",limit="20 corpses per explicit run",
+            unsupported={"player remains","animals","cross-floor dragging","unvalidated native actor/MP support"}}},
     FARM={handler=require("GoblinSurvivor/GoblinFarming"),destructive=true,
         requirements={reusable_tools={"Base.HandShovel","Base.Scythe"},
             consumables={"installed crop seed types when sowing","water (carried, nearby, or conjured for Goblin's own use)"}}},
@@ -131,7 +138,7 @@ for task,item in pairs(definitions) do
             local done,success,detail,code=handler.update(body,payload,runtime,now)
             return Capabilities.fromLegacy(done,success,detail,code)
         end,
-        cancel=function(body) if type(handler.clear)=="function" then handler.clear(body) end end,
+        cancel=function(body,runtime) if type(handler.clear)=="function" then handler.clear(body,runtime) end end,
         snapshot=function(_,runtime)
             local skipped=0
             if type(runtime.skipped)=="table" then for _ in pairs(runtime.skipped) do skipped=skipped+1 end end

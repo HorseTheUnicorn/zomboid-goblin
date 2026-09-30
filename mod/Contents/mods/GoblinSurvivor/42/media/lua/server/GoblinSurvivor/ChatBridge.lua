@@ -51,6 +51,21 @@ local function contains(lower, phrase)
     return string.find(lower, phrase, 1, true) ~= nil
 end
 
+-- A direct named-furniture order must not destroy a closer, different object.
+function ChatBridge.dismantlePayload(text)
+    local lower=string.lower(text or "")
+    local payload={explicit_owner_order=true}
+    for _,kind in ipairs({"chair","stool","table","desk","crate","bookcase","shelf","cabinet"}) do
+        local names={kind,kind.."s"}
+        if kind=="shelf" then names={"shelf","shelves"}
+        elseif kind=="cabinet" then names={"cabinet","cabinets","cupboard","cupboards","counter","counters"} end
+        for _,name in ipairs(names) do
+            if lower:match("%f[%a]"..name.."%f[%A]") then payload.furniture_kind=kind;return payload end
+        end
+    end
+    return payload
+end
+
 -- Core commands should still work if Qwen or the host bridge is unavailable.
 -- Qwen remains responsible for personality, conversation and ambiguous asks;
 -- these obvious phrases are handled immediately by the game server.
@@ -143,8 +158,26 @@ function ChatBridge.directIntent(text)
         and (contains(lower,"base") or contains(lower,"house")) then
         return Constants.TASK.MAINTAIN_BASE
     end
-    if lower:match("^dismantle%s+[^%p]*furniture[%p%s]*$")
-        or lower:match("^take%s+apart%s+[^%p]*furniture[%p%s]*$") then
+    local corpseOrder=lower:match("^remove%s+") or lower:match("^clear%s+")
+        or lower:match("^clean%s+") or lower:match("^move%s+") or lower:match("^pile%s+")
+        or lower:match("^drag%s+") or lower:match("^take%s+")
+    if corpseOrder and (lower:match("%f[%a]corpses?%f[%A]")
+        or lower:match("%f[%a]bodies%f[%A]") or lower:match("%f[%a]body%f[%A]")) then
+        return Constants.TASK.MOVE_CORPSE
+    end
+    local dismantleOrder=lower:match("^dismantle%s+") or lower:match("^disassemble%s+")
+        or lower:match("^take%s+apart%s+") or lower:match("^break%s+down%s+")
+        or lower:match("^break%s+.+%s+down[%p%s]*$")
+    local furnishing=false
+    for _,noun in ipairs({"furniture","chair","chairs","stool","stools","table","tables","desk","desks",
+        "cabinet","cabinets","cupboard","cupboards","counter","counters","crate","crates",
+        "shelf","shelves","bookcase","bookcases"}) do
+        if lower:match("%f[%a]"..noun.."%f[%A]") then furnishing=true;break end
+    end
+    -- One nearby empty wooden furnishing only, never a whole-house teardown.
+    -- Ambiguous/unsupported objects still go to Qwen or receive a refusal.
+    if dismantleOrder and furnishing and not contains(lower,"all ")
+        and not contains(lower,"every ") then
         return Constants.TASK.DISMANTLE
     end
     if not curtain and string.match(lower,"%f[%a]open%f[%A]") then
@@ -232,7 +265,8 @@ local function applyDirect(player, speaker, task, text)
     local body, detail = Spawner.ensureForPlayer(player, false)
     if body == nil then return false, tostring(detail or "Goblin unavailable") end
     local payload = { owner = speaker, manual = task == Constants.TASK.FOLLOW }
-    if task == Constants.TASK.DISMANTLE then payload.explicit_owner_order = true end
+    if task == Constants.TASK.DISMANTLE then payload=ChatBridge.dismantlePayload(text) end
+    if task == Constants.TASK.MOVE_CORPSE then payload={explicit_owner_order=true} end
     if task == Constants.TASK.SORT_STORAGE or task == Constants.TASK.FETCH_ITEM
         or task == Constants.TASK.DELIVER or task == Constants.TASK.REPAIR_STRUCTURE then
         payload = ChatBridge.logisticsPayload(task, text)

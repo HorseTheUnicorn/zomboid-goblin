@@ -135,14 +135,7 @@ local function ownerContext(body, owner)
     return { base=base, point=point, scope=scope }
 end
 
-function Storage.assign(body, owner, categoryName)
-    local category = Storage.normalize(categoryName)
-    if not category then return false, "unknown storage category" end
-    local context, why = ownerContext(body, owner)
-    if not context then return false, why end
-    local target
-    target, why = nearestContainer(body, context.point, context.scope)
-    if not target then return false, why end
+local function persistAssignment(body,context,target,category)
     local checked, metadata = call(target.object, "getModData")
     if not checked or type(metadata) ~= "table" then return false, "container identity cannot be saved" end
     if metadata.GoblinStorageOwner and metadata.GoblinStorageOwner ~= Body.owner(body) then
@@ -164,6 +157,33 @@ function Storage.assign(body, owner, categoryName)
     end
     call(target.object, "transmitModData")
     return true, "container assigned to "..category
+end
+
+function Storage.assign(body, owner, categoryName)
+    local category = Storage.normalize(categoryName)
+    if not category then return false, "unknown storage category" end
+    local context, why = ownerContext(body, owner)
+    if not context then return false, why end
+    local target
+    target, why = nearestContainer(body, context.point, context.scope)
+    if not target then return false, why end
+    return persistAssignment(body,context,target,category)
+end
+
+-- Internal survival controller: only a crate built by this Goblin. It cannot
+-- silently reassign the player's fridge or another player's storage.
+function Storage.assignBuiltFood(body,scope,object)
+    if not Body.isGoblin(body) or not scope or not object then return false,"invalid food crate" end
+    local _,square=call(object,"getSquare")
+    local _,container=call(object,"getContainer")
+    local _,metadata=call(object,"getModData")
+    if not square or not Curtains.belongsToScope(scope,square) or not container
+        or type(metadata)~="table" or metadata.GoblinBuilt~=true
+        or metadata.GoblinOwner~=Body.owner(body) or metadata.GoblinFoodCrate~=true
+        or not World.containerAccessible(body,object) or not Policy.access(body,object) then
+        return false,"food crate identity, access or house changed"
+    end
+    return persistAssignment(body,{scope=scope},{object=object,square=square,container=container},"FOOD")
 end
 
 function Storage.unassign(body, owner)

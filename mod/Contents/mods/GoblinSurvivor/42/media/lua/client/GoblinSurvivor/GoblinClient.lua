@@ -10,6 +10,7 @@ local Nameplates = require("GoblinSurvivor/GoblinNameplates")
 local Visibility = require("GoblinSurvivor/GoblinVisibility")
 local Map = require("GoblinSurvivor/GoblinMap")
 local Trace = require("GoblinSurvivor/GoblinClientTrace")
+local CorpseReplica = require("GoblinSurvivor/GoblinCorpseReplica")
 
 local Client = {
     statesById = {},
@@ -226,10 +227,12 @@ local function apply(zombie)
         return true
     end
     if state == nil or state.body_present == false then
+        CorpseReplica.apply(zombie,nil,false,nowMs())
         Visibility.bodies[zombie] = nil
         return false
     end
     Nameplates.track(zombie,state,nowMs())
+    CorpseReplica.apply(zombie,state,serverConfirmed,nowMs())
     local rejoined = Motion.rejoin(zombie,state.rejoin_point,state.rejoin_sequence,state.rejoin_expires,nowMs())
     if type(state.rejoin_sequence) == "number" then
         local previous = Client.rejoinReports[zombie]

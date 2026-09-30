@@ -22,6 +22,7 @@ local actions = {
     -- Capability jobs Qwen may start with the owner's one-use chat grant.
     INSPECT_BASE=true, MAINTAIN_BASE=true, REPAIR_STRUCTURE=true, DISMANTLE=true, STOCKPILE=true,
     SORT_STORAGE=true, FETCH_ITEM=true, DELIVER=true, VEHICLE_INSPECT=true, REFUEL_VEHICLE=true,
+    MOVE_CORPSE=true,
     VEHICLE_SERVICE=true, INSTALL_PART=true, REMOVE_PART=true, REPLACE_PART=true, CHANGE_TIRE=true,
     CHOP_WOOD=true, TREAT_PLAYER=true, FORAGE=true, CHECK_TRAPS=true, COOK=true, RESTORE_POWER=true
 }
@@ -176,6 +177,8 @@ end
 local function freewillReady(body)
     local data = Body.data(body)
     if not data or data.GoblinFreewillEnabled ~= true then return false end
+    local now = type(getTimestampMs) == "function" and getTimestampMs() or 0
+    if require("GoblinSurvivor/GoblinGoals").foodBusy(body,now) then return false end
     -- Scripted filler chores (autonomous) are fair game too: they only run
     -- because nobody chose anything better.
     return data.GoblinTask == "FOLLOW" or data.GoblinFreewill == true or data.GoblinAutonomous == true
@@ -211,7 +214,7 @@ local function process(stem)
             else
                 detail = "offline grant expired, owner returned, or task changed"
             end
-        elseif message.freewill == true and not freewillReady(body) then
+        elseif message.freewill == true and message.action ~= "SAY" and not freewillReady(body) then
             detail = "busy with the owner's own order"
         else
             local normalized = normalizedMessage(message)

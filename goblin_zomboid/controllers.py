@@ -17,6 +17,7 @@ class Action(str, Enum):
     OPEN_WINDOW = "OPEN_WINDOW"
     GAIN_ACCESS = "GAIN_ACCESS"
     CLOSE_CURTAINS = "CLOSE_CURTAINS"
+    MOVE_CORPSE = "MOVE_CORPSE"
     NOOP = "NOOP"
     SAY = "SAY"
     EQUIP = "EQUIP"
@@ -281,6 +282,7 @@ class TacticalController:
         "FORAGE": Action.FORAGE,
         "CHECK_TRAPS": Action.CHECK_TRAPS,
         "COOK": Action.COOK,
+        "MOVE_CORPSE": Action.MOVE_CORPSE,
         "RESTORE_POWER": Action.RESTORE_POWER,
     }
 

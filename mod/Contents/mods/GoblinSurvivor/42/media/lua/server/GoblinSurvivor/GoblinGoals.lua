@@ -20,9 +20,11 @@ Goals.TEMPLATES = {
     REPAIR_BASE = { steps = { "REPAIR_STRUCTURE" }, priority = 3 },
     VEHICLE_READY = { steps = { "VEHICLE_INSPECT", "VEHICLE_SERVICE" }, priority = 2 },
     STOCK_NAILS = { steps = { "STOCKPILE" }, priority = 1, payload = { item = "Base.Nails" } },
+    RESTOCK_FOOD = { steps = { "FORAGE" }, priority = 0 }, -- dynamic, physically verified cycle
 }
 Goals.ALIASES = { SECURE = "SECURE_BASE", ORGANIZE = "ORGANIZE_BASE", SORT = "ORGANIZE_BASE",
-    REPAIR = "REPAIR_BASE", VEHICLE = "VEHICLE_READY", CAR = "VEHICLE_READY", NAILS = "STOCK_NAILS" }
+    REPAIR = "REPAIR_BASE", VEHICLE = "VEHICLE_READY", CAR = "VEHICLE_READY", NAILS = "STOCK_NAILS",
+    FOOD = "RESTOCK_FOOD" }
 
 -- Replanning policy per standard result code.
 local POLICY = {
@@ -64,7 +66,7 @@ end
 -- Add (or re-arm) a goal. interval_minutes > 0 makes it a maintenance cycle.
 function Goals.add(owner, name, intervalMinutes, now)
     local kind = Goals.normalize(name)
-    if not kind then return false, "unknown goal; use secure, organize, repair, vehicle or nails" end
+    if not kind then return false, "unknown goal; use secure, organize, repair, vehicle, nails or food" end
     local list = records(owner)
     if not list then return false, "persistent goal store unavailable" end
     intervalMinutes = tonumber(intervalMinutes) or 0
@@ -74,8 +76,20 @@ function Goals.add(owner, name, intervalMinutes, now)
     end
     local template = Goals.TEMPLATES[kind]
     for _, goal in ipairs(list) do
-        if goal.kind == kind and goal.state ~= "DONE" and goal.state ~= "FAILED" then
+        if kind == "RESTOCK_FOOD" and goal.kind == kind and
+            (goal.state == "DONE" or goal.state == "FAILED" or goal.state == "CANCELLED") then
+            -- One food controller per owner, including after cancellation.
+            -- Preserve its history/runs rather than leave an older CANCELLED
+            -- record blocking an explicitly re-enabled cycle.
+            goal.state,goal.step,goal.next_at = "PENDING",1,0
+            goal.steps,goal.food = {{task="FORAGE",attempts=0}},{rounds=0,automatic=false}
+            goal.interval_ms = intervalMinutes*60000
+            save(owner,list)
+            return true,"food goal re-enabled"
+        end
+        if goal.kind == kind and goal.state ~= "DONE" and goal.state ~= "FAILED" and goal.state ~= "CANCELLED" then
             goal.interval_ms = intervalMinutes * 60000
+            if kind == "RESTOCK_FOOD" then goal.food=goal.food or {};goal.food.automatic=false end
             save(owner, list)
             return true, kind.." goal already active; repeat updated"
         end
@@ -128,6 +142,41 @@ function Goals.describe(owner)
     return #parts > 0 and table.concat(parts, " ") or "no goals"
 end
 
+-- Called only by the trusted online/idle autonomy scheduler, never by wire
+-- input. An explicit cancelled food goal disables automatic re-arming.
+function Goals.ensureFood(body, now)
+    local owner, list = Body.owner(body), records(Body.owner(body))
+    if not list then return false end
+    local point, data = Body.position(body), Body.data(body)
+    if not point or not data.GoblinBaseSet or point.z ~= data.GoblinBaseZ
+        or (point.x-data.GoblinBaseX)^2+(point.y-data.GoblinBaseY)^2 > 20^2 then return false end
+    for _, goal in ipairs(list) do
+        if goal.kind == "RESTOCK_FOOD" then
+            if goal.state == "CANCELLED" then return false end
+            if goal.state ~= "DONE" and goal.state ~= "FAILED" then return true end
+            if (goal.next_at or 0) > now then return false end
+            local scan = require("GoblinSurvivor/GoblinFoodCycle").scan(body)
+            if scan.reason~="NO_FOOD_STORAGE" and (not scan.known or scan.shortage <= 0) then return false end
+            goal.state, goal.food, goal.next_at = "PENDING", {rounds=0,automatic=true}, now
+            save(owner,list)
+            return true
+        end
+    end
+    local scan = require("GoblinSurvivor/GoblinFoodCycle").scan(body)
+    if scan.reason~="NO_FOOD_STORAGE" and (not scan.known or scan.shortage <= 0) then return false end
+    local ok = Goals.add(owner,"food",0,now)
+    if ok then
+        local updated = records(owner)
+        for _, goal in ipairs(updated) do
+            if goal.kind == "RESTOCK_FOOD" and goal.state == "PENDING" then
+                goal.food={rounds=0,automatic=true}
+            end
+        end
+        save(owner,updated)
+    end
+    return ok
+end
+
 -- Highest-priority goal that is ready to run now.
 function Goals.select(list, now)
     local best
@@ -136,6 +185,7 @@ function Goals.select(list, now)
         if goal.state == "DONE" and (goal.interval_ms or 0) > 0 and (goal.next_at or 0) <= now then
             -- Maintenance cycle: re-arm from the first step.
             goal.state, goal.step = "PENDING", 1
+            if goal.kind == "RESTOCK_FOOD" then goal.food={rounds=0} end
             for _, step in ipairs(goal.steps) do step.attempts = 0 end
             ready = true
         end
@@ -154,6 +204,21 @@ local function findActive(list, id)
     return nil
 end
 
+function Goals.restoreActive(body)
+    local data = Body.data(body)
+    local payload = data and data.GoblinTaskPayload
+    if not data or data.GoblinGoalActive or type(payload) ~= "table" or not payload.goal_id then return false end
+    for _, goal in ipairs(Goals.list(Body.owner(body))) do
+        local step = goal.steps[goal.step]
+        if goal.id == payload.goal_id and step and step.task == data.GoblinTask
+            and (goal.state == "ACTIVE" or goal.state == "CANCELLED") then
+            data.GoblinGoalActive = goal.id
+            return true
+        end
+    end
+    return false
+end
+
 -- Called by Autonomy each brain tick while the owner is online.
 -- setTask is Brain.setTask (passed in to avoid a require cycle).
 function Goals.tick(body, setTask, context, now)
@@ -169,9 +234,17 @@ function Goals.tick(body, setTask, context, now)
             -- The owner replaced the job with another order: park the goal.
             if goal then goal.state = "WAITING"; goal.next_at = now; save(owner, list) end
             data.GoblinGoalActive = nil
+            if not goal and data.GoblinTaskPayload and data.GoblinTaskPayload.goal_id == activeId then
+                setTask(body,"FOLLOW",{owner=owner}) -- cancelled, stop the live job too
+            end
             return false
         end
-        if context.threat or context.recalled then
+        local foodOff = goal.kind == "RESTOCK_FOOD" and goal.food and goal.food.automatic
+            and context.food_enabled == false
+        local higher = goal.kind == "RESTOCK_FOOD" and Goals.select(list,now) or nil
+        local ownerPriority = higher and higher.priority > goal.priority
+        if context.threat or context.recalled or foodOff or ownerPriority
+            or (goal.kind == "RESTOCK_FOOD" and not context.idle) then
             goal.state, goal.next_at = "WAITING", now + 5000
             goal.last_code = context.threat and "INTERRUPTED_COMBAT" or "INTERRUPTED_RECALL"
             local step = goal.steps[goal.step]
@@ -185,13 +258,26 @@ function Goals.tick(body, setTask, context, now)
         return true -- the step's capability is running
     end
     if not context.idle or context.threat or data.GoblinTask ~= "FOLLOW" then return false end
+    -- A restart can leave ACTIVE in the persistent goal store without a live
+    -- capability. Reconcile it, don't strand it permanently outside select().
+    for _, old in ipairs(list) do
+        if old.state == "ACTIVE" then old.state, old.next_at = "WAITING", now end
+    end
     local goal = Goals.select(list, now)
     if not goal then save(owner, list); return false end
+    if goal.kind == "RESTOCK_FOOD" and goal.food and goal.food.automatic
+        and context.food_enabled == false then save(owner,list);return false end
     local step = goal.steps[goal.step]
     if not step then goal.state = "DONE"; save(owner, list); return false end
     local template = Goals.TEMPLATES[goal.kind] or {}
     local payload = { explicit_owner_order = true, goal_id = goal.id }
     for key, value in pairs(template.payload or {}) do payload[key] = value end
+    if goal.kind == "RESTOCK_FOOD" then
+        local task, options = require("GoblinSurvivor/GoblinFoodCycle").next(body,goal,now)
+        if not task then save(owner,list); return false end
+        step.task = task
+        for key,value in pairs(options) do payload[key]=value end
+    end
     local ok, detail = setTask(body, step.task, payload)
     if not ok then
         -- Preparation refusal is itself a deterministic result.
@@ -207,8 +293,21 @@ function Goals.tick(body, setTask, context, now)
     return true
 end
 
+function Goals.foodBusy(body,now)
+    local Config = require("GoblinSurvivor/Config")
+    local data = Body.data(body) or {}
+    for _, goal in ipairs(Goals.list(Body.owner(body))) do
+        if goal.kind == "RESTOCK_FOOD" and (goal.state == "ACTIVE"
+            or (goal.state == "PENDING" and (goal.next_at or 0) <= now))
+            and (not (goal.food and goal.food.automatic) or
+                (Config.autonomyEnabled == true and Config.foodSurvivalEnabled == true
+                    and data.GoblinFreewillEnabled == true)) then return true end
+    end
+    return false
+end
+
 -- Called by Brain when a capability job reaches a terminal result.
-function Goals.onResult(body, task, result, now, goalId)
+function Goals.onResult(body, task, result, now, goalId, payload)
     local data = Body.data(body)
     local owner = Body.owner(body)
     goalId = goalId or (data and data.GoblinGoalActive)
@@ -221,6 +320,13 @@ function Goals.onResult(body, task, result, now, goalId)
     if not goal or goal.state == "CANCELLED" then return false end
     local step = goal.steps[goal.step]
     if not step or step.task ~= task then return false end
+    if goal.kind == "RESTOCK_FOOD" then
+        require("GoblinSurvivor/GoblinFoodCycle").onResult(body,goal,task,result,now,payload)
+        save(owner,list)
+        log("FOOD_RESULT owner="..tostring(owner).." task="..task.." state="..goal.state
+            .." code="..tostring(goal.last_code))
+        return true
+    end
     local code = result.code
     local policy = POLICY[code]
     -- A step whose prepare refuses ("nothing to sort", "no vehicle nearby")

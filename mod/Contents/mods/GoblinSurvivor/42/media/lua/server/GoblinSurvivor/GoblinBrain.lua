@@ -76,10 +76,12 @@ local function setTaskInternal(body, task, payload)
     -- (never another player's safehouse) instead of refusing.
     pcall(require("GoblinSurvivor/GoblinBaseClaim").ensure, body, task, playerForOwner(body))
     if Jobs.handles(task) then
+        local goalId = payload.goal_id -- trusted scheduler metadata, not a wire field
         local ok,prepared,detail=pcall(Jobs.prepare,body,playerForOwner(body),task,payload)
         if not ok then return false,"job preparation failed; the existing order was kept" end
         if not prepared then return false,detail end
         payload,jobDetail=prepared,detail
+        payload.goal_id = goalId
     end
     local opening=task==Constants.TASK.OPEN_DOOR or task==Constants.TASK.OPEN_WINDOW
     local openingDetail
@@ -173,7 +175,7 @@ local function ownerJobPayload(action, message)
     if action == T.DISMANTLE and (job == "salvage" or message.freewill == true) then
         payload.salvage = true; return payload
     end
-    if action == T.DISMANTLE or action == T.REPAIR_STRUCTURE or action == T.TREAT_PLAYER
+    if action == T.MOVE_CORPSE or action == T.DISMANTLE or action == T.REPAIR_STRUCTURE or action == T.TREAT_PLAYER
         or action == T.VEHICLE_INSPECT or action == T.REFUEL_VEHICLE or action == T.VEHICLE_SERVICE then
         return payload
     end
@@ -309,14 +311,18 @@ function Brain.update(body, timestamp)
         local result=Jobs.update(body,task,payload,now)
         if result.done then
             pcall(function() require("GoblinSurvivor/GoblinSituation").note(body,"job",
-                task.." "..tostring(result.code)..": "..tostring(result.detail)) end)
+                task.." "..tostring(result.code)..": "..tostring(result.detail),
+                {freewill=data.GoblinFreewill,goal_id=payload.goal_id}) end)
             -- Goal progression only ever reads this deterministic result.
-            pcall(function() require("GoblinSurvivor/GoblinGoals").onResult(body,task,result,now,payload.goal_id) end)
+            pcall(function() require("GoblinSurvivor/GoblinGoals").onResult(body,task,result,now,payload.goal_id,payload) end)
             if data.GoblinCaretakerTask==task then
                 data.GoblinCaretakerTask=nil
                 pcall(function() require("GoblinSurvivor/GoblinCaretaker").onResult(body,task,result) end)
             end
-            local delivery=result.success and Loot.hasCargo(body) and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
+            -- Multi-step goals own delivery/custody; don't let generic cargo
+            -- return intercept cooking -> verified storage progression.
+            local delivery=not payload.goal_id and result.success and Loot.hasCargo(body)
+                and Constants.TASK.RETURN_TO_BASE or Constants.TASK.FOLLOW
             Brain.setTask(body,delivery,{owner=Body.owner(body)})
             data.GoblinWorkStatus=result.detail
             Body.say(body,"Comrade, "..tostring(result.detail)..".")
